@@ -1548,7 +1548,7 @@ export default function OptionsPage() {
           <div style={{ fontWeight: uiTypography.fontWeight.semibold, color: theme.text.primary, marginBottom: uiSpace[4] }}>
             联系我们
           </div>
-          <div>Email：support@aihelp.me</div>
+          <div>Email：lerixhe@gmail.com</div>
         </div>
       </section>
 
@@ -1754,7 +1754,7 @@ export default function OptionsPage() {
             color: theme.text.secondary,
             textAlign: "center"
           }}>
-          © 2026 aihelp.me All rights reserved.
+          © 2026 Aiction All rights reserved.
         </div>
       </nav>
 
