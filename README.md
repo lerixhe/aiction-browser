@@ -144,7 +144,6 @@ aiction/
 │       ├── messaging.ts   # Message passing (streamChat)
 │       ├── prompt.ts      # Prompt building
 │       └── ui/            # Design tokens & theme
-├── DESIGN.md              # Design specification
 ├── WIKI.md                # Detailed architecture docs
 └── package.json
 ```

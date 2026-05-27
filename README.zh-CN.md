@@ -145,7 +145,6 @@ aiction/
 │       ├── messaging.ts   # 消息传递 (streamChat)
 │       ├── prompt.ts      # 提示词构建
 │       └── ui/            # 设计令牌与主题
-├── DESIGN.md              # 设计规范文档
 ├── WIKI.md                # 详细架构文档
 └── package.json
 ```

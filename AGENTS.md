@@ -7,9 +7,7 @@ Chrome extension (MV3) built with Plasmo + React + TypeScript. Users select text
 - No lint or test setup. Use `npm run typecheck` and `npm run build` for verification.
 - Build may warn about missing `svgo` for `htmlnano minifySvg`; builds still succeed.
 - TypeScript path alias: `~/*` maps to `src/*` (tsconfig `paths`).
-- Design docs: `docs/DESIGN.md`.
 - Detailed architecture docs: `docs/WIKI.md`.
-- UI module naming (触发按钮/环形菜单/对话窗 etc.) is defined in `DESIGN.md` §0 and CLAUDE.md.
 
 ## Commands
 - `npm run dev`: Plasmo dev build/watch.

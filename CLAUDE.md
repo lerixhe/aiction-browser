@@ -68,28 +68,7 @@ Three runtime contexts communicate via `chrome.runtime.onMessage` (one-shot) and
 - If a content-script change doesn't appear after extension + page reload, close and reopen the tab.
 - For background changes, verify from the extension's service worker inspector.
 
-## Design System
-
-See `docs/DESIGN.md` (UI/UX spec) and `docs/WIKI.md` (detailed architecture walkthrough) for design standards and conventions.
-
-## UI 模块命名
-
-沟通中使用以下名称指代各 UI 模块（详见 `DESIGN.MD`）：
-
-| 昵称 | 组件 | 解释 |
-|------|------|------|
-| 触发按钮 | `SelectionToolbar` 核心 | 选中文本后出现的圆形渐变按钮，带发光脉冲 |
-| 环形菜单 | `SelectionToolbar` 展开态 | 悬停触发按钮后展开的环形动作列表 |
-| 对话窗 | `UnifiedPanel` | 模态浮层聊天窗口，含遮罩 |
-| 遮罩层 | `UnifiedPanel` 外层 | 半透明黑色背景遮罩 |
-| 选区编辑区 | `UnifiedPanel` 顶部 | 已捕获选中文本的可编辑区域 |
-| 消息流 | `UnifiedPanel` 中部 | 消息气泡滚动区域 |
-| 思考块 | `UnifiedPanel` 消息内 | AI 推理过程的折叠展示 |
-| 输入栏 | `UnifiedPanel` 底部 | 文本输入 + 发送/停止按钮 |
-| 设置台 | `OptionsPage` | Chrome 选项页 |
-| 主题卡 | `OptionsPage` 子区 | Auto/Light/Dark 切换 |
-| 连接卡 | `OptionsPage` 子区 | API 配置 + 测试连接 + 获取模型 |
-| 动作卡 | `OptionsPage` 子区 | 自定义动作模板管理 |
+## Development Approach
 
 ## Development Approach
 
