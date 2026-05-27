@@ -1,0 +1,55 @@
+{
+  "name": "aiction",
+  "displayName": "Aiction",
+  "version": "0.0.1",
+  "description": "A lightweight Chrome extension for getting AI help on selected web content.",
+  "author": "",
+  "license": "GPL-3.0",
+  "scripts": {
+    "dev": "plasmo dev",
+    "build": "plasmo build && cp assets/pdf.worker.mjs build/chrome-mv3-prod/",
+    "package": "plasmo package",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "marked": "^18.0.4",
+    "pdfjs-dist": "^5.7.284",
+    "posthog-js": "^1.371.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/chrome": "latest",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "plasmo": "latest",
+    "svgo": "^3.3.3",
+    "typescript": "latest"
+  },
+  "manifest": {
+    "action": {
+      "default_popup": "popup.html"
+    },
+    "permissions": [
+      "storage",
+      "contextMenus"
+    ],
+    "host_permissions": [
+      "<all_urls>"
+    ],
+    "options_ui": {
+      "open_in_tab": true
+    },
+    "web_accessible_resources": [
+      {
+        "resources": [
+          "pdf.worker.mjs"
+        ],
+        "matches": [
+          "<all_urls>"
+        ]
+      }
+    ]
+  }
+}

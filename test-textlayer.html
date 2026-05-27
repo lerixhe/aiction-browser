@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>PDF.js TextLayer Test</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #f0f0f0;
+    }
+    
+    .page-container {
+      position: relative;
+      display: inline-block;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      margin-bottom: 20px;
+    }
+    
+    canvas {
+      display: block;
+    }
+    
+    .textLayer {
+      position: absolute;
+      text-align: initial;
+      inset: 0;
+      overflow: clip;
+      opacity: 0.25;
+      line-height: 1;
+      -webkit-text-size-adjust: none;
+      text-size-adjust: none;
+      --min-font-size: 1;
+      --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+      --min-font-size-inv: calc(1 / var(--min-font-size));
+    }
+
+    .textLayer :is(span, br) {
+      color: transparent;
+      position: absolute;
+      white-space: pre;
+      cursor: text;
+      transform-origin: 0% 0%;
+    }
+
+    .textLayer > :not(.markedContent),
+    .textLayer .markedContent span:not(.markedContent) {
+      z-index: 1;
+      --font-height: 0;
+      font-size: calc(var(--text-scale-factor) * var(--font-height));
+      --scale-x: 1;
+      --rotate: 0deg;
+    }
+
+    .textLayer ::selection {
+      background: rgba(0, 0, 255, 0.4);
+    }
+
+    .textLayer span::selection {
+      background: rgba(0, 0, 255, 0.4);
+    }
+  </style>
+</head>
+<body>
+  <h1>PDF.js TextLayer Test</h1>
+  <p>Load a PDF file to test text layer rendering:</p>
+  <input type="file" id="fileInput" accept=".pdf">
+  <div id="viewer"></div>
+
+  <script type="module">
+    import * as pdfjsLib from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.mjs';
+    
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.mjs';
+
+    const viewer = document.getElementById('viewer');
+    const fileInput = document.getElementById('fileInput');
+
+    fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+      viewer.innerHTML = '';
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const scale = 1.5;
+        const viewport = page.getViewport({ scale });
+
+        const container = document.createElement('div');
+        container.className = 'page-container';
+
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        container.appendChild(canvas);
+
+        const textLayerDiv = document.createElement('div');
+        textLayerDiv.className = 'textLayer';
+        container.appendChild(textLayerDiv);
+
+        viewer.appendChild(container);
+
+        // Set CSS variables
+        container.style.setProperty('--scale-factor', scale);
+        container.style.setProperty('--user-unit', '1');
+        container.style.setProperty('--total-scale-factor', scale);
+        
+        textLayerDiv.style.setProperty('--scale-factor', scale);
+        textLayerDiv.style.setProperty('--user-unit', '1');
+        textLayerDiv.style.setProperty('--total-scale-factor', scale);
+
+        // Render canvas
+        const ctx = canvas.getContext('2d');
+        await page.render({ canvas, viewport }).promise;
+
+        // Render text layer using official API
+        const textContent = await page.getTextContent();
+        const textLayer = new pdfjsLib.TextLayer({
+          textContentSource: textContent,
+          container: textLayerDiv,
+          viewport
+        });
+        await textLayer.render();
+
+        console.log('Page', i, 'rendered');
+        console.log('Container dimensions:', container.offsetWidth, container.offsetHeight);
+        console.log('TextLayer dimensions:', textLayerDiv.offsetWidth, textLayerDiv.offsetHeight);
+        console.log('Canvas dimensions:', canvas.width, canvas.height);
+      }
+    });
+  </script>
+</body>
+</html>
