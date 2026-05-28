@@ -9,10 +9,11 @@ Chrome extension (MV3) built with WXT + React + TypeScript. Users select text on
 - Detailed architecture docs: `docs/WIKI.md`.
 
 ## Commands
-- `npm run dev`: WXT dev build/watch.
+- `npm run dev`: WXT dev build/watch (Chrome). Use `npm run dev:firefox` for Firefox.
 - `npm run typecheck`: TypeScript only, no emit.
 - `npm run build`: production extension build. Run this after code changes.
 - `npm run zip`: zip the extension bundle.
+- `npm run postinstall`: runs `wxt prepare` automatically after `npm install`.
 
 ## Entry Points (WXT file-based routing)
 - `src/entrypoints/background.ts`: Background Service Worker (uses `defineBackground()`).
@@ -22,11 +23,15 @@ Chrome extension (MV3) built with WXT + React + TypeScript. Users select text on
 - `src/entrypoints/pdf-viewer/`: PDF Viewer Page (HTML entry + React component).
 
 ## Architecture
-Three runtime contexts communicate via `chrome.runtime.onMessage`:
+Three runtime contexts communicate via `chrome.runtime.onMessage` and `chrome.runtime.connect`:
 
 - **Content script** (`src/entrypoints/content/`): detects selection from range/input/textarea, computes toolbar anchor, renders `SelectionToolbar` and `UnifiedPanel`, stores per-page conversation state in React.
 - **Background** (`src/entrypoints/background.ts`): registers the message handler, reads settings from `chrome.storage.sync`, calls the API, normalizes responses. **Never move API requests into the content script.**
 - **Options** (`src/entrypoints/options/`): edits API config, translation language, and custom actions, then validates and persists settings.
+
+### Communication flow
+- **Streaming (chat):** Content script opens a `chrome.runtime.connect` port (`AICTION_STREAM`). Background listens on `chrome.runtime.onConnect`, calls `fetch()` with streaming, and `port.postMessage`s events back.
+- **Non-streaming (API test, fetch models):** Uses `chrome.runtime.sendMessage` and background responds via `sendResponse`.
 
 Shared logic in `src/shared/*`: `types.ts`, `selection.ts`, `prompt.ts`, `messaging.ts`, `storage.ts`, `constants.ts`, `defaults.ts`, `errors.ts`.
 
