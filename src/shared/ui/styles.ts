@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react"
 
-import type { UiTheme } from "~/shared/ui/tokens"
-import { uiMotion, uiRadius, uiShadow, uiSpace, uiTypography } from "~/shared/ui/tokens"
+import type { UiTheme } from "@/shared/ui/tokens"
+import { uiMotion, uiRadius, uiShadow, uiSpace, uiTypography } from "@/shared/ui/tokens"
 
 const TRANSPARENT_RING = "33"
 

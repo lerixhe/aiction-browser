@@ -1,4 +1,4 @@
-import type { ExtensionSettings, SelectionContext } from "~/shared/types"
+import type { ExtensionSettings, SelectionContext } from "@/shared/types"
 
 export function resolveActionTemplate(
   template: string,

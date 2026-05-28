@@ -1,4 +1,4 @@
-import type { SelectionContext, SelectionAnchor, SelectionSnapshot } from "~/shared/types"
+import type { SelectionContext, SelectionAnchor, SelectionSnapshot } from "@/shared/types"
 
 type TextControl = HTMLInputElement | HTMLTextAreaElement
 

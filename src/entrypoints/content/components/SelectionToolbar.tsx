@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react"
 
-import ExplodedActionMenu from "~/contents/components/ExplodedActionMenu"
-import PillActionMenu from "~/contents/components/PillActionMenu"
-import { BrandIcon } from "~/shared/ui/icons"
-import { useUiTheme } from "~/shared/ui/theme"
-import { uiLayout, uiLayer, uiMotion, uiRadius, uiShadow, uiTypography } from "~/shared/ui/tokens"
-import { createFocusRing } from "~/shared/ui/styles"
-import type { ActionTemplate, SelectionAnchor, ToolbarMode } from "~/shared/types"
+import ExplodedActionMenu from "@/entrypoints/content/components/ExplodedActionMenu"
+import PillActionMenu from "@/entrypoints/content/components/PillActionMenu"
+import { BrandIcon } from "@/shared/ui/icons"
+import { useUiTheme } from "@/shared/ui/theme"
+import { uiLayout, uiLayer, uiMotion, uiRadius, uiShadow, uiTypography } from "@/shared/ui/tokens"
+import { createFocusRing } from "@/shared/ui/styles"
+import type { ActionTemplate, SelectionAnchor, ToolbarMode } from "@/shared/types"
 
 interface Props {
   visible: boolean

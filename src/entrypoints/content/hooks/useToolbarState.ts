@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
-import { getSettings } from "~/shared/storage"
-import type { ActionTemplate, SelectionAnchor, SelectionContext, ToolbarMode } from "~/shared/types"
+import { getSettings } from "@/shared/storage"
+import type { ActionTemplate, SelectionAnchor, SelectionContext, ToolbarMode } from "@/shared/types"
 
 /**
  * Hook for managing toolbar state and custom actions

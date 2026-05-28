@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef } from "react"
 
-import { getSelectionSnapshot } from "~/shared/selection"
-import type { SelectionAnchor, SelectionContext } from "~/shared/types"
+import { getSelectionSnapshot } from "@/shared/selection"
+import type { SelectionAnchor, SelectionContext } from "@/shared/types"
 
 import {
   hasSelectionInsideExtensionUi,
   isExtensionUiFocused,
   isInsideExtensionEvent
-} from "~/contents/utils/domUtils"
+} from "@/entrypoints/content/utils/domUtils"
 
 interface UseSelectionDetectionOptions {
   extensionRootRef: React.RefObject<HTMLElement | null>

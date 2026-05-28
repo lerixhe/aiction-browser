@@ -1,17 +1,17 @@
 import { type JSX, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 
-import { hasTextPlaceholder } from "~/shared/prompt"
-import { BrandIcon } from "~/shared/ui/icons"
-import { trackEvent } from "~/shared/analytics"
-import { DEFAULT_CUSTOM_MODEL_SERVICE, DEFAULT_SETTINGS } from "~/shared/defaults"
-import { getSettings, normalizeSettings, saveSettings } from "~/shared/storage"
-import { useUiThemeName } from "~/shared/ui/theme"
-import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "~/shared/ui/tokens"
-import { createButtonStyle, createCardStyle, createFieldLabelStyle, createFocusRing, createInputStyle as createSharedInputStyle, createStatusMessageStyle } from "~/shared/ui/styles"
-import { getAvatarPalette, getAvatarDisplayText } from "~/shared/ui/avatar"
-import type { ActionTemplate, ExtensionSettings, ThemePreference, ToolbarMode, ApiTestResponse, FetchModelsResponse, ModelServiceConfig } from "~/shared/types"
-import { MESSAGE_TYPES } from "~/shared/constants"
-import { ConfirmDialog } from "~/options/ConfirmDialog"
+import { hasTextPlaceholder } from "@/shared/prompt"
+import { BrandIcon } from "@/shared/ui/icons"
+import { trackEvent } from "@/shared/analytics"
+import { DEFAULT_CUSTOM_MODEL_SERVICE, DEFAULT_SETTINGS } from "@/shared/defaults"
+import { getSettings, normalizeSettings, saveSettings } from "@/shared/storage"
+import { useUiThemeName } from "@/shared/ui/theme"
+import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
+import { createButtonStyle, createCardStyle, createFieldLabelStyle, createFocusRing, createInputStyle as createSharedInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
+import { getAvatarPalette, getAvatarDisplayText } from "@/shared/ui/avatar"
+import type { ActionTemplate, ExtensionSettings, ThemePreference, ToolbarMode, ApiTestResponse, FetchModelsResponse, ModelServiceConfig } from "@/shared/types"
+import { MESSAGE_TYPES } from "@/shared/constants"
+import { ConfirmDialog } from "@/entrypoints/options/ConfirmDialog"
 
 type Section = "appearance" | "connection" | "actions" | "backup" | "about"
 
@@ -176,10 +176,6 @@ export default function OptionsPage() {
   useEffect(() => {
     void getSettings().then((loaded) => {
       setSettings(loaded)
-      // Mark theme as ready — the useUiThemeName hook will resolve to the
-      // correct stored preference around the same time since it also reads
-      // from chrome.storage.sync.  Gating rendering on this flag prevents
-      // a flash of the wrong theme when the OS theme differs from the saved preference.
       setThemeReady(true)
     })
     void chrome.storage.local.get("optionsActiveSection").then((result) => {

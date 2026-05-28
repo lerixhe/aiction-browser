@@ -1,89 +1,99 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Project Overview
-
-Chrome extension (MV3) built with **Plasmo + React + TypeScript**. Users select text on any page, trigger AI actions from an inline toolbar, and chat in a floating panel. Uses an OpenAI-compatible `/chat/completions` endpoint.
+Aiction is a Chrome MV3 extension built with **WXT + React + TypeScript**. Users select text on any web page, trigger AI actions from an inline toolbar, and continue the conversation in a floating chat panel. The AI backend uses an OpenAI-compatible `/chat/completions` endpoint.
 
 ## Commands
-
-- `npm run dev` — Plasmo dev build with watch
-- `npm run build` — Production extension build (run after code changes)
-- `npm run typecheck` — TypeScript type-check only, no emit
-- `npm run package` — Package the extension bundle
-- No lint or test setup exists. Use `npm run typecheck` and `npm run build` for verification.
-- Build may warn about missing `svgo` for `htmlnano minifySvg`; builds still succeed.
+- `npm run dev` — WXT dev build with watch mode
+- `npm run typecheck` — TypeScript check only (no emit)
+- `npm run build` — Production extension build. **Run this after every code change.**
+- `npm run package` — Zip the extension for distribution
 
 ## Architecture
 
-Three runtime contexts communicate via `chrome.runtime.onMessage` (one-shot) and `chrome.runtime.connect` Ports (streaming):
+### Four runtime contexts
 
-1. **Content script** (`contents/aiction.ts` → `src/contents/main.tsx`) — Plasmo content entry is an empty module; the actual UI is a default-exported React component. Detects selection, renders `SelectionToolbar` and `UnifiedPanel`, stores per-page conversation state in memory.
-2. **Background service worker** (`background.ts` → `src/background/index.ts`) — Handles all remote AI calls. Reads settings from `chrome.storage.sync`. Never move API requests into the content script.
-3. **Options page** (`options.tsx` → `src/options/index.tsx`) — Edits and persists API config, translation language, and custom actions.
-4. **Popup** (`popup.tsx`) — Browser action popup for quick service switching and settings link. Direct React component, no thin wrapper.
+| Context | Entry point | Key files |
+|---------|-------------|-----------|
+| **Content script UI** | `src/entrypoints/content/index.tsx` | `App.tsx`, `components/SelectionToolbar.tsx`, `components/UnifiedPanel.tsx` |
+| **Background service worker** | `src/entrypoints/background.ts` | — |
+| **Options page** | `src/entrypoints/options/` | `OptionsPage.tsx`, `ConfirmDialog.tsx` |
+| **Popup** | `src/entrypoints/popup/` | `Popup.tsx` |
 
-**Shared logic** (`src/shared/`):
-- `types.ts` — Message, settings, and domain types
-- `selection.ts` — Selection snapshot extraction and anchor calculation
-- `prompt.ts` — Prompt assembly with page context
-- `messaging.ts` — Content-to-background request wrapper (`askAi`); uses `chrome.runtime.connect` Ports for streaming
-- `storage.ts` — `chrome.storage.sync` settings persistence
-- `constants.ts` — Default values and constants
-- `defaults.ts` — Default settings and action presets
-- `errors.ts` — Error types and handling
-- `analytics.ts` — PostHog telemetry (anonymous ID in `chrome.storage.local`)
+Shared logic lives in `src/shared/*`:
+- `types.ts` — All TypeScript interfaces/types
+- `selection.ts` — Text selection snapshot & anchor calculation
+- `prompt.ts` — Prompt template resolution
+- `messaging.ts` — `streamChat()` port-based streaming helper
+- `storage.ts` — Chrome storage wrappers + settings normalization
+- `constants.ts` — Message types, error strings
+- `defaults.ts` — Default settings & action presets
+- `errors.ts` — Error formatting utilities
 
-**Design tokens** (`src/shared/ui/`):
-- `tokens.ts` — Theme colors, typography (SF Pro / system fonts), spacing, shadows, motion (Apple HIG-inspired)
-- `theme.ts` — `useUiTheme` hook for light/dark mode
-- `styles.ts` — Reusable inline style factories (no CSS files; all styling is CSS-in-JS)
-- `icons.tsx` — `BrandIcon` SVG component
-- `avatar.ts` — Color-hash avatar palette and display text
+### How communication works
 
-## Path Alias
+1. Content script opens a `chrome.runtime.connect` port (`AICTION_STREAM`).
+2. Background listens on `chrome.runtime.onConnect`, reads API settings, calls `fetch()` with streaming, and `port.postMessage`s events back.
+3. For non-streaming requests (API test, fetch models), content/options uses `chrome.runtime.sendMessage` and background responds via `sendResponse`.
 
-`~*` maps to `./src/*` (configured in `tsconfig.json` `paths`).
+## Path aliases
+`~/*` and `@/*` both resolve to `src/*` via tsconfig `paths`.
 
-## Key Invariants
+## Key invariants
+- **Never call AI APIs directly from the content script.** All network requests must go through the background service worker.
+- Keep `data-aiction-root="true"` on the extension UI root div — selection and mousedown handlers depend on ignoring events inside that subtree.
+- The `ChatStreamStartRequest` / `ChatStreamEvent` types and `MESSAGE_TYPES` constants must stay in sync between background and content script.
+- Custom action templates must contain `{text}` — validated before saving.
+- Conversation history is **per-page, in-memory only**. Refresh or close clears it.
 
-- Keep `data-aiction-root="true"` on the extension UI root — selection/mousedown handlers depend on ignoring events inside that subtree.
-- Keep the background message listener registered at module load time.
-- Keep AI requests in the background context; content script should only message background.
-- Conversation is intentionally per-page in-memory only; refresh clears it.
-- Preserve `{text}` placeholder validation for custom actions before saving.
-
-## Shadow DOM & Selection Pitfalls
-
-- Content script UI runs inside Shadow DOM. Do not rely on `document.activeElement` alone — use deep active-element traversal through nested `shadowRoot` boundaries.
+## Selection / toolbar pitfalls
+- The content script UI runs inside a **Shadow DOM** (via `createShadowRootUi`). Do not rely on `document.activeElement` for focus checks; use deep active-element traversal through nested shadow roots.
 - Use `event.composedPath()` instead of `event.target` for extension UI event filtering so Shadow DOM retargeting doesn't bypass root checks.
-- Text selection inside toolbar/chat inputs must never update page selection context or toolbar visibility.
-- Don't let transient page-selection loss during focus transfer into extension inputs hide the toolbar. Preserve toolbar state during extension-internal interaction.
+- Text selection inside toolbar/chat inputs must never update the page selection context, toolbar anchor, or toolbar visibility.
+- Do not let transient page-selection loss during focus transfer into extension inputs hide the toolbar. Preserve that state during extension-internal interaction.
+- When debugging selection bugs, reload the extension **and** refresh the target tab before assuming the logic is wrong. Stale injected code is a common cause.
 
-## Manual Verification
+## Manual verification
+After `npm run build`, load `.output/chrome-mv3` in `chrome://extensions` as an unpacked extension. To see content-script changes, reload the extension **and** refresh the target tab (or close and reopen it). For background/service-worker changes, verify from the extension's service worker inspector.
 
-- After `npm run build`, load `build/chrome-mv3-prod` in `chrome://extensions` as unpacked.
-- After reloading the extension, also reload the target web page (existing tabs keep old content-script instances).
-- If a content-script change doesn't appear after extension + page reload, close and reopen the tab.
-- For background changes, verify from the extension's service worker inspector.
+## Icon generation
 
-## Development Approach
+WXT reads `public/icon.png` and copies it to the output. **Source PNG should be ≥256px** to avoid upscaling artifacts.
 
-## Development Approach
-
-- For product- or architecture-shaping work, ask clarifying questions before editing.
-- Prefer structural fixes at the state/source-of-truth layer over incremental condition patches.
-- When debugging content-script bugs, reload the extension and refresh the target tab before assuming logic is wrong.
-
-## Icon Generation
-
-Plasmo reads `assets/icon.png` and auto-generates 16/32/48/64/128px icons (source PNG must be ≥256px). Three files define the icon — keep them in sync:
+Three files define the icon — keep them in sync:
 
 | File | Role |
 |------|------|
 | `favicon.svg` | SVG source of truth (use `clipPath` for transparent rounded corners) |
 | `src/shared/ui/icons.tsx` | `BrandIcon` React component (inline SVG, mirrors `favicon.svg`) |
-| `assets/icon.png` | High-res PNG rendered from SVG (256×256, sharp + lanczos3) |
+| `public/icon.png` | High-res PNG rendered from SVG (256×256, sharp + lanczos3 downscale) |
 
-To update: edit `favicon.svg` → mirror in `icons.tsx` → render PNG via sharp at 256×256 → `npm run build`. Always render from SVG (not `qlmanage`), use `density: 600` for crisp edges.
+### Steps to update the icon
+
+1. Edit `favicon.svg` — this is the canonical SVG source.
+2. Mirror the changes in `src/shared/ui/icons.tsx` (`BrandIcon` component).
+3. Generate `public/icon.png` at 256×256 using sharp:
+
+```js
+// _genicon.js (temporary, delete after use)
+const sharp = require('sharp');
+const fs = require('fs');
+const svg = fs.readFileSync('favicon.svg', 'utf8');
+sharp(Buffer.from(svg), { density: 600 })
+  .resize(256, 256, { kernel: 'lanczos3', fit: 'cover' })
+  .png({ quality: 100 })
+  .toFile('public/icon.png')
+  .then(() => console.log('Done'));
+```
+
+```bash
+node _genicon.js && rm _genicon.js
+```
+
+4. `npm run build` — WXT copies the icon to output.
+5. Verify corners are transparent and edges are sharp.
+
+### Notes
+- Do **not** use `qlmanage` — it produces blurry low-quality output.
+- Always render from SVG via sharp with `density: 600` for crisp edges.
+- The SVG must use `clipPath` with a rounded rect (`rx="8"`) so PNG corners are transparent.

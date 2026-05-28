@@ -1,4 +1,4 @@
-import { SELECTORS } from "~/shared/constants"
+import { SELECTORS } from "@/shared/constants"
 
 /**
  * Get deep active element through shadow DOM boundaries

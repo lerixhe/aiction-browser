@@ -6,15 +6,15 @@ import type {
   ChatMessage,
   ApiTestRequest,
   ApiTestResponse
-} from "~/shared/types"
-import { MESSAGE_TYPES, ERROR_MESSAGES } from "~/shared/constants"
-import { formatApiError, getErrorMessage, isAbortError } from "~/shared/errors"
-import { getActiveModelService, getSettings } from "~/shared/storage"
+} from "@/shared/types"
+import { MESSAGE_TYPES, ERROR_MESSAGES } from "@/shared/constants"
+import { formatApiError, getErrorMessage, isAbortError } from "@/shared/errors"
+import { getActiveModelService, getSettings } from "@/shared/storage"
 import {
   trackBackgroundEvent,
   startBackgroundBatching,
   stopBackgroundBatching
-} from "~/shared/analytics"
+} from "@/shared/analytics"
 
 function normalizeBaseUrl(url: string): string {
   return url.replace(/\/$/, "")
@@ -244,7 +244,7 @@ async function streamOpenAiCompatible(
   onEvent({ type: "completed" })
 }
 
-export function setupBackgroundMessageHandler(): void {
+export default defineBackground(() => {
   chrome.runtime.onConnect.addListener((port) => {
     if (port.name !== MESSAGE_TYPES.STREAM_PORT_NAME) {
       return
@@ -299,176 +299,175 @@ export function setupBackgroundMessageHandler(): void {
       })
     })
   })
-}
 
-setupBackgroundMessageHandler()
-startBackgroundBatching()
+  startBackgroundBatching()
 
-chrome.runtime.onInstalled.addListener((details) => {
-  const version = chrome.runtime.getManifest().version
-  if (details.reason === "install") {
-    void trackBackgroundEvent("extension_installed", { version })
-  } else if (details.reason === "update") {
-    void trackBackgroundEvent("extension_updated", {
-      version,
-      previous_version: details.previousVersion
-    })
-  }
-
-  // Create context menu for PDF files
-  chrome.contextMenus.create({
-    id: "open-pdf-with-aiction",
-    title: "用 Aiction 打开 PDF",
-    contexts: ["page", "frame"],
-    documentUrlPatterns: [
-      "*://*/*.pdf",
-      "*://*/*.PDF",
-      "file://*/*.pdf",
-      "file://*/*.PDF"
-    ]
-  })
-})
-
-// Handle context menu clicks
-chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "open-pdf-with-aiction") {
-    const pdfUrl = info.pageUrl || info.frameUrl || tab?.url
-    if (pdfUrl) {
-      const encodedUrl = encodeURIComponent(pdfUrl)
-      chrome.tabs.create({
-        url: chrome.runtime.getURL(`tabs/pdf-viewer.html?url=${encodedUrl}`)
+  chrome.runtime.onInstalled.addListener((details) => {
+    const version = chrome.runtime.getManifest().version
+    if (details.reason === "install") {
+      void trackBackgroundEvent("extension_installed", { version })
+    } else if (details.reason === "update") {
+      void trackBackgroundEvent("extension_updated", {
+        version,
+        previous_version: details.previousVersion
       })
     }
-  }
-})
 
-chrome.runtime.onSuspend?.addListener?.(() => {
-  stopBackgroundBatching()
-})
-
-chrome.runtime.onMessage.addListener((request: ApiTestRequest, _sender, sendResponse) => {
-  if (request?.type !== MESSAGE_TYPES.API_TEST_REQUEST) {
-    return false
-  }
-
-  const { apiBaseUrl, apiKey, model } = request.payload
-
-  if (!apiBaseUrl?.trim() || !apiKey?.trim() || !model?.trim()) {
-    sendResponse({ success: false, error: ERROR_MESSAGES.API_TEST_MISSING_FIELDS } satisfies ApiTestResponse)
-    return false
-  }
-
-  const baseUrl = normalizeBaseUrl(apiBaseUrl.trim())
-
-  const doActualTest = () => {
-    const startTime = performance.now()
-
-    fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey.trim()}`
-      },
-      body: JSON.stringify({
-        model: model.trim(),
-        stream: false,
-        max_tokens: 5,
-        messages: [{ role: "user", content: "Hi" }]
-      })
+    // Create context menu for PDF files
+    chrome.contextMenus.create({
+      id: "open-pdf-with-aiction",
+      title: "用 Aiction 打开 PDF",
+      contexts: ["page", "frame"],
+      documentUrlPatterns: [
+        "*://*/*.pdf",
+        "*://*/*.PDF",
+        "file://*/*.pdf",
+        "file://*/*.PDF"
+      ]
     })
+  })
+
+  // Handle context menu clicks
+  chrome.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId === "open-pdf-with-aiction") {
+      const pdfUrl = info.pageUrl || info.frameUrl || tab?.url
+      if (pdfUrl) {
+        const encodedUrl = encodeURIComponent(pdfUrl)
+        chrome.tabs.create({
+          url: chrome.runtime.getURL(`/pdf-viewer.html?url=${encodedUrl}`)
+        })
+      }
+    }
+  })
+
+  chrome.runtime.onSuspend?.addListener?.(() => {
+    stopBackgroundBatching()
+  })
+
+  chrome.runtime.onMessage.addListener((request: ApiTestRequest, _sender, sendResponse) => {
+    if (request?.type !== MESSAGE_TYPES.API_TEST_REQUEST) {
+      return false
+    }
+
+    const { apiBaseUrl, apiKey, model } = request.payload
+
+    if (!apiBaseUrl?.trim() || !apiKey?.trim() || !model?.trim()) {
+      sendResponse({ success: false, error: ERROR_MESSAGES.API_TEST_MISSING_FIELDS } satisfies ApiTestResponse)
+      return false
+    }
+
+    const baseUrl = normalizeBaseUrl(apiBaseUrl.trim())
+
+    const doActualTest = () => {
+      const startTime = performance.now()
+
+      fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey.trim()}`
+        },
+        body: JSON.stringify({
+          model: model.trim(),
+          stream: false,
+          max_tokens: 5,
+          messages: [{ role: "user", content: "Hi" }]
+        })
+      })
+        .then(async (response) => {
+          const latencyMs = Math.round(performance.now() - startTime)
+          if (!response.ok) {
+            const rawError = await response.text()
+            void trackBackgroundEvent("api_test_completed", { success: false, latency_ms: latencyMs })
+            sendResponse({
+              success: false,
+              error: formatApiError(response.status, rawError),
+              latencyMs
+            } satisfies ApiTestResponse)
+            return
+          }
+          const body = await response.json()
+          if (!body.choices || !Array.isArray(body.choices) || body.choices.length === 0) {
+            void trackBackgroundEvent("api_test_completed", { success: false, latency_ms: latencyMs })
+            sendResponse({
+              success: false,
+              error: ERROR_MESSAGES.NO_VALID_CONTENT,
+              latencyMs
+            } satisfies ApiTestResponse)
+            return
+          }
+          void trackBackgroundEvent("api_test_completed", { success: true, latency_ms: latencyMs })
+          sendResponse({ success: true, latencyMs } satisfies ApiTestResponse)
+        })
+        .catch((error: unknown) => {
+          const latencyMs = Math.round(performance.now() - startTime)
+          void trackBackgroundEvent("api_test_completed", { success: false, latency_ms: latencyMs })
+          sendResponse({
+            success: false,
+            error: `${ERROR_MESSAGES.REQUEST_FAILED}：${getErrorMessage(error)}`,
+            latencyMs
+          } satisfies ApiTestResponse)
+        })
+    }
+
+    fetch(`${baseUrl}/models`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${apiKey.trim()}` }
+    })
+      .then(() => doActualTest())
+      .catch(() => doActualTest())
+
+    return true
+  })
+
+  chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+    if (request?.type !== MESSAGE_TYPES.FETCH_MODELS_REQUEST) {
+      return false
+    }
+
+    const { apiBaseUrl, apiKey } = request.payload as { apiBaseUrl: string; apiKey: string }
+
+    if (!apiBaseUrl?.trim()) {
+      sendResponse({ success: false, error: ERROR_MESSAGES.FETCH_MODELS_MISSING_URL })
+      return false
+    }
+
+    const headers: Record<string, string> = {}
+    if (apiKey?.trim()) {
+      headers.Authorization = `Bearer ${apiKey.trim()}`
+    }
+
+    fetch(`${normalizeBaseUrl(apiBaseUrl.trim())}/models`, { headers })
       .then(async (response) => {
-        const latencyMs = Math.round(performance.now() - startTime)
         if (!response.ok) {
           const rawError = await response.text()
-          void trackBackgroundEvent("api_test_completed", { success: false, latency_ms: latencyMs })
           sendResponse({
             success: false,
-            error: formatApiError(response.status, rawError),
-            latencyMs
-          } satisfies ApiTestResponse)
+            error: `${ERROR_MESSAGES.FETCH_MODELS_FAILED}：${formatApiError(response.status, rawError)}`
+          })
           return
         }
+
         const body = await response.json()
-        if (!body.choices || !Array.isArray(body.choices) || body.choices.length === 0) {
-          void trackBackgroundEvent("api_test_completed", { success: false, latency_ms: latencyMs })
-          sendResponse({
-            success: false,
-            error: ERROR_MESSAGES.NO_VALID_CONTENT,
-            latencyMs
-          } satisfies ApiTestResponse)
+        const rawList: unknown[] = Array.isArray(body?.data) ? body.data : []
+        const models = rawList
+          .map((item) => (item && typeof item === "object" && "id" in item ? String(item.id) : ""))
+          .filter((id) => id.length > 0)
+
+        if (models.length === 0) {
+          sendResponse({ success: false, error: ERROR_MESSAGES.FETCH_MODELS_EMPTY })
           return
         }
-        void trackBackgroundEvent("api_test_completed", { success: true, latency_ms: latencyMs })
-        sendResponse({ success: true, latencyMs } satisfies ApiTestResponse)
+
+        sendResponse({ success: true, models })
       })
       .catch((error: unknown) => {
-        const latencyMs = Math.round(performance.now() - startTime)
-        void trackBackgroundEvent("api_test_completed", { success: false, latency_ms: latencyMs })
         sendResponse({
           success: false,
-          error: `${ERROR_MESSAGES.REQUEST_FAILED}：${getErrorMessage(error)}`,
-          latencyMs
-        } satisfies ApiTestResponse)
-      })
-  }
-
-  fetch(`${baseUrl}/models`, {
-    method: "GET",
-    headers: { Authorization: `Bearer ${apiKey.trim()}` }
-  })
-    .then(() => doActualTest())
-    .catch(() => doActualTest())
-
-  return true
-})
-
-chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
-  if (request?.type !== MESSAGE_TYPES.FETCH_MODELS_REQUEST) {
-    return false
-  }
-
-  const { apiBaseUrl, apiKey } = request.payload as { apiBaseUrl: string; apiKey: string }
-
-  if (!apiBaseUrl?.trim()) {
-    sendResponse({ success: false, error: ERROR_MESSAGES.FETCH_MODELS_MISSING_URL })
-    return false
-  }
-
-  const headers: Record<string, string> = {}
-  if (apiKey?.trim()) {
-    headers.Authorization = `Bearer ${apiKey.trim()}`
-  }
-
-  fetch(`${normalizeBaseUrl(apiBaseUrl.trim())}/models`, { headers })
-    .then(async (response) => {
-      if (!response.ok) {
-        const rawError = await response.text()
-        sendResponse({
-          success: false,
-          error: `${ERROR_MESSAGES.FETCH_MODELS_FAILED}：${formatApiError(response.status, rawError)}`
+          error: `${ERROR_MESSAGES.FETCH_MODELS_FAILED}：${getErrorMessage(error)}`
         })
-        return
-      }
-
-      const body = await response.json()
-      const rawList: unknown[] = Array.isArray(body?.data) ? body.data : []
-      const models = rawList
-        .map((item) => (item && typeof item === "object" && "id" in item ? String(item.id) : ""))
-        .filter((id) => id.length > 0)
-
-      if (models.length === 0) {
-        sendResponse({ success: false, error: ERROR_MESSAGES.FETCH_MODELS_EMPTY })
-        return
-      }
-
-      sendResponse({ success: true, models })
-    })
-    .catch((error: unknown) => {
-      sendResponse({
-        success: false,
-        error: `${ERROR_MESSAGES.FETCH_MODELS_FAILED}：${getErrorMessage(error)}`
       })
-    })
 
-  return true
+    return true
+  })
 })

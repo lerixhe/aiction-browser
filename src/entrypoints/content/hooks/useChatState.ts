@@ -1,11 +1,11 @@
 import { useCallback, useRef, useState } from "react"
 
-import { UI_MESSAGES } from "~/shared/constants"
-import { streamChat } from "~/shared/messaging"
-import { buildContextSystemMessage } from "~/shared/prompt"
-import { trackEvent } from "~/shared/analytics"
-import { getSettings, getActiveModelService } from "~/shared/storage"
-import type { ChatMessage, ChatRequestState, SelectionContext } from "~/shared/types"
+import { UI_MESSAGES } from "@/shared/constants"
+import { streamChat } from "@/shared/messaging"
+import { buildContextSystemMessage } from "@/shared/prompt"
+import { trackEvent } from "@/shared/analytics"
+import { getSettings, getActiveModelService } from "@/shared/storage"
+import type { ChatMessage, ChatRequestState, SelectionContext } from "@/shared/types"
 
 /**
  * Generate unique message ID

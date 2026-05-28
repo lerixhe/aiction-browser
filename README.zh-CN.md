@@ -118,7 +118,7 @@ npm run build
 
 ### 技术栈
 
-- **构建工具**：[Plasmo](https://www.plasmo.com/)
+- **构建工具**：[WXT](https://wxt.dev/)
 - **UI**：React 18 + TypeScript
 - **Manifest**：Chrome Manifest V3
 - **设计系统**：遵循 Apple HIG 的自定义设计令牌
@@ -131,7 +131,7 @@ aiction/
 ├── options.tsx            # 选项页入口（薄包装层）
 ├── popup.tsx              # 浏览器动作弹窗
 ├── contents/
-│   └── main.tsx           # 内容脚本入口（Plasmo 约定）
+│   └── main.tsx           # 内容脚本入口（WXT defineContentScript）
 ├── src/
 │   ├── background/        # 后台服务工作线程逻辑
 │   ├── contents/          # 内容脚本 UI

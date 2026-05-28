@@ -1,4 +1,4 @@
-import { ERROR_MESSAGES } from "~/shared/constants"
+import { ERROR_MESSAGES } from "@/shared/constants"
 
 /**
  * Application error class with localized messages

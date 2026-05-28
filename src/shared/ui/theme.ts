@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react"
 
-import { getSettings } from "~/shared/storage"
-import { type UiThemeName, uiThemes } from "~/shared/ui/tokens"
-import type { ThemePreference } from "~/shared/types"
+import { getSettings } from "@/shared/storage"
+import { type UiThemeName, uiThemes } from "@/shared/ui/tokens"
+import type { ThemePreference } from "@/shared/types"
 
 function getSystemThemeName(): UiThemeName {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") {

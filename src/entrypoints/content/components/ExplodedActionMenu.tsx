@@ -1,8 +1,8 @@
 import { useMemo } from "react"
 
-import { type UiTheme, uiMotion, uiRadius, uiShadow, uiTypography } from "~/shared/ui/tokens"
-import { createFocusRing } from "~/shared/ui/styles"
-import type { ActionTemplate } from "~/shared/types"
+import { type UiTheme, uiMotion, uiRadius, uiShadow, uiTypography } from "@/shared/ui/tokens"
+import { createFocusRing } from "@/shared/ui/styles"
+import type { ActionTemplate } from "@/shared/types"
 
 const PILL_PAD_X = 14
 const CHAR_WIDTH = 7.5

@@ -1,20 +1,16 @@
 import { useCallback, useEffect, useRef } from "react"
 
-import SelectionToolbar from "~/contents/components/SelectionToolbar"
-import UnifiedPanel from "~/contents/components/UnifiedPanel"
-import { useChatState } from "~/contents/hooks/useChatState"
-import { useSelectionDetection } from "~/contents/hooks/useSelectionDetection"
-import { useToolbarState } from "~/contents/hooks/useToolbarState"
-import { initContentScriptAnalytics, trackEvent } from "~/shared/analytics"
-import { resolveActionTemplate, formatFreeInputPrompt } from "~/shared/prompt"
-import { getSettings } from "~/shared/storage"
-import type { SelectionAnchor, SelectionContext } from "~/shared/types"
+import SelectionToolbar from "@/entrypoints/content/components/SelectionToolbar"
+import UnifiedPanel from "@/entrypoints/content/components/UnifiedPanel"
+import { useChatState } from "@/entrypoints/content/hooks/useChatState"
+import { useSelectionDetection } from "@/entrypoints/content/hooks/useSelectionDetection"
+import { useToolbarState } from "@/entrypoints/content/hooks/useToolbarState"
+import { initContentScriptAnalytics, trackEvent } from "@/shared/analytics"
+import { resolveActionTemplate, formatFreeInputPrompt } from "@/shared/prompt"
+import { getSettings } from "@/shared/storage"
+import type { SelectionAnchor, SelectionContext } from "@/shared/types"
 
-export const config = {
-  matches: ["<all_urls>"]
-} as const
-
-function App() {
+export default function App() {
   const extensionRootRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -178,8 +174,4 @@ function App() {
       )}
     </div>
   )
-}
-
-export default function ContentScriptUi() {
-  return <App />
 }

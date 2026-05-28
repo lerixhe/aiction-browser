@@ -15,7 +15,7 @@
 
 ### 1.1 整体架构设计
 
-这是一个基于 **Plasmo + React + TypeScript** 的 Chrome MV3 扩展，采用三运行时上下文架构：
+这是一个基于 **WXT + React + TypeScript** 的 Chrome MV3 扩展，采用三运行时上下文架构：
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -124,7 +124,7 @@ aiction/
 ├── options.tsx                # Options Page 入口（薄包装）
 ├── popup.tsx                  # Popup 窗口入口（模型服务切换）
 ├── contents/
-│   └── main.tsx               # Content Script 入口（Plasmo 约定）
+│   └── main.tsx               # Content Script 入口（WXT defineContentScript）
 ├── src/                       # 源代码主目录
 │   ├── background/            # 后台脚本逻辑
 │   ├── contents/              # 内容脚本 UI 和逻辑
@@ -166,14 +166,10 @@ aiction/
   "name": "aiction",
   "displayName": "Aiction",
   "scripts": {
-    "dev": "plasmo dev",
-    "build": "plasmo build",
-    "package": "plasmo package",
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
     "typecheck": "tsc --noEmit"
-  },
-  "manifest": {
-    "permissions": ["storage"],
-    "host_permissions": ["<all_urls>"]
   }
 }
 ```
@@ -194,7 +190,7 @@ aiction/
 **文件位置**：`src/contents/main.tsx`
 
 **职责**：
-- 作为 Plasmo Content Script 的默认导出组件
+- 作为 WXT Content Script 的入口组件（使用 `defineContentScript` 和 `createShadowRootUi`）
 - 协调 SelectionToolbar 和 UnifiedPanel 的渲染
 - 整合三个核心 Hook：`useToolbarState`、`useChatState`、`useSelectionDetection`
 
@@ -1053,15 +1049,15 @@ export function getDeepActiveElement(root: Document | ShadowRoot = document): El
 
 ## 5. 技术亮点和设计模式
 
-### 5.1 Plasmo 框架优势
+### 5.1 WXT 框架优势
 
-1. **约定优于配置**：
-   - `contents/main.tsx` 自动成为 Content Script
-   - `background.ts` 自动成为 Service Worker
-   - `options.tsx` 自动成为 Options Page
+1. **文件系统路由**：
+   - `src/entrypoints/content/` 自动成为 Content Script
+   - `src/entrypoints/background.ts` 自动成为 Service Worker
+   - `src/entrypoints/options/` 自动成为 Options Page
 
 2. **Shadow DOM 封装**：
-   - 自动创建 Shadow DOM 隔离样式
+   - 使用 `createShadowRootUi` 创建 Shadow DOM 隔离样式
    - 避免与页面样式冲突
 
 3. **热重载**：

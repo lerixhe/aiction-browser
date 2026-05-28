@@ -1,7 +1,7 @@
 import { type CSSProperties, useEffect } from "react"
-import type { UiThemeName } from "~/shared/ui/tokens"
-import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography, uiLayer } from "~/shared/ui/tokens"
-import { createButtonStyle, createCardStyle, createOverlayStyle } from "~/shared/ui/styles"
+import type { UiThemeName } from "@/shared/ui/tokens"
+import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography, uiLayer } from "@/shared/ui/tokens"
+import { createButtonStyle, createCardStyle, createOverlayStyle } from "@/shared/ui/styles"
 
 interface ConfirmDialogProps {
   title: string

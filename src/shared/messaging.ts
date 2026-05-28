@@ -4,8 +4,8 @@ import type {
   ChatStreamRequest,
   ChatStreamStartRequest,
   ChatMessage
-} from "~/shared/types"
-import { MESSAGE_TYPES, ERROR_MESSAGES, STREAM_EVENTS } from "~/shared/constants"
+} from "@/shared/types"
+import { MESSAGE_TYPES, ERROR_MESSAGES, STREAM_EVENTS } from "@/shared/constants"
 
 interface StreamChatOptions {
   onEvent: (event: ChatStreamEvent) => void

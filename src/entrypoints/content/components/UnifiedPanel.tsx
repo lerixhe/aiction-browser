@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react"
 
-import { BrandIcon } from "~/shared/ui/icons"
-import { MarkdownRenderer } from "~/shared/ui/markdown"
-import { useUiTheme } from "~/shared/ui/theme"
-import { uiMotion, uiRadius, uiShadow, uiSpace, uiTypography, uiLayer } from "~/shared/ui/tokens"
-import { createButtonStyle, createCardStyle, createFocusRing, createInputStyle, createOverlayStyle, createStatusMessageStyle } from "~/shared/ui/styles"
-import type { ChatMessage } from "~/shared/types"
+import { BrandIcon } from "@/shared/ui/icons"
+import { MarkdownRenderer } from "@/shared/ui/markdown"
+import { useUiTheme } from "@/shared/ui/theme"
+import { uiMotion, uiRadius, uiShadow, uiSpace, uiTypography, uiLayer } from "@/shared/ui/tokens"
+import { createButtonStyle, createCardStyle, createFocusRing, createInputStyle, createOverlayStyle, createStatusMessageStyle } from "@/shared/ui/styles"
+import type { ChatMessage } from "@/shared/types"
 
 interface Props {
   capturedText: string

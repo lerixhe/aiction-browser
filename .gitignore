@@ -1,6 +1,8 @@
 node_modules
 build
 .plasmo
+.output
+.wxt
 .DS_Store
 .claude
 reference

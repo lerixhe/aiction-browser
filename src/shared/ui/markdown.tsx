@@ -1,9 +1,9 @@
 import { marked } from "marked"
 import { useMemo } from "react"
 
-import { useUiTheme } from "~/shared/ui/theme"
-import { uiTypography } from "~/shared/ui/tokens"
-import { createMarkdownStyles } from "~/shared/ui/styles"
+import { useUiTheme } from "@/shared/ui/theme"
+import { uiTypography } from "@/shared/ui/tokens"
+import { createMarkdownStyles } from "@/shared/ui/styles"
 
 interface MarkdownRendererProps {
   content: string

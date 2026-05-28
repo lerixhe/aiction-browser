@@ -1,5 +1,5 @@
-import { DEFAULT_CUSTOM_MODEL_SERVICE, DEFAULT_SETTINGS } from "~/shared/defaults"
-import type { ExtensionSettings, ModelParams, ModelServiceConfig, ModelServiceType, ThemePreference, ToolbarMode } from "~/shared/types"
+import { DEFAULT_CUSTOM_MODEL_SERVICE, DEFAULT_SETTINGS } from "@/shared/defaults"
+import type { ExtensionSettings, ModelParams, ModelServiceConfig, ModelServiceType, ThemePreference, ToolbarMode } from "@/shared/types"
 
 export { DEFAULT_SETTINGS }
 

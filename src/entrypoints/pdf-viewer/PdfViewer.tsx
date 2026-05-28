@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import * as pdfjsLib from "pdfjs-dist"
 
-import SelectionToolbar from "~/contents/components/SelectionToolbar"
-import UnifiedPanel from "~/contents/components/UnifiedPanel"
-import { useChatState } from "~/contents/hooks/useChatState"
-import { useToolbarState } from "~/contents/hooks/useToolbarState"
-import { initContentScriptAnalytics, trackEvent } from "~/shared/analytics"
-import { resolveActionTemplate, formatFreeInputPrompt } from "~/shared/prompt"
-import { getSettings } from "~/shared/storage"
-import type { SelectionAnchor, SelectionContext } from "~/shared/types"
+import SelectionToolbar from "@/entrypoints/content/components/SelectionToolbar"
+import UnifiedPanel from "@/entrypoints/content/components/UnifiedPanel"
+import { useChatState } from "@/entrypoints/content/hooks/useChatState"
+import { useToolbarState } from "@/entrypoints/content/hooks/useToolbarState"
+import { initContentScriptAnalytics, trackEvent } from "@/shared/analytics"
+import { resolveActionTemplate, formatFreeInputPrompt } from "@/shared/prompt"
+import { getSettings } from "@/shared/storage"
+import type { SelectionAnchor, SelectionContext } from "@/shared/types"
 
 // Set worker source - use the .mjs worker file from pdfjs-dist
 pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL("pdf.worker.mjs")

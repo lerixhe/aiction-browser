@@ -1,4 +1,4 @@
-import type { ActionTemplate, ExtensionSettings, ModelParams, ModelServiceConfig } from "~/shared/types"
+import type { ActionTemplate, ExtensionSettings, ModelParams, ModelServiceConfig } from "@/shared/types"
 
 export const DEFAULT_ACTIONS: ActionTemplate[] = [
   {

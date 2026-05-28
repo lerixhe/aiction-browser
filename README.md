@@ -117,7 +117,7 @@ Create custom prompt templates in the Options page. Use `{text}` as a placeholde
 
 ### Tech Stack
 
-- **Build Tool**: [Plasmo](https://www.plasmo.com/)
+- **Build Tool**: [WXT](https://wxt.dev/)
 - **UI**: React 18 + TypeScript
 - **Manifest**: Chrome Manifest V3
 - **Design System**: Custom tokens following Apple HIG
@@ -130,7 +130,7 @@ aiction/
 ├── options.tsx            # Options page entry (thin wrapper)
 ├── popup.tsx              # Browser action popup
 ├── contents/
-│   └── main.tsx           # Content script entry (Plasmo convention)
+│   └── main.tsx           # Content script entry (WXT defineContentScript)
 ├── src/
 │   ├── background/        # Background service worker logic
 │   ├── contents/          # Content script UI

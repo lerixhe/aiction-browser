@@ -1,12 +1,12 @@
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react"
 
-import { getSettings, saveSettings } from "~/shared/storage"
-import { BrandIcon } from "~/shared/ui/icons"
-import { useUiThemeName } from "~/shared/ui/theme"
-import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "~/shared/ui/tokens"
-import { createCardStyle, createFocusRing } from "~/shared/ui/styles"
-import { getAvatarPalette, getAvatarDisplayText } from "~/shared/ui/avatar"
-import type { ActionTemplate, ExtensionSettings } from "~/shared/types"
+import { getSettings, saveSettings } from "@/shared/storage"
+import { BrandIcon } from "@/shared/ui/icons"
+import { useUiThemeName } from "@/shared/ui/theme"
+import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
+import { createCardStyle, createFocusRing } from "@/shared/ui/styles"
+import { getAvatarPalette, getAvatarDisplayText } from "@/shared/ui/avatar"
+import type { ActionTemplate, ExtensionSettings } from "@/shared/types"
 
 function SettingsIcon({ color }: { color: string }) {
   return (
