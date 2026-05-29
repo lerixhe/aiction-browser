@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react"
 
 import SelectionToolbar from "@/entrypoints/content/components/SelectionToolbar"
-import UnifiedPanel from "@/entrypoints/content/components/UnifiedPanel"
+import ChatWindow from "@/entrypoints/content/components/ChatWindow"
 import { useChatState } from "@/entrypoints/content/hooks/useChatState"
 import { useSelectionDetection } from "@/entrypoints/content/hooks/useSelectionDetection"
 import { useToolbarState } from "@/entrypoints/content/hooks/useToolbarState"
@@ -156,7 +156,7 @@ export default function App() {
       />
 
       {panelOpen && (
-        <UnifiedPanel
+        <ChatWindow
           capturedText={capturedText}
           messages={messages}
           requestState={requestState.status}

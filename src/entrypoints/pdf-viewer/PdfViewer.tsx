@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import * as pdfjsLib from "pdfjs-dist"
 
 import SelectionToolbar from "@/entrypoints/content/components/SelectionToolbar"
-import UnifiedPanel from "@/entrypoints/content/components/UnifiedPanel"
+import ChatWindow from "@/entrypoints/content/components/ChatWindow"
 import { useChatState } from "@/entrypoints/content/hooks/useChatState"
 import { useToolbarState } from "@/entrypoints/content/hooks/useToolbarState"
 import { initContentScriptAnalytics, trackEvent } from "@/shared/analytics"
@@ -372,7 +372,7 @@ export function PdfViewerPage() {
         />
 
         {panelOpen && (
-          <UnifiedPanel
+          <ChatWindow
             capturedText={capturedText}
             messages={messages}
             requestState={requestState.status}
