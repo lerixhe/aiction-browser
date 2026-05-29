@@ -1715,29 +1715,53 @@ export default function OptionsPage() {
           display: "flex",
           flexDirection: "column"
         }}>
+        {/* Top bar */}
+        <div
+          style={{
+            borderBottom: `0.5px solid ${theme.border.hairline}`,
+            background: theme.bg.surface,
+            position: "sticky",
+            top: 0,
+            zIndex: 10
+          }}>
+          <div
+            style={{
+              maxWidth: 1000,
+              minWidth: 400,
+              width: "100%",
+              margin: "0 auto",
+              padding: `0 ${uiSpace[32]}px`,
+              boxSizing: "border-box"
+            }}>
+            <header
+              style={{
+                display: "flex",
+                alignItems: "center",
+                height: 56
+              }}>
+              <h1
+                style={{
+                  margin: 0,
+                  fontSize: uiTypography.fontSize.lg,
+                  fontWeight: uiTypography.fontWeight.semibold,
+                  letterSpacing: uiTypography.letterSpacing.tight
+                }}>
+                {sections.find((s) => s.key === activeSection)?.label}
+              </h1>
+            </header>
+          </div>
+        </div>
+
         <div
           style={{
             maxWidth: 1000,
             minWidth: 400,
             width: "100%",
             margin: "0 auto",
-            padding: `${uiSpace[32]}px ${uiSpace[32]}px ${uiSpace[20]}px`,
+            padding: `${uiSpace[24]}px ${uiSpace[32]}px ${uiSpace[20]}px`,
             boxSizing: "border-box",
             flex: 1
           }}>
-          {/* Section header */}
-          <div style={{ marginBottom: uiSpace[24] }}>
-            <h1
-              style={{
-                margin: 0,
-                fontSize: uiTypography.fontSize.title,
-                fontWeight: uiTypography.fontWeight.bold,
-                letterSpacing: uiTypography.letterSpacing.tight
-              }}>
-              {sections.find((s) => s.key === activeSection)?.label}
-            </h1>
-          </div>
-
           {/* Section content */}
           {sectionContent[activeSection]()}
 
