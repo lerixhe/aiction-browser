@@ -1626,7 +1626,7 @@ export default function OptionsPage() {
             gap: uiSpace[10],
             padding: `${uiSpace[20]}px ${uiSpace[32]}px ${uiSpace[12]}px`
           }}>
-          <BrandIcon size={32} />
+          <BrandIcon size={20} />
           <span
             style={{
               fontSize: uiTypography.fontSize.xl,
