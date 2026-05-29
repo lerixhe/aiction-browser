@@ -1,5 +1,6 @@
 import { type JSX, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 
+import { NavIcon } from "@/shared/ui/iconify"
 import { hasTextPlaceholder } from "@/shared/prompt"
 import { BrandIcon } from "@/shared/ui/icons"
 import { trackEvent } from "@/shared/analytics"
@@ -80,60 +81,12 @@ function RefreshIcon({ size, color }: { size: number; color: string }) {
   )
 }
 
-function AppearanceIcon({ size, color }: { size: number; color: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <circle cx="10" cy="10" r="7.5" stroke={color} strokeWidth={1.3} />
-      <path d="M10 2.5C10 2.5 6 6 6 10C6 14 10 17.5 10 17.5" stroke={color} strokeWidth={1.3} />
-      <line x1="3" y1="10" x2="17" y2="10" stroke={color} strokeWidth={1.3} />
-    </svg>
-  )
-}
-
-function ConnectionIcon({ size, color }: { size: number; color: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <path d="M4 6C4 4.9 4.9 4 6 4H14C15.1 4 16 4.9 16 6V14C16 15.1 15.1 16 14 16H6C4.9 16 4 15.1 4 14V6Z" stroke={color} strokeWidth={1.3} />
-      <path d="M7 10H13M10 7V13" stroke={color} strokeWidth={1.3} strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function ActionsIcon({ size, color }: { size: number; color: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <path d="M4.5 12.5L8.5 8.5L11.5 11.5L15.5 5.5" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M12.5 5.5H15.5V8.5" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function BackupIcon({ size, color }: { size: number; color: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <path d="M10 3V11" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
-      <path d="M7.5 8.5L10 11L12.5 8.5" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M4 13.5V14C4 15.1 4.9 16 6 16H14C15.1 16 16 15.1 16 14V13.5" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function AboutIcon({ size, color }: { size: number; color: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <circle cx="10" cy="10" r="7.5" stroke={color} strokeWidth={1.3} />
-      <path d="M10 9V14" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
-      <circle cx="10" cy="6.5" r="0.75" fill={color} />
-    </svg>
-  )
-}
-
-const sections: { key: Section; label: string; icon: typeof AppearanceIcon }[] = [
-  { key: "appearance", label: "外观", icon: AppearanceIcon },
-  { key: "connection", label: "API提供商", icon: ConnectionIcon },
-  { key: "actions", label: "动作指令", icon: ActionsIcon },
-  { key: "backup", label: "备份与迁移", icon: BackupIcon },
-  { key: "about", label: "关于", icon: AboutIcon }
+const sections: { key: Section; label: string; icon: string }[] = [
+  { key: "appearance", label: "外观", icon: "tabler:palette" },
+  { key: "connection", label: "API提供商", icon: "tabler:api" },
+  { key: "actions", label: "动作指令", icon: "tabler:sparkles" },
+  { key: "backup", label: "备份与迁移", icon: "tabler:database-export" },
+  { key: "about", label: "关于", icon: "tabler:info-circle" }
 ]
 
 function createCustomServiceDraft(): ModelServiceConfig {
@@ -1734,7 +1687,7 @@ export default function OptionsPage() {
                     }}
                   />
                 )}
-                <Icon size={18} color={isActive ? theme.accent.primary : theme.text.secondary} />
+                <NavIcon icon={section.icon} size={18} color={isActive ? theme.accent.primary : theme.text.secondary} />
                 {section.label}
               </button>
             )
