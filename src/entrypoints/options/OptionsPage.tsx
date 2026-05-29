@@ -1064,7 +1064,7 @@ export default function OptionsPage() {
                                   left: 0,
                                   width: 48,
                                   height: 30,
-                                  fontSize: uiTypography.fontSize.sm,
+                  fontSize: uiTypography.fontSize.md,
                                   border: `1px solid ${theme.border.default}`,
                                   borderRadius: uiRadius.sm,
                                   padding: `0 ${uiSpace[4]}px`,
@@ -1624,25 +1624,31 @@ export default function OptionsPage() {
             display: "flex",
             alignItems: "center",
             gap: uiSpace[10],
-            padding: `${uiSpace[20]}px ${uiSpace[32]}px ${uiSpace[12]}px`
+            padding: `${uiSpace[24]}px ${uiSpace[32]}px ${uiSpace[16]}px`
           }}>
-          <BrandIcon size={20} />
+          <BrandIcon size={24} />
           <span
             style={{
-              fontSize: uiTypography.fontSize.xl,
+              fontSize: uiTypography.fontSize.xxl,
               fontWeight: uiTypography.fontWeight.bold,
               letterSpacing: uiTypography.letterSpacing.tight
             }}>
-            设置
+            Aiction
+          </span>
+          <span
+            style={{
+              fontSize: uiTypography.fontSize.sm,
+              color: theme.text.secondary
+            }}>
+            v{chrome.runtime.getManifest().version}
           </span>
         </div>
 
-        {/* Nav items */}
-        <div style={{ padding: `${uiSpace[4]}px ${uiSpace[32]}px`, flex: 1 }}>
+                {/* Nav items */}
+        <div style={{ padding: `${uiSpace[4]}px ${uiSpace[16]}px`, flex: 1 }}>
           {sections.map((section) => {
             const isActive = activeSection === section.key
             const isHovered = hoveredNav === section.key
-            const Icon = section.icon
 
             return (
               <button
@@ -1655,40 +1661,25 @@ export default function OptionsPage() {
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: uiSpace[8],
+                  gap: uiSpace[10],
                   width: "100%",
                   padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
-                  marginBottom: 4,
+                  marginBottom: 2,
                   border: "none",
                   borderRadius: uiRadius.sm,
-                  background: isActive ? theme.bg.surfaceMuted : isHovered ? theme.bg.surfaceAlt : "transparent",
-                  color: isActive ? theme.text.primary : theme.text.secondary,
+                  background: isActive ? `${theme.accent.primary}14` : isHovered ? theme.bg.surfaceAlt : "transparent",
+                  color: isActive ? theme.accent.primary : theme.text.primary,
                   cursor: "pointer",
                   fontFamily: uiTypography.fontFamily,
                   fontSize: uiTypography.fontSize.md,
-                  fontWeight: isActive ? uiTypography.fontWeight.semibold : uiTypography.fontWeight.regular,
+                  fontWeight: uiTypography.fontWeight.regular,
                   outline: "none",
-                  boxShadow: isActive ? createFocusRing(theme.accent.primary) : "none",
                   textAlign: "left",
-                  transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}, color ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
+                  transition: `background 200ms ease-linear, color 200ms ease-linear`,
                   position: "relative"
                 }}>
-                {isActive && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: 2,
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      width: 3,
-                      height: 16,
-                      borderRadius: 1.5,
-                      background: theme.accent.primary
-                    }}
-                  />
-                )}
-                <NavIcon icon={section.icon} size={18} color={isActive ? theme.accent.primary : theme.text.secondary} />
-                {section.label}
+                <NavIcon icon={section.icon} size={16} color={isActive ? theme.accent.primary : theme.text.secondary} />
+                <span style={{ flex: 1 }}>{section.label}</span>
               </button>
             )
           })}
@@ -1713,7 +1704,8 @@ export default function OptionsPage() {
           flex: 1,
           overflowY: "auto",
           display: "flex",
-          flexDirection: "column"
+          flexDirection: "column",
+          background: `linear-gradient(180deg, ${theme.accent.primary}15 0%, ${theme.bg.page} 300px)`
         }}>
         {/* Top bar */}
         <div
