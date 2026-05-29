@@ -13,7 +13,6 @@ Select text on any page, trigger AI actions from an inline toolbar, and continue
 - **Custom Actions** — Create your own prompt templates with `{text}` placeholders
 - **Multi-Model Support** — Connect to OpenAI, DeepSeek, or any OpenAI-compatible API
 - **Reasoning Display** — View model thinking process (supports `reasoning_content` from DeepSeek, etc.)
-- **Dark Mode** — Auto/light/dark theme with Apple-inspired design tokens
 - **Backup & Restore** — Export/import settings as JSON
 
 ## Screenshots
@@ -120,7 +119,6 @@ Create custom prompt templates in the Options page. Use `{text}` as a placeholde
 - **Build Tool**: [WXT](https://wxt.dev/)
 - **UI**: React 18 + TypeScript
 - **Manifest**: Chrome Manifest V3
-- **Design System**: Custom tokens following Apple HIG
 
 ### Directory Structure
 

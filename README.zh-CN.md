@@ -13,7 +13,7 @@
 - **自定义动作** — 创建自己的提示词模板，使用 `{text}` 占位符
 - **多模型支持** — 连接 OpenAI、DeepSeek 或任何 OpenAI 兼容的 API
 - **思维过程展示** — 查看模型思考过程（支持 DeepSeek 等模型的 `reasoning_content`）
-- **深色模式** — 自动/浅色/深色主题，遵循 Apple 设计规范的设计令牌
+- **深色模式** — 自动/浅色/深色主题
 - **备份与恢复** — 以 JSON 格式导入/导出配置
 
 ## 截图
@@ -121,7 +121,6 @@ npm run build
 - **构建工具**：[WXT](https://wxt.dev/)
 - **UI**：React 18 + TypeScript
 - **Manifest**：Chrome Manifest V3
-- **设计系统**：遵循 Apple HIG 的自定义设计令牌
 
 ### 目录结构
 
