@@ -1,0 +1,4 @@
+# Ignore pdfjs worker files from GitHub language statistics
+public/pdf.worker.mjs linguist-vendored
+assets/pdf.worker.mjs linguist-vendored
+assets/pdf.worker.js linguist-vendored
