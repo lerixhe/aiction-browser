@@ -6,6 +6,7 @@ Chrome extension (MV3) built with WXT + React + TypeScript. Users select text on
 ## Quick Facts
 - Build framework: WXT (v0.20.26)
 - TypeScript path alias: `~/*` and `@/*` map to `src/*` (tsconfig `paths`).
+- WXT modules: `@wxt-dev/auto-icons` (auto-generates extension icons from `src/assets/icon.png`).
 - Detailed architecture docs: `docs/WIKI.md`.
 
 ## Commands
@@ -14,6 +15,9 @@ Chrome extension (MV3) built with WXT + React + TypeScript. Users select text on
 - `npm run build`: production extension build. Run this after code changes.
 - `npm run zip`: zip the extension bundle.
 - `npm run postinstall`: runs `wxt prepare` automatically after `npm install`.
+
+## Workflow Rules
+- **代码修改后必须验证**：每次修改代码后，必须主动运行 `npm run typecheck` 和 `npm run build`，确保类型正确且构建成功。不要等待用户手动执行。
 
 ## Entry Points (WXT file-based routing)
 - `src/entrypoints/background.ts`: Background Service Worker (uses `defineBackground()`).
@@ -25,7 +29,7 @@ Chrome extension (MV3) built with WXT + React + TypeScript. Users select text on
 ## Architecture
 Three runtime contexts communicate via `chrome.runtime.onMessage` and `chrome.runtime.connect`:
 
-- **Content script** (`src/entrypoints/content/`): detects selection from range/input/textarea, computes toolbar anchor, renders `SelectionToolbar` and `UnifiedPanel`, stores per-page conversation state in React.
+- **Content script** (`src/entrypoints/content/`): detects selection from range/input/textarea, computes toolbar anchor, renders `SelectionToolbar` and `ChatWindow` (draggable), stores per-page conversation state in React.
 - **Background** (`src/entrypoints/background.ts`): registers the message handler, reads settings from `chrome.storage.sync`, calls the API, normalizes responses. **Never move API requests into the content script.**
 - **Options** (`src/entrypoints/options/`): edits API config, translation language, and custom actions, then validates and persists settings.
 
@@ -33,7 +37,9 @@ Three runtime contexts communicate via `chrome.runtime.onMessage` and `chrome.ru
 - **Streaming (chat):** Content script opens a `chrome.runtime.connect` port (`AICTION_STREAM`). Background listens on `chrome.runtime.onConnect`, calls `fetch()` with streaming, and `port.postMessage`s events back.
 - **Non-streaming (API test, fetch models):** Uses `chrome.runtime.sendMessage` and background responds via `sendResponse`.
 
-Shared logic in `src/shared/*`: `types.ts`, `selection.ts`, `prompt.ts`, `messaging.ts`, `storage.ts`, `constants.ts`, `defaults.ts`, `errors.ts`.
+Shared logic in `src/shared/*`: `types.ts`, `selection.ts`, `prompt.ts`, `messaging.ts`, `storage.ts`, `constants.ts`, `defaults.ts`, `errors.ts`, `iconify.tsx`.
+
+Content script hooks in `src/entrypoints/content/hooks/`: `useChatState.ts`, `useDraggable.ts`, `useSelectionDetection.ts`, `useToolbarState.ts`.
 
 ## Invariants
 - Keep `data-aiction-root="true"` on the extension UI root. Selection and mousedown handlers depend on ignoring events inside that subtree.
@@ -59,40 +65,26 @@ Shared logic in `src/shared/*`: `types.ts`, `selection.ts`, `prompt.ts`, `messag
 
 WXT reads `public/icon.png` and copies it to the output. **Source PNG should be ≥256px** to avoid upscaling artifacts.
 
-Three files define the icon — keep them in sync:
+Two files define the icon — keep them in sync:
 
 | File | Role |
 |------|------|
-| `favicon.svg` | SVG source of truth (use `clipPath` for transparent rounded corners) |
-| `src/shared/ui/icons.tsx` | `BrandIcon` React component (inline SVG, mirrors `favicon.svg`) |
-| `public/icon.png` | High-res PNG rendered from SVG (256×256, sharp + lanczos3 downscale) |
+| `src/assets/icon.png` | High-res PNG source of truth (256×256, sharp + lanczos3 downscale) |
+| `src/shared/ui/icons.tsx` | `BrandIcon` React component (renders `src/assets/icon.png`) |
 
 ### Steps to update the icon
 
-1. Edit `favicon.svg` — this is the canonical SVG source.
-2. Mirror the changes in `src/shared/ui/icons.tsx` (`BrandIcon` component).
-3. Generate `public/icon.png` at 256×256 using sharp:
-
-```js
-// _genicon.js (temporary, delete after use)
-const sharp = require('sharp');
-const fs = require('fs');
-const svg = fs.readFileSync('favicon.svg', 'utf8');
-sharp(Buffer.from(svg), { density: 600 })
-  .resize(256, 256, { kernel: 'lanczos3', fit: 'cover' })
-  .png({ quality: 100 })
-  .toFile('public/icon.png')
-  .then(() => console.log('Done'));
-```
-
-```bash
-node _genicon.js && rm _genicon.js
-```
-
-4. `npm run build` — WXT copies the icon to output.
-5. Verify corners are transparent and edges are sharp.
+1. Replace `src/assets/icon.png` with a new PNG (≥256px, transparent corners).
+2. `npm run build` — WXT copies the icon to output.
+3. Verify corners are transparent and edges are sharp.
 
 ### Notes
 - Do **not** use `qlmanage` — it produces blurry low-quality output.
-- Always render from SVG via sharp with `density: 600` for crisp edges.
-- The SVG must use `clipPath` with a rounded rect (`rx="8"`) so PNG corners are transparent.
+- Use sharp with `density: 600` for crisp edges when generating PNG from SVG.
+- The PNG should have transparent corners (use `clipPath` with rounded rect if converting from SVG).
+
+## Reference Projects
+
+`reference/` 文件夹下有两个同类 Chrome 扩展项目，详见 `reference/README.md`。
+
+遇到不确定的实现方案（组件结构、消息通信、UI 方案等）时，优先参考这两个项目。
