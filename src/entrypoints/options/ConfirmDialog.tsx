@@ -7,12 +7,13 @@ interface ConfirmDialogProps {
   title: string
   message: string
   confirmLabel: string
+  cancelLabel: string
   onConfirm: () => void
   onCancel: () => void
   themeName: UiThemeName
 }
 
-export function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCancel, themeName }: ConfirmDialogProps) {
+export function ConfirmDialog({ title, message, confirmLabel, cancelLabel, onConfirm, onCancel, themeName }: ConfirmDialogProps) {
   const theme = uiThemes[themeName]
   const titleId = "confirm-dialog-title"
   const descriptionId = "confirm-dialog-description"
@@ -84,7 +85,7 @@ export function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCance
             marginTop: uiSpace[24]
           }}>
           <button style={cancelBtnStyle} onClick={onCancel}>
-            取消
+            {cancelLabel}
           </button>
           <button style={confirmBtnStyle} onClick={onConfirm}>
             {confirmLabel}

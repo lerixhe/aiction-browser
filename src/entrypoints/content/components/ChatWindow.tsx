@@ -6,6 +6,7 @@ import { MarkdownRenderer } from "@/shared/ui/markdown"
 import { useUiTheme } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiShadow, uiSpace, uiTypography, uiLayer } from "@/shared/ui/tokens"
 import { createButtonStyle, createCardStyle, createFocusRing, createInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
+import { useI18n } from "@/shared/i18n/context"
 import type { ChatMessage } from "@/shared/types"
 
 interface Props {
@@ -79,6 +80,7 @@ function ThinkingBlock({
   isStreaming: boolean
   theme: ThinkingTheme
 }) {
+  const { t } = useI18n()
   const [expanded, setExpanded] = useState(false)
   const autoExpandedRef = useRef(false)
 
@@ -113,7 +115,7 @@ function ThinkingBlock({
           textAlign: "left"
         }}>
         <ChevronIcon expanded={expanded} color={theme.text.secondary} />
-        {isStreaming ? "思考中…" : "思考过程"}
+        {isStreaming ? t("chat.thinking") : t("chat.thinkingProcess")}
         {isStreaming ? (
           <span
             style={{
@@ -165,6 +167,7 @@ export default function ChatWindow({
   onClose
 }: Props) {
   const theme = useUiTheme()
+  const { t } = useI18n()
   const [input, setInput] = useState("")
   const [focused, setFocused] = useState<string | null>(null)
   const [hovered, setHovered] = useState<string | null>(null)
@@ -327,7 +330,7 @@ export default function ChatWindow({
           onMouseUp={() => setClosePressed(false)}
           onFocus={() => setFocused("close")}
           onBlur={() => setFocused(null)}
-          aria-label="关闭对话面板"
+          aria-label={t("chat.closePanel")}
           style={{
             ...createButtonStyle(theme, "secondary", {
               compact: true,
@@ -371,7 +374,7 @@ export default function ChatWindow({
               letterSpacing: uiTypography.letterSpacing.wide,
               textTransform: "uppercase"
             }}>
-            选中文本
+            {t("chat.capturedTextLabel")}
           </div>
           <textarea
             value={capturedText}
@@ -379,8 +382,8 @@ export default function ChatWindow({
             onFocus={() => setFocused("captured")}
             onBlur={() => setFocused(null)}
             rows={3}
-            aria-label="已捕获的选区文本"
-            placeholder="选中文本将显示在这里..."
+            aria-label={t("chat.capturedTextareaLabel")}
+            placeholder={t("chat.capturedTextareaPlaceholder")}
             style={{
               ...createInputStyle(theme, focused === "captured"),
               width: "100%",
@@ -420,8 +423,8 @@ export default function ChatWindow({
               lineHeight: 1.55
             }}>
             {hasCapturedText
-              ? "选中文本已捕获，点击动作按钮开始对话。"
-              : "请选择动作，或直接输入一个问题开始对话。"}
+              ? t("chat.emptyWithCapture")
+              : t("chat.emptyWithoutCapture")}
           </div>
         ) : null}
 
@@ -488,7 +491,7 @@ export default function ChatWindow({
                 display: "inline-block"
               }}
             />
-            AI 正在生成中…
+            {t("chat.generating")}
           </div>
         ) : null}
       </div>
@@ -524,8 +527,8 @@ export default function ChatWindow({
             onSend(value)
             setInput("")
           }}
-          aria-label="在对话面板中继续提问"
-          placeholder="继续提问（Enter 发送，Shift+Enter 换行）"
+          aria-label={t("chat.inputLabel")}
+          placeholder={t("chat.inputPlaceholder")}
           style={{
             ...createInputStyle(theme, focused === "input"),
             flex: 1,
@@ -586,7 +589,7 @@ export default function ChatWindow({
             transform: sendPressed ? "scale(0.95)" : "scale(1)",
             padding: `0 ${uiSpace[16]}px`
           }}>
-          {isStreaming ? "停止" : "发送"}
+          {isStreaming ? t("chat.stop") : t("chat.send")}
         </button>
       </div>
     </div>

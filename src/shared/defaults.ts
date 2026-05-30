@@ -40,6 +40,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   activeModelServiceId: "",
   theme: "auto",
   toolbarMode: "pill",
+  language: "system",
   actions: DEFAULT_ACTIONS,
   telemetryEnabled: true
 }

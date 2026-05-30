@@ -10,7 +10,8 @@ import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { createButtonStyle, createCardStyle, createFieldLabelStyle, createFocusRing, createInputStyle as createSharedInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
 import { getAvatarPalette, getAvatarDisplayText } from "@/shared/ui/avatar"
-import type { ActionTemplate, ExtensionSettings, ThemePreference, ToolbarMode, ApiTestResponse, FetchModelsResponse, ModelServiceConfig } from "@/shared/types"
+import { useI18n } from "@/shared/i18n/context"
+import type { ActionTemplate, ExtensionSettings, LanguagePreference, ThemePreference, ToolbarMode, ApiTestResponse, FetchModelsResponse, ModelServiceConfig } from "@/shared/types"
 import { MESSAGE_TYPES } from "@/shared/constants"
 import { ConfirmDialog } from "@/entrypoints/options/ConfirmDialog"
 
@@ -81,14 +82,6 @@ function RefreshIcon({ size, color }: { size: number; color: string }) {
   )
 }
 
-const sections: { key: Section; label: string; icon: string }[] = [
-  { key: "appearance", label: "外观", icon: "tabler:palette" },
-  { key: "connection", label: "API提供商", icon: "tabler:api" },
-  { key: "actions", label: "动作指令", icon: "tabler:sparkles" },
-  { key: "backup", label: "备份与迁移", icon: "tabler:database-export" },
-  { key: "about", label: "关于", icon: "tabler:info-circle" }
-]
-
 function createCustomServiceDraft(): ModelServiceConfig {
   return {
     ...DEFAULT_CUSTOM_MODEL_SERVICE,
@@ -97,8 +90,17 @@ function createCustomServiceDraft(): ModelServiceConfig {
 }
 
 export default function OptionsPage() {
+  const { t } = useI18n()
   const themeName = useUiThemeName()
   const theme = uiThemes[themeName]
+
+  const sections: { key: Section; label: string; icon: string }[] = [
+    { key: "appearance", label: t("options.nav.appearance"), icon: "tabler:palette" },
+    { key: "connection", label: t("options.nav.connection"), icon: "tabler:api" },
+    { key: "actions", label: t("options.nav.actions"), icon: "tabler:sparkles" },
+    { key: "backup", label: t("options.nav.backup"), icon: "tabler:database-export" },
+    { key: "about", label: t("options.nav.about"), icon: "tabler:info-circle" }
+  ]
   const [settings, setSettings] = useState<ExtensionSettings>(DEFAULT_SETTINGS)
   const [saving, setSaving] = useState(false)
   const [focusedField, setFocusedField] = useState<string | null>(null)
@@ -229,7 +231,7 @@ export default function OptionsPage() {
     const trimmedModel = serviceDraft.model.trim()
 
     if (!trimmedUrl || !trimmedKey || !trimmedModel) {
-      setTestResult({ success: false, message: "请填写 API Base URL、API Key 和 Model 后再测试。" })
+      setTestResult({ success: false, message: t("options.connection.missingUrlKeyModel") })
       return
     }
 
@@ -248,18 +250,18 @@ export default function OptionsPage() {
       (response: ApiTestResponse | undefined) => {
         setTesting(false)
         if (chrome.runtime.lastError) {
-          setTestResult({ success: false, message: `扩展通信失败：${chrome.runtime.lastError.message}` })
+          setTestResult({ success: false, message: t("options.connection.commError", [chrome.runtime.lastError.message ?? ""]) })
           return
         }
         if (!response) {
-          setTestResult({ success: false, message: "后台未返回响应。" })
+          setTestResult({ success: false, message: t("options.connection.noResponse") })
           return
         }
         const latencyInfo = response.latencyMs != null ? ` (${response.latencyMs}ms)` : ""
         if (response.success) {
-          setTestResult({ success: true, message: `连接成功${latencyInfo}` })
+          setTestResult({ success: true, message: t("options.connection.connectionSuccess", [latencyInfo]) })
         } else {
-          setTestResult({ success: false, message: response.error ?? "测试失败" })
+          setTestResult({ success: false, message: response.error ?? t("options.connection.testFailed") })
         }
       }
     )
@@ -268,7 +270,7 @@ export default function OptionsPage() {
   const handleFetchModels = () => {
     const trimmedUrl = serviceDraft.apiBaseUrl.trim()
     if (!trimmedUrl) {
-      setFetchError("请先填写 API Base URL")
+      setFetchError(t("options.connection.missingApiBaseUrl"))
       return
     }
 
@@ -287,11 +289,11 @@ export default function OptionsPage() {
       (response: FetchModelsResponse | undefined) => {
         setFetchingModels(false)
         if (chrome.runtime.lastError) {
-          setFetchError(`通信失败：${chrome.runtime.lastError.message}`)
+          setFetchError(t("options.connection.commError", [chrome.runtime.lastError.message ?? ""]))
           return
         }
         if (!response) {
-          setFetchError("后台未返回响应。")
+          setFetchError(t("options.connection.noResponse"))
           return
         }
         if (response.success && response.models && response.models.length > 0) {
@@ -301,7 +303,7 @@ export default function OptionsPage() {
             setServiceDraft((current) => ({ ...current, model: response.models![0] }))
           }
         } else {
-          setFetchError(response.error ?? "未找到可用模型")
+          setFetchError(response.error ?? t("options.connection.fetchModelsError"))
         }
       }
     )
@@ -325,7 +327,7 @@ export default function OptionsPage() {
     link.click()
     URL.revokeObjectURL(url)
 
-    setBackupStatus({ success: true, message: "配置已导出为 JSON 文件。" })
+    setBackupStatus({ success: true, message: t("options.connection.configExported") })
   }
 
   const handleImportClick = () => {
@@ -348,8 +350,8 @@ export default function OptionsPage() {
       setPendingImportSettings(imported)
       setBackupStatus(null)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "无法解析文件"
-      setBackupStatus({ success: false, message: `导入失败：${message}` })
+      const message = error instanceof Error ? error.message : t("options.connection.parseFileError")
+      setBackupStatus({ success: false, message: t("options.connection.importFailed", [message]) })
     }
   }
 
@@ -376,11 +378,11 @@ export default function OptionsPage() {
       }))
     })
       .then(() => {
-        setBackupStatus({ success: true, message: "配置已导入并保存。" })
+        setBackupStatus({ success: true, message: t("options.connection.configImported") })
       })
       .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : "未知错误"
-        setBackupStatus({ success: false, message: `导入保存失败：${message}` })
+        const message = error instanceof Error ? error.message : t("errors.unknownError")
+        setBackupStatus({ success: false, message: t("options.connection.importSaveFailed", [message]) })
       })
       .finally(() => {
         setSaving(false)
@@ -543,7 +545,7 @@ export default function OptionsPage() {
           fontWeight: uiTypography.fontWeight.semibold,
           letterSpacing: uiTypography.letterSpacing.tight
         }}>
-        主题配色
+        {t("options.appearance.themeTitle")}
       </h2>
       <p
         style={{
@@ -551,7 +553,7 @@ export default function OptionsPage() {
           color: theme.text.secondary,
           fontSize: uiTypography.fontSize.md
         }}>
-        浅色、深色或跟随系统（需浏览器支持）
+        {t("options.appearance.themeDesc")}
       </p>
 
       <div
@@ -564,7 +566,7 @@ export default function OptionsPage() {
         }}>
         {(["auto", "light", "dark"] as ThemePreference[]).map((value) => {
           const isSelected = settings.theme === value
-          const labels: Record<ThemePreference, string> = { auto: "跟随系统", light: "浅色", dark: "深色" }
+          const labels: Record<ThemePreference, string> = { auto: t("options.appearance.themeAuto"), light: t("options.appearance.themeLight"), dark: t("options.appearance.themeDark") }
 
           return (
             <button
@@ -607,8 +609,7 @@ export default function OptionsPage() {
               fontWeight: uiTypography.fontWeight.semibold,
               letterSpacing: uiTypography.letterSpacing.tight
             }}>
-
-            动作指令菜单样式
+            {t("options.appearance.languageTitle")}
           </h2>
           <p
             style={{
@@ -616,7 +617,78 @@ export default function OptionsPage() {
               color: theme.text.secondary,
               fontSize: uiTypography.fontSize.md
             }}>
-            触发按钮展开后的动作指令菜单样式
+            {t("options.appearance.languageDesc")}
+          </p>
+
+          <div
+            style={{
+              display: "inline-flex",
+              background: theme.bg.surfaceMuted,
+              borderRadius: uiRadius.sm,
+              padding: 3,
+              gap: 2
+            }}>
+            {(["system", "en", "zh_CN"] as LanguagePreference[]).map((value) => {
+              const isSelected = settings.language === value
+              const labels: Record<LanguagePreference, string> = {
+                system: t("options.appearance.languageSystem"),
+                en: "English",
+                zh_CN: "简体中文"
+              }
+
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => {
+                    saveSettingsNow((current) => ({ ...current, language: value }))
+                  }}
+                  style={{
+                    padding: `${uiSpace[6]}px ${uiSpace[16]}px`,
+                    border: "none",
+                    borderRadius: uiRadius.sm - 1,
+                    background: isSelected ? theme.bg.surface : "transparent",
+                    color: isSelected ? theme.text.primary : theme.text.secondary,
+                    cursor: "pointer",
+                    fontSize: uiTypography.fontSize.sm,
+                    fontWeight: isSelected ? uiTypography.fontWeight.semibold : uiTypography.fontWeight.regular,
+                    fontFamily: uiTypography.fontFamily,
+                    outline: "none",
+                    boxShadow: isSelected ? createFocusRing(theme.accent.primary) : "none",
+                    transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+                  }}>
+                  {labels[value]}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: uiSpace[20] }}>
+        <div
+          style={{
+            borderTop: `0.5px solid ${theme.border.hairline}`,
+            paddingTop: uiSpace[20],
+            marginBottom: uiSpace[20]
+          }}>
+          <h2
+            style={{
+              margin: `0 0 ${uiSpace[4]}px`,
+              fontSize: uiTypography.fontSize.lg,
+              fontWeight: uiTypography.fontWeight.semibold,
+              letterSpacing: uiTypography.letterSpacing.tight
+            }}>
+
+            {t("options.appearance.menuStyleTitle")}
+          </h2>
+          <p
+            style={{
+              margin: `0 0 ${uiSpace[16]}px`,
+              color: theme.text.secondary,
+              fontSize: uiTypography.fontSize.md
+            }}>
+            {t("options.appearance.menuStyleDesc")}
           </p>
 
           <div
@@ -627,8 +699,8 @@ export default function OptionsPage() {
             }}>
             {(
               [
-                { value: "explode", label: "环形按钮排列", description: "灵动展开，趣味反馈" },
-                { value: "pill", label: "胶囊工具栏", description: "经典设计，沉稳直观" }
+                { value: "explode", label: t("options.appearance.menuStyleExplode"), description: t("options.appearance.menuStyleExplodeDesc") },
+                { value: "pill", label: t("options.appearance.menuStylePill"), description: t("options.appearance.menuStylePillDesc") }
               ] satisfies { value: ToolbarMode; label: string; description: string }[]
             ).map((option) => {
               const isSelected = settings.toolbarMode === option.value
@@ -700,7 +772,7 @@ export default function OptionsPage() {
                   fontWeight: uiTypography.fontWeight.semibold,
                   letterSpacing: uiTypography.letterSpacing.tight
                 }}>
-                {connectionView === "create" ? "添加自定义服务" : "编辑自定义服务"}
+                {connectionView === "create" ? t("options.connection.createTitle") : t("options.connection.editTitle")}
               </h2>
               <p
                 style={{
@@ -708,16 +780,16 @@ export default function OptionsPage() {
                   color: theme.text.secondary,
                   fontSize: uiTypography.fontSize.md
                 }}>
-                配置服务名称、模型接口和采样参数
+                {t("options.connection.editorDesc")}
               </p>
             </div>
             <button type="button" onClick={closeConnectionEditor} style={secondaryBtnStyle}>
-              返回列表
+              {t("options.connection.backToList")}
             </button>
           </div>
 
           <div style={{ marginBottom: uiSpace[16] }}>
-            <label htmlFor="service-name" style={fieldLabelStyle}>服务名称</label>
+            <label htmlFor="service-name" style={fieldLabelStyle}>{t("options.connection.serviceName")}</label>
             <input
               id="service-name"
               value={serviceDraft.name}
@@ -726,13 +798,13 @@ export default function OptionsPage() {
               onChange={(event) => {
                 setServiceDraft((current) => ({ ...current, name: event.target.value }))
               }}
-              placeholder="例如：OpenAI 主账号"
+              placeholder={t("options.connection.serviceNamePlaceholder")}
               style={createInputStyle("service-name")}
             />
           </div>
 
           <div style={{ marginBottom: uiSpace[16] }}>
-            <label htmlFor="service-api-base-url" style={fieldLabelStyle}>API Base URL</label>
+            <label htmlFor="service-api-base-url" style={fieldLabelStyle}>{t("options.connection.apiBaseUrl")}</label>
             <input
               id="service-api-base-url"
               value={serviceDraft.apiBaseUrl}
@@ -747,7 +819,7 @@ export default function OptionsPage() {
           </div>
 
           <div style={{ marginBottom: uiSpace[16] }}>
-            <label htmlFor="service-api-key" style={fieldLabelStyle}>API Key</label>
+            <label htmlFor="service-api-key" style={fieldLabelStyle}>{t("options.connection.apiKey")}</label>
             <input
               id="service-api-key"
               type="password"
@@ -764,7 +836,7 @@ export default function OptionsPage() {
 
           <div style={{ marginBottom: uiSpace[16] }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: uiSpace[6] }}>
-              <label htmlFor="service-model" style={fieldLabelStyle}>Model</label>
+              <label htmlFor="service-model" style={fieldLabelStyle}>{t("options.connection.model")}</label>
               <button
                 type="button"
                 onClick={handleFetchModels}
@@ -778,7 +850,7 @@ export default function OptionsPage() {
                   cursor: fetchingModels ? "not-allowed" : "pointer"
                 }}>
                 <RefreshIcon size={14} color={theme.text.primary} />
-                {fetchingModels ? "获取中..." : "获取模型"}
+                {fetchingModels ? t("options.connection.fetching") : t("options.connection.fetchModels")}
               </button>
             </div>
             {models.length > 0 ? (
@@ -800,7 +872,7 @@ export default function OptionsPage() {
                   type="button"
                   onClick={() => setModels([])}
                   style={secondaryBtnStyle}>
-                  手动输入
+                  {t("options.connection.manualInput")}
                 </button>
               </div>
             ) : (
@@ -843,7 +915,7 @@ export default function OptionsPage() {
                 background: testing ? theme.state.disabled : theme.accent.primary,
                 transform: pressedBtn === "test" ? "scale(0.96)" : "scale(1)"
               }}>
-              {testing ? "测试中..." : "测试连通性"}
+              {testing ? t("options.connection.testing") : t("options.connection.testConnection")}
             </button>
             {testResult ? (
               <span
@@ -868,7 +940,7 @@ export default function OptionsPage() {
                 fontWeight: uiTypography.fontWeight.semibold,
                 letterSpacing: uiTypography.letterSpacing.tight
               }}>
-              模型参数
+              {t("options.connection.modelParams")}
             </h3>
             <p
               style={{
@@ -876,7 +948,7 @@ export default function OptionsPage() {
                 color: theme.text.secondary,
                 fontSize: uiTypography.fontSize.sm
               }}>
-              适用于解释、翻译等文本处理场景的采样参数
+              {t("options.connection.modelParamsDesc")}
             </p>
 
             <div
@@ -887,11 +959,11 @@ export default function OptionsPage() {
               }}>
               {(
                 [
-                  { key: "maxTokens" as const, label: "Max Tokens", placeholder: "1024", min: 1, max: 128000, step: 1, desc: "最大输出 token 数" },
-                  { key: "temperature" as const, label: "Temperature", placeholder: "0.3", min: 0, max: 2, step: 0.1, desc: "采样温度，越低越确定" },
-                  { key: "topP" as const, label: "Top P", placeholder: "0.9", min: 0, max: 1, step: 0.05, desc: "核采样概率阈值" },
-                  { key: "presencePenalty" as const, label: "Presence Penalty", placeholder: "0", min: -2, max: 2, step: 0.1, desc: "存在惩罚" },
-                  { key: "frequencyPenalty" as const, label: "Frequency Penalty", placeholder: "0", min: -2, max: 2, step: 0.1, desc: "频率惩罚" }
+                  { key: "maxTokens" as const, label: "Max Tokens", placeholder: "1024", min: 1, max: 128000, step: 1, desc: t("options.connection.paramMaxTokens") },
+                  { key: "temperature" as const, label: "Temperature", placeholder: "0.3", min: 0, max: 2, step: 0.1, desc: t("options.connection.paramTemperature") },
+                  { key: "topP" as const, label: "Top P", placeholder: "0.9", min: 0, max: 1, step: 0.05, desc: t("options.connection.paramTopP") },
+                  { key: "presencePenalty" as const, label: "Presence Penalty", placeholder: "0", min: -2, max: 2, step: 0.1, desc: t("options.connection.paramPresencePenalty") },
+                  { key: "frequencyPenalty" as const, label: "Frequency Penalty", placeholder: "0", min: -2, max: 2, step: 0.1, desc: t("options.connection.paramFrequencyPenalty") }
                 ]
               ).map((param) => (
                 <div key={param.key}>
@@ -934,10 +1006,10 @@ export default function OptionsPage() {
                 opacity: isServiceDraftValid ? 1 : 0.5,
                 cursor: isServiceDraftValid ? "pointer" : "not-allowed"
               }}>
-              保存服务
+              {t("options.connection.saveService")}
             </button>
             <button type="button" onClick={closeConnectionEditor} style={secondaryBtnStyle}>
-              取消
+              {t("options.connection.cancel")}
             </button>
           </div>
         </>
@@ -952,7 +1024,7 @@ export default function OptionsPage() {
                   fontWeight: uiTypography.fontWeight.semibold,
                   letterSpacing: uiTypography.letterSpacing.tight
                 }}>
-                API提供商列表
+                {t("options.connection.listTitle")}
               </h2>
               <p
                 style={{
@@ -960,7 +1032,7 @@ export default function OptionsPage() {
                   color: theme.text.secondary,
                   fontSize: uiTypography.fontSize.md
                 }}>
-                支持添加多个API提供商，可快速切换以满足不同场景需求。
+                {t("options.connection.listDesc")}
               </p>
             </div>
             <button
@@ -977,14 +1049,14 @@ export default function OptionsPage() {
                 transform: pressedBtn === "add-service" ? "scale(0.96)" : "scale(1)"
               }}>
               <PlusIcon size={14} color={theme.text.inverse} />
-              添加自定义服务
+              {t("options.connection.addService")}
             </button>
           </div>
 
           {settings.modelServices.length === 0 ? (
             <div
               style={{ ...emptyStateStyle, padding: `${uiSpace[28]}px ${uiSpace[16]}px` }}>
-              还没有添加任何自定义服务，点击上方按钮开始配置。
+              {t("options.connection.emptyServiceList")}
             </div>
           ) : (
             <div style={{ display: "grid", gap: uiSpace[12] }}>
@@ -1008,7 +1080,7 @@ export default function OptionsPage() {
                                 setEditingIconServiceId(service.id)
                                 setIconEditText(service.iconText ?? "")
                               }}
-                              title="点击自定义图标文字"
+                              title={t("options.connection.iconTooltip")}
                               style={{
                                 width: 30,
                                 height: 30,
@@ -1057,7 +1129,7 @@ export default function OptionsPage() {
                                   }))
                                   setEditingIconServiceId(null)
                                 }}
-                                placeholder="最多4字"
+                                placeholder={t("options.connection.iconPlaceholder")}
                                 style={{
                                   position: "absolute",
                                   top: 0,
@@ -1080,7 +1152,7 @@ export default function OptionsPage() {
                           <span style={{ fontSize: uiTypography.fontSize.md, fontWeight: uiTypography.fontWeight.semibold, color: theme.text.primary }}>
                             {service.name}
                           </span>
-                          <span style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary }}>自定义服务</span>
+                          <span style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary }}>{t("options.connection.customServiceBadge")}</span>
                         </div>
                         <div style={{ color: theme.text.secondary, fontSize: uiTypography.fontSize.sm, lineHeight: 1.6, wordBreak: "break-all" }}>
                         </div>
@@ -1089,13 +1161,13 @@ export default function OptionsPage() {
                       <div style={{ display: "flex", alignItems: "center", gap: uiSpace[8], flexWrap: "wrap", justifyContent: "flex-end" }}>
                         <ToggleSwitch checked={isActive} onChange={() => toggleServiceActive(service.id)} theme={theme} />
                         <button type="button" onClick={() => openEditService(service.id)} style={secondaryBtnStyle}>
-                          编辑
+                          {t("options.connection.edit")}
                         </button>
                         <button
                           type="button"
                           onClick={() => setPendingDeleteServiceId(service.id)}
                           style={{ ...secondaryBtnStyle, color: theme.state.error, borderColor: theme.state.error }}>
-                          删除
+                          {t("options.connection.delete")}
                         </button>
                       </div>
                     </div>
@@ -1120,10 +1192,10 @@ export default function OptionsPage() {
               fontWeight: uiTypography.fontWeight.semibold,
               letterSpacing: uiTypography.letterSpacing.tight
             }}>
-            动作指令列表
+            {t("options.actions.title")}
           </h2>
           <p style={{ margin: 0, color: theme.text.secondary, fontSize: uiTypography.fontSize.md }}>
-            自定义选区操作指令
+            {t("options.actions.desc")}
           </p>
         </div>
         <button
@@ -1135,8 +1207,8 @@ export default function OptionsPage() {
                 ...current.actions,
                 {
                   id: `custom-${Date.now()}`,
-                  label: "新动作",
-                  template: "帮我处理以下内容「{text}」",
+                  label: t("options.actions.newActionLabel"),
+                  template: t("options.actions.newActionTemplate"),
                   enabled: true,
                   iconText: ""
                 }
@@ -1154,12 +1226,12 @@ export default function OptionsPage() {
             transform: pressedBtn === "add-action" ? "scale(0.96)" : "scale(1)"
           }}>
           <PlusIcon size={14} color={theme.text.inverse} />
-          新增动作
+          {t("options.actions.addAction")}
         </button>
       </div>
 
       <p style={{ marginTop: 0, marginBottom: uiSpace[12], color: theme.text.secondary, fontSize: uiTypography.fontSize.sm }}>
-        模板必须包含 <code style={{ background: theme.bg.surfaceMuted, padding: "2px 6px", borderRadius: 4, fontSize: uiTypography.fontSize.xs }}>{"{text}"}</code> 占位符，用来注入用户选中的文本。
+        {t("options.actions.templateHelp")}<code style={{ background: theme.bg.surfaceMuted, padding: "2px 6px", borderRadius: 4, fontSize: uiTypography.fontSize.xs }}>{"{text}"}</code>{t("options.actions.templateHelpSuffix")}
       </p>
 
       {settings.actions.map((item, index) => {
@@ -1198,7 +1270,7 @@ export default function OptionsPage() {
                   opacity: 0.6,
                   padding: `${uiSpace[2]}px 0`
                 }}
-                title="拖拽排序">
+                title={t("options.actions.dragHandle")}>
                 <DragHandleIcon size={14} color={theme.text.secondary} />
               </div>
               <div style={{ position: "relative" }}>
@@ -1208,7 +1280,7 @@ export default function OptionsPage() {
                     setEditingIconActionId(item.id)
                     setActionIconEditText(item.iconText ?? "")
                   }}
-                  title="点击自定义图标文字"
+                  title={t("options.connection.iconTooltip")}
                   style={{
                     width: 30,
                     height: 30,
@@ -1257,7 +1329,7 @@ export default function OptionsPage() {
                       }))
                       setEditingIconActionId(null)
                     }}
-                    placeholder="最多4字"
+                    placeholder={t("options.connection.iconPlaceholder")}
                     style={{
                       position: "absolute",
                       top: 0,
@@ -1278,25 +1350,25 @@ export default function OptionsPage() {
                 ) : null}
               </div>
               <input
-                aria-label="动作名称"
+                aria-label={t("options.actions.actionName")}
                 value={item.label}
                 onFocus={() => setFocusedField(`${item.id}-label`)}
                 onBlur={() => setFocusedField(null)}
                 onChange={(event) => {
                   updateCustomAction(index, { label: event.target.value })
                 }}
-                placeholder="按钮名称"
+                placeholder={t("options.actions.actionNamePlaceholder")}
                 style={createInputStyle(`${item.id}-label`)}
               />
               <input
-                aria-label="动作模板"
+                aria-label={t("options.actions.actionTemplate")}
                 value={item.template}
                 onFocus={() => setFocusedField(`${item.id}-template`)}
                 onBlur={() => setFocusedField(null)}
                 onChange={(event) => {
                   updateCustomAction(index, { template: event.target.value })
                 }}
-                placeholder="模板，必须包含 {text}"
+                placeholder={t("options.actions.actionTemplatePlaceholder")}
                 style={createInputStyle(`${item.id}-template`)}
               />
               <div style={{ display: "flex", alignItems: "center", gap: uiSpace[8] }}>
@@ -1314,13 +1386,13 @@ export default function OptionsPage() {
                     }))
                   }}
                   style={{ ...secondaryBtnStyle, color: theme.state.error, borderColor: theme.state.error }}>
-                  删除
+                  {t("options.actions.delete")}
                 </button>
               </div>
             </div>
             {invalid ? (
               <div style={{ marginTop: uiSpace[8], color: theme.state.warning, fontSize: uiTypography.fontSize.sm, fontWeight: uiTypography.fontWeight.medium }}>
-                模板缺少 {"{text}"} 占位符。
+                {t("options.actions.missingPlaceholder")}
               </div>
             ) : null}
           </div>
@@ -1329,7 +1401,7 @@ export default function OptionsPage() {
 
       {settings.actions.length === 0 ? (
         <div style={emptyStateStyle}>
-          还没有动作，点击上方「新增动作」开始创建。
+          {t("options.actions.emptyActions")}
         </div>
       ) : null}
     </section>
@@ -1345,10 +1417,10 @@ export default function OptionsPage() {
             fontWeight: uiTypography.fontWeight.semibold,
             letterSpacing: uiTypography.letterSpacing.tight
           }}>
-          配置数据
+          {t("options.backup.title")}
         </h2>
         <p style={{ margin: 0, color: theme.text.secondary, fontSize: uiTypography.fontSize.md }}>
-          导入与导出配置
+          {t("options.backup.desc")}
         </p>
       </div>
 
@@ -1367,10 +1439,10 @@ export default function OptionsPage() {
               fontSize: uiTypography.fontSize.md,
               fontWeight: uiTypography.fontWeight.semibold
             }}>
-            导出配置
+            {t("options.backup.exportTitle")}
           </h3>
           <p style={{ margin: `0 0 ${uiSpace[14]}px`, color: theme.text.secondary, fontSize: uiTypography.fontSize.sm, lineHeight: 1.6 }}>
-            导出配置便于迁移或备份，文件中可能包含key等敏感信息，请妥善保存。
+            {t("options.backup.exportDesc")}
           </p>
           <button
             type="button"
@@ -1382,7 +1454,7 @@ export default function OptionsPage() {
               ...primaryBtnStyle,
               transform: pressedBtn === "export-settings" ? "scale(0.96)" : "scale(1)"
             }}>
-            导出 JSON 文件
+            {t("options.backup.exportButton")}
           </button>
         </div>
 
@@ -1394,10 +1466,10 @@ export default function OptionsPage() {
               fontSize: uiTypography.fontSize.md,
               fontWeight: uiTypography.fontWeight.semibold
             }}>
-            导入配置
+            {t("options.backup.importTitle")}
           </h3>
           <p style={{ margin: `0 0 ${uiSpace[14]}px`, color: theme.text.secondary, fontSize: uiTypography.fontSize.sm, lineHeight: 1.6 }}>
-            从已导出的 JSON 文件恢复设置，导入后会覆盖当前配置。
+            {t("options.backup.importDesc")}
           </p>
           <button
             type="button"
@@ -1409,7 +1481,7 @@ export default function OptionsPage() {
               ...createButtonStyle(theme, "secondary"),
               transform: pressedBtn === "import-settings" ? "scale(0.96)" : "scale(1)"
             }}>
-            选择备份文件
+            {t("options.backup.importButton")}
           </button>
           <input ref={fileInputRef} type="file" accept="application/json,.json" onChange={(event) => void handleImportFile(event)} style={{ display: "none" }} />
         </div>
@@ -1439,7 +1511,7 @@ export default function OptionsPage() {
             fontWeight: uiTypography.fontWeight.semibold,
             letterSpacing: uiTypography.letterSpacing.tight
           }}>
-          关于我们
+          {t("options.about.title")}
         </h2>
         <p
           style={{
@@ -1448,7 +1520,7 @@ export default function OptionsPage() {
             fontSize: uiTypography.fontSize.md,
             lineHeight: 1.7
           }}>
-          Aiction 是一款轻量级 Chrome 扩展，帮助你在浏览网页时随时获取 AI 辅助。选中任意文本即可快速提问、翻译、总结或自定义指令，让 AI 成为你的浏览助手。
+          {t("options.about.description")}
         </p>
 
         <div
@@ -1456,7 +1528,7 @@ export default function OptionsPage() {
             marginTop: uiSpace[8]
           }}>
           <div style={{ fontWeight: uiTypography.fontWeight.semibold, fontSize: uiTypography.fontSize.md, color: theme.text.primary, marginBottom: uiSpace[8] }}>
-            主要功能
+            {t("options.about.featuresTitle")}
           </div>
           <div
             style={{
@@ -1466,23 +1538,23 @@ export default function OptionsPage() {
             }}>
             <div style={{ display: "flex", alignItems: "baseline", marginBottom: uiSpace[4] }}>
               <span style={{ color: theme.brand?.primary || theme.accent?.primary || "#0D9488", marginRight: uiSpace[8] }}>·</span>
-              选中网页文本，即刻唤起 AI 工具栏
+              {t("options.about.feature1")}
             </div>
             <div style={{ display: "flex", alignItems: "baseline", marginBottom: uiSpace[4] }}>
               <span style={{ color: theme.brand?.primary || theme.accent?.primary || "#0D9488", marginRight: uiSpace[8] }}>·</span>
-              内置翻译、总结、解释等常用指令
+              {t("options.about.feature2")}
             </div>
             <div style={{ display: "flex", alignItems: "baseline", marginBottom: uiSpace[4] }}>
               <span style={{ color: theme.brand?.primary || theme.accent?.primary || "#0D9488", marginRight: uiSpace[8] }}>·</span>
-              支持自定义动作指令，灵活扩展
+              {t("options.about.feature3")}
             </div>
             <div style={{ display: "flex", alignItems: "baseline", marginBottom: uiSpace[4] }}>
               <span style={{ color: theme.brand?.primary || theme.accent?.primary || "#0D9488", marginRight: uiSpace[8] }}>·</span>
-              兼容 OpenAI、Claude、Gemini 等主流大模型
+              {t("options.about.feature4")}
             </div>
             <div style={{ display: "flex", alignItems: "baseline" }}>
               <span style={{ color: theme.brand?.primary || theme.accent?.primary || "#0D9488", marginRight: uiSpace[8] }}>·</span>
-              对话式交互，持续追问不中断
+              {t("options.about.feature5")}
             </div>
           </div>
         </div>
@@ -1495,9 +1567,9 @@ export default function OptionsPage() {
             lineHeight: 1.7
           }}>
           <div style={{ fontWeight: uiTypography.fontWeight.semibold, color: theme.text.primary, marginBottom: uiSpace[4] }}>
-            联系我们
+            {t("options.about.contactTitle")}
           </div>
-          <div>Email：lerixhe@gmail.com</div>
+          <div>{t("options.about.emailLabel")}</div>
         </div>
       </section>
 
@@ -1509,7 +1581,7 @@ export default function OptionsPage() {
             fontWeight: uiTypography.fontWeight.semibold,
             letterSpacing: uiTypography.letterSpacing.tight
           }}>
-          版本信息
+          {t("options.about.versionTitle")}
         </h2>
         <div
           style={{
@@ -1517,8 +1589,8 @@ export default function OptionsPage() {
             color: theme.text.secondary,
             lineHeight: 1.7
           }}>
-          <div>当前版本：v{chrome.runtime.getManifest().version}</div>
-          <div>开源协议：GPL-3.0</div>
+          <div>{t("options.about.versionPrefix", [chrome.runtime.getManifest().version])}</div>
+          <div>{t("options.about.license")}</div>
         </div>
       </section>
 
@@ -1530,7 +1602,7 @@ export default function OptionsPage() {
             fontWeight: uiTypography.fontWeight.semibold,
             letterSpacing: uiTypography.letterSpacing.tight
           }}>
-          协助改善用户体验
+          {t("options.about.telemetryTitle")}
         </h2>
         <p
           style={{
@@ -1539,7 +1611,7 @@ export default function OptionsPage() {
             fontSize: uiTypography.fontSize.md,
             lineHeight: 1.7
           }}>
-          开启遥测数据后，我们会收集匿名使用统计（如功能使用频率、AI 响应性能），帮助改进产品体验。数据不包含任何个人信息、选中文本内容或 API Key。
+          {t("options.about.telemetryDesc")}
         </p>
 
         <div
@@ -1560,14 +1632,14 @@ export default function OptionsPage() {
                 color: theme.text.primary,
                 marginBottom: uiSpace[2]
               }}>
-              协助改善用户体验
+              {t("options.about.telemetryToggle")}
             </div>
             <div
               style={{
                 fontSize: uiTypography.fontSize.sm,
                 color: theme.text.secondary
               }}>
-              {settings.telemetryEnabled ? "已开启" : "已关闭"}
+              {settings.telemetryEnabled ? t("options.about.telemetryEnabled") : t("options.about.telemetryDisabled")}
             </div>
           </div>
           <ToggleSwitch
@@ -1694,7 +1766,7 @@ export default function OptionsPage() {
             color: theme.text.secondary,
             textAlign: "center"
           }}>
-          © 2026 Aiction All rights reserved.
+          {t("options.about.copyright")}
         </div>
       </nav>
 
@@ -1759,9 +1831,10 @@ export default function OptionsPage() {
 
           {pendingImportSettings ? (
             <ConfirmDialog
-              title="导入配置"
-              message="确定导入这份备份并覆盖当前所有设置吗？当前未保存的修改也会被替换。"
-              confirmLabel="导入并覆盖"
+              title={t("options.backup.importConfirmTitle")}
+              message={t("options.backup.importConfirmMessage")}
+              confirmLabel={t("options.backup.importConfirmButton")}
+              cancelLabel={t("options.connection.cancel")}
               onConfirm={confirmImportSettings}
               onCancel={() => setPendingImportSettings(null)}
               themeName={themeName}
@@ -1770,9 +1843,10 @@ export default function OptionsPage() {
 
           {pendingDeleteServiceId ? (
             <ConfirmDialog
-              title="删除自定义服务"
-              message="确定删除这个自定义服务吗？如果它当前已启用，系统会自动启用下一个服务。"
-              confirmLabel="删除服务"
+              title={t("options.backup.deleteServiceTitle")}
+              message={t("options.backup.deleteServiceMessage")}
+              confirmLabel={t("options.backup.deleteServiceButton")}
+              cancelLabel={t("options.connection.cancel")}
               onConfirm={() => deleteService(pendingDeleteServiceId)}
               onCancel={() => setPendingDeleteServiceId(null)}
               themeName={themeName}

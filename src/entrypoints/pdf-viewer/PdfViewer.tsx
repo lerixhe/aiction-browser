@@ -8,6 +8,7 @@ import { useToolbarState } from "@/entrypoints/content/hooks/useToolbarState"
 import { initContentScriptAnalytics, trackEvent } from "@/shared/analytics"
 import { resolveActionTemplate, formatFreeInputPrompt } from "@/shared/prompt"
 import { getSettings } from "@/shared/storage"
+import { useI18n } from "@/shared/i18n/context"
 import type { SelectionAnchor, SelectionContext } from "@/shared/types"
 
 // Set worker source - use the .mjs worker file from pdfjs-dist
@@ -129,6 +130,7 @@ function PdfPage({ pdf, pageNumber, scale }: PdfPageProps) {
 
 export function PdfViewerPage() {
   const extensionRootRef = useRef<HTMLDivElement | null>(null)
+  const { t } = useI18n()
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null)
   const [numPages, setNumPages] = useState(0)
   const [scale] = useState(1.5)
@@ -151,7 +153,7 @@ export function PdfViewerPage() {
       const pdfUrl = params.get("url")
 
       if (!pdfUrl) {
-        setError("未提供 PDF URL")
+        setError(t("pdf.noUrl"))
         setLoading(false)
         return
       }
@@ -164,7 +166,7 @@ export function PdfViewerPage() {
         setNumPages(pdfDoc.numPages)
         setLoading(false)
       } catch (err) {
-        setError(`加载 PDF 失败: ${err instanceof Error ? err.message : "未知错误"}`)
+        setError(t("pdf.loadFailed", [err instanceof Error ? err.message : t("errors.unknownError")]))
         setLoading(false)
       }
     }
@@ -339,7 +341,7 @@ export function PdfViewerPage() {
   if (loading) {
     return (
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
-        <div style={{ fontSize: "18px", color: "#6B7280" }}>加载 PDF 中...</div>
+        <div style={{ fontSize: "18px", color: "#6B7280" }}>{t("pdf.loading")}</div>
       </div>
     )
   }

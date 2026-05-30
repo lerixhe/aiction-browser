@@ -1,3 +1,5 @@
+import { i18nStore } from "@/shared/i18n/index"
+
 // Message type constants
 export const MESSAGE_TYPES = {
   CHAT_STREAM_START: "AICTION_CHAT_STREAM_START",
@@ -18,26 +20,26 @@ export const STREAM_EVENTS = {
 
 // Error messages
 export const ERROR_MESSAGES = {
-  NO_API_KEY: "请先在设置台填写 API Key。",
-  STREAM_DISCONNECTED: "流式连接已断开",
-  REQUEST_FAILED: "请求失败",
-  UNKNOWN_ERROR: "未知错误",
-  INVALID_RESPONSE: "AI 服务返回错误",
-  NO_READABLE_STREAM: "AI 服务未返回可读取的流。",
-  NO_VALID_CONTENT: "AI 未返回有效内容。",
-  SETTINGS_SAVE_FAILED: "保存失败",
-  API_TEST_MISSING_FIELDS: "请填写 API Base URL、API Key 和 Model 后再测试。",
-  FETCH_MODELS_FAILED: "获取模型列表失败",
-  FETCH_MODELS_MISSING_URL: "请先填写 API Base URL",
-  FETCH_MODELS_EMPTY: "未找到可用模型",
-  CONTEXT_INVALIDATED: "扩展上下文已失效，请刷新页面重试。"
+  get NO_API_KEY() { return i18nStore.t("errors.noApiKey") },
+  get STREAM_DISCONNECTED() { return i18nStore.t("errors.streamDisconnected") },
+  get REQUEST_FAILED() { return i18nStore.t("errors.requestFailed") },
+  get UNKNOWN_ERROR() { return i18nStore.t("errors.unknownError") },
+  get INVALID_RESPONSE() { return i18nStore.t("errors.invalidResponse") },
+  get NO_READABLE_STREAM() { return i18nStore.t("errors.noReadableStream") },
+  get NO_VALID_CONTENT() { return i18nStore.t("errors.noValidContent") },
+  get SETTINGS_SAVE_FAILED() { return i18nStore.t("errors.settingsSaveFailed") },
+  get API_TEST_MISSING_FIELDS() { return i18nStore.t("errors.apiTestMissingFields") },
+  get FETCH_MODELS_FAILED() { return i18nStore.t("errors.fetchModelsFailed") },
+  get FETCH_MODELS_MISSING_URL() { return i18nStore.t("errors.fetchModelsMissingUrl") },
+  get FETCH_MODELS_EMPTY() { return i18nStore.t("errors.fetchModelsEmpty") },
+  get CONTEXT_INVALIDATED() { return i18nStore.t("errors.contextInvalidated") }
 } as const
 
 // UI messages
 export const UI_MESSAGES = {
-  LOADING: "AI 正在生成中...",
-  EMPTY_CHAT: "请选择动作，或直接输入一个问题开始对话。",
-  SAVE_SUCCESS: "保存成功"
+  get LOADING() { return i18nStore.t("ui.loading") },
+  get EMPTY_CHAT() { return i18nStore.t("ui.emptyChat") },
+  get SAVE_SUCCESS() { return i18nStore.t("ui.saveSuccess") }
 } as const
 
 // CSS selectors

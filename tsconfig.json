@@ -16,7 +16,9 @@
     "ignoreDeprecations": "6.0",
     "paths": {
       "~*": ["./src/*"],
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "#i18n": ["./.wxt/i18n/index.ts"],
+      "#i18n/*": ["./.wxt/i18n/index.ts/*"]
     }
   },
   "include": [".wxt/wxt.d.ts", "src/**/*.ts", "src/**/*.tsx", "wxt.config.ts"],

@@ -2,10 +2,11 @@ import { defineConfig } from 'wxt';
 
 export default defineConfig({
   srcDir: 'src',
-  modules: ['@wxt-dev/auto-icons'],
+  modules: ['@wxt-dev/auto-icons', '@wxt-dev/i18n/module'],
   manifest: {
-    name: 'Aiction',
-    description: 'A lightweight Chrome extension for getting AI help on selected web content.',
+    name: '__MSG_extName__',
+    description: '__MSG_extDescription__',
+    default_locale: 'en',
     version: '0.0.1',
     permissions: ['storage', 'contextMenus'],
     host_permissions: ['<all_urls>'],

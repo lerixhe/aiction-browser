@@ -1,5 +1,5 @@
 import { DEFAULT_CUSTOM_MODEL_SERVICE, DEFAULT_SETTINGS } from "@/shared/defaults"
-import type { ExtensionSettings, ModelParams, ModelServiceConfig, ModelServiceType, ThemePreference, ToolbarMode } from "@/shared/types"
+import type { ExtensionSettings, LanguagePreference, ModelParams, ModelServiceConfig, ModelServiceType, ThemePreference, ToolbarMode } from "@/shared/types"
 
 export { DEFAULT_SETTINGS }
 
@@ -88,11 +88,15 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
 
   const telemetryEnabled = typeof saved.telemetryEnabled === "boolean" ? saved.telemetryEnabled : DEFAULT_SETTINGS.telemetryEnabled
 
+  const validLanguages: LanguagePreference[] = ["system", "en", "zh_CN"]
+  const language = validLanguages.includes(saved.language as LanguagePreference) ? (saved.language as LanguagePreference) : DEFAULT_SETTINGS.language
+
   return {
     modelServices,
     activeModelServiceId,
     theme,
     toolbarMode,
+    language,
     actions,
     telemetryEnabled
   }

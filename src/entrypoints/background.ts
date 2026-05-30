@@ -8,6 +8,7 @@ import type {
   ApiTestResponse
 } from "@/shared/types"
 import { MESSAGE_TYPES, ERROR_MESSAGES } from "@/shared/constants"
+import { i18nStore } from "@/shared/i18n/index"
 import { formatApiError, getErrorMessage, isAbortError } from "@/shared/errors"
 import { getActiveModelService, getSettings } from "@/shared/storage"
 import {
@@ -224,7 +225,7 @@ async function streamOpenAiCompatible(
     if (!hasContent) {
       onEvent({
         type: "failed",
-        error: `${ERROR_MESSAGES.REQUEST_FAILED}：${getErrorMessage(streamError)}`
+        error: `${ERROR_MESSAGES.REQUEST_FAILED}: ${getErrorMessage(streamError)}`
       })
       return
     }
@@ -291,7 +292,7 @@ export default defineBackground(() => {
         try {
           port.postMessage({
             type: "failed",
-            error: `${ERROR_MESSAGES.REQUEST_FAILED}：${message}`
+            error: `${ERROR_MESSAGES.REQUEST_FAILED}: ${message}`
           } satisfies ChatStreamEvent)
         } catch {
           return
@@ -316,7 +317,7 @@ export default defineBackground(() => {
     // Create context menu for PDF files
     chrome.contextMenus.create({
       id: "open-pdf-with-aiction",
-      title: "用 Aiction 打开 PDF",
+      title: i18nStore.t("background.openPdfWithAiction"),
       contexts: ["page", "frame"],
       documentUrlPatterns: [
         "*://*/*.pdf",
@@ -404,7 +405,7 @@ export default defineBackground(() => {
           void trackBackgroundEvent("api_test_completed", { success: false, latency_ms: latencyMs })
           sendResponse({
             success: false,
-            error: `${ERROR_MESSAGES.REQUEST_FAILED}：${getErrorMessage(error)}`,
+            error: `${ERROR_MESSAGES.REQUEST_FAILED}: ${getErrorMessage(error)}`,
             latencyMs
           } satisfies ApiTestResponse)
         })
@@ -443,7 +444,7 @@ export default defineBackground(() => {
           const rawError = await response.text()
           sendResponse({
             success: false,
-            error: `${ERROR_MESSAGES.FETCH_MODELS_FAILED}：${formatApiError(response.status, rawError)}`
+            error: `${ERROR_MESSAGES.FETCH_MODELS_FAILED}: ${formatApiError(response.status, rawError)}`
           })
           return
         }
@@ -464,7 +465,7 @@ export default defineBackground(() => {
       .catch((error: unknown) => {
         sendResponse({
           success: false,
-          error: `${ERROR_MESSAGES.FETCH_MODELS_FAILED}：${getErrorMessage(error)}`
+          error: `${ERROR_MESSAGES.FETCH_MODELS_FAILED}: ${getErrorMessage(error)}`
         })
       })
 

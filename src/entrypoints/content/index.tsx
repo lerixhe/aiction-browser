@@ -2,6 +2,7 @@ import React from "react"
 import ReactDOM from "react-dom/client"
 
 import App from "@/entrypoints/content/App"
+import { I18nRoot } from "@/shared/i18n/root"
 
 export default defineContentScript({
   matches: ["<all_urls>"],
@@ -17,7 +18,11 @@ export default defineContentScript({
         container.append(app)
 
         const root = ReactDOM.createRoot(app)
-        root.render(<App />)
+        root.render(
+          <I18nRoot>
+            <App />
+          </I18nRoot>
+        )
         return root
       },
       onRemove(root) {

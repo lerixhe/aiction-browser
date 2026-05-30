@@ -6,6 +6,7 @@ import { BrandIcon } from "@/shared/ui/icons"
 import { useUiTheme } from "@/shared/ui/theme"
 import { uiLayout, uiLayer, uiMotion, uiRadius, uiShadow, uiTypography } from "@/shared/ui/tokens"
 import { createFocusRing } from "@/shared/ui/styles"
+import { useI18n } from "@/shared/i18n/context"
 import type { ActionTemplate, SelectionAnchor, ToolbarMode } from "@/shared/types"
 
 interface Props {
@@ -30,6 +31,7 @@ export default function SelectionToolbar({
   onClose
 }: Props) {
   const theme = useUiTheme()
+  const { t } = useI18n()
   const [ringOpen, setRingOpen] = useState(false)
   const [ringHovered, setRingHovered] = useState<string | null>(null)
   const [triggerPressed, setTriggerPressed] = useState(false)
@@ -100,7 +102,7 @@ export default function SelectionToolbar({
       }}>
       <button
         type="button"
-        aria-label={ringOpen ? "收起动作菜单" : "展开动作菜单"}
+        aria-label={ringOpen ? t("toolbar.collapseMenu") : t("toolbar.expandMenu")}
         aria-expanded={ringOpen}
         onMouseEnter={handleTriggerEnter}
         onClick={() => {

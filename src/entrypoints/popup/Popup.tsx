@@ -6,6 +6,7 @@ import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { createCardStyle, createFocusRing } from "@/shared/ui/styles"
 import { getAvatarPalette, getAvatarDisplayText } from "@/shared/ui/avatar"
+import { useI18n } from "@/shared/i18n/context"
 import type { ActionTemplate, ExtensionSettings } from "@/shared/types"
 
 function SettingsIcon({ color }: { color: string }) {
@@ -168,6 +169,7 @@ function AvatarStack({
 export default function Popup() {
   const themeName = useUiThemeName()
   const theme = uiThemes[themeName]
+  const { t } = useI18n()
   const [settings, setSettings] = useState<ExtensionSettings | null>(null)
   const [changing, setChanging] = useState(false)
   const [serviceMenuOpen, setServiceMenuOpen] = useState(false)
@@ -450,7 +452,7 @@ export default function Popup() {
         <button
           type="button"
           onClick={openOptionsPage}
-          aria-label="打开设置"
+          aria-label={t("popup.settingsLabel")}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = theme.bg.surface
             e.currentTarget.style.borderColor = theme.border.default
@@ -466,7 +468,7 @@ export default function Popup() {
 
       {/* Service Selector */}
       <div style={{ marginBottom: uiSpace[12] }}>
-        <div style={fieldLabelStyle}>选择模型服务：</div>
+        <div style={fieldLabelStyle}>{t("popup.selectService")}</div>
 
         <div ref={serviceMenuRef} style={{ position: "relative" }}>
           <button
@@ -494,7 +496,7 @@ export default function Popup() {
               </span>
             </div>
             <span style={{ ...menuItemTextStyle, flex: 1 }}>
-              {activeService?.name || "暂无可用模型服务"}
+              {activeService?.name || t("popup.noService")}
             </span>
             <div style={triggerChevron}>
               <ChevronIcon color={theme.text.secondary} expanded={serviceMenuOpen} />
@@ -523,7 +525,7 @@ export default function Popup() {
                       {displayText}
                     </span>
                     <span style={menuItemTextStyle}>
-                      {service.name || "未命名服务"}
+                      {service.name || t("popup.unnamedService")}
                     </span>
                     {selected ? (
                       <span
@@ -547,7 +549,7 @@ export default function Popup() {
 
       {/* Actions Selector */}
       <div style={{ marginBottom: uiSpace[12] }}>
-        <div style={fieldLabelStyle}>选择动作指令：</div>
+        <div style={fieldLabelStyle}>{t("popup.selectAction")}</div>
 
         <div ref={actionsMenuRef} style={{ position: "relative" }}>
           <button
@@ -578,8 +580,8 @@ export default function Popup() {
               }}>
               <span style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                 {enabledActionsCount > 0
-                  ? `已启用 ${enabledActionsCount} 个动作`
-                  : "暂无可用动作指令"}
+                  ? t("popup.enabledActions", [String(enabledActionsCount)])
+                  : t("popup.noActions")}
               </span>
               {settings && (
                 <AvatarStack actions={settings.actions} themeName={themeName} theme={theme} />
@@ -679,7 +681,7 @@ export default function Popup() {
             transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}, transform 150ms ${uiMotion.easingSpring}`,
             transform: pressedBtn === "open-settings" ? "scale(0.96)" : "scale(1)"
           }}>
-          设置 →
+          {t("popup.settings")}
         </button>
       </div>
     </div>

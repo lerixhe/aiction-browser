@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react"
 
-import { UI_MESSAGES } from "@/shared/constants"
+import { ERROR_MESSAGES, UI_MESSAGES } from "@/shared/constants"
 import { streamChat } from "@/shared/messaging"
 import { buildContextSystemMessage } from "@/shared/prompt"
 import { trackEvent } from "@/shared/analytics"
@@ -195,9 +195,9 @@ export function useChatState() {
         const durationMs = Math.round(performance.now() - streamStartTime)
         void trackEvent("chat_failed", { model: modelName, duration_ms: durationMs })
 
-        const message = error instanceof Error ? error.message : "未知错误"
+        const message = error instanceof Error ? error.message : ERROR_MESSAGES.UNKNOWN_ERROR
         setRequestState({ status: "failed", assistantMessageId: assistantMessage.id, error: message })
-        const afterFailure = updateMessageContent(messagesRef.current, assistantMessage.id, `请求失败：${message}`)
+        const afterFailure = updateMessageContent(messagesRef.current, assistantMessage.id, `${ERROR_MESSAGES.REQUEST_FAILED}：${message}`)
         messagesRef.current = afterFailure
         setMessages(afterFailure)
       } finally {

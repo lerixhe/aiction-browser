@@ -20,7 +20,7 @@ export function createErrorEvent(error: unknown): { type: "failed"; error: strin
   const message = getErrorMessage(error)
   return {
     type: "failed",
-    error: `${ERROR_MESSAGES.REQUEST_FAILED}：${message}`
+    error: `${ERROR_MESSAGES.REQUEST_FAILED}: ${message}`
   }
 }
 
@@ -48,5 +48,5 @@ export function isAbortError(error: unknown): boolean {
  * Format API error response
  */
 export function formatApiError(status: number, body: string): string {
-  return `${ERROR_MESSAGES.INVALID_RESPONSE} (${status})：${body || ERROR_MESSAGES.UNKNOWN_ERROR}`
+  return `${ERROR_MESSAGES.INVALID_RESPONSE} (${status}): ${body || ERROR_MESSAGES.UNKNOWN_ERROR}`
 }

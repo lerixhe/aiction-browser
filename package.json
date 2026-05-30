@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@iconify/react": "^6.0.2",
+    "@wxt-dev/i18n": "^0.2.5",
     "marked": "^18.0.4",
     "pdfjs-dist": "^5.7.284",
     "posthog-js": "^1.376.3",
