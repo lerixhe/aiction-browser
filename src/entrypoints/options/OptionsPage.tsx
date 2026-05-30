@@ -502,14 +502,14 @@ export default function OptionsPage() {
   }
 
   const createSelectableCardStyle = (selected: boolean): CSSProperties => ({
-    border: `1px solid ${selected ? theme.accent.primary : theme.border.default}`,
+    border: `1px solid ${theme.border.default}`,
     borderRadius: uiRadius.md,
-    background: selected ? theme.bg.surfaceAlt : theme.bg.surface,
+    background: selected ? `${theme.accent.primary}14` : theme.bg.surface,
     padding: uiSpace[14],
     textAlign: "left",
     cursor: "pointer",
-    boxShadow: selected ? createFocusRing(theme.accent.primary) : "none",
-    transition: `border-color ${uiMotion.durationFast} ${uiMotion.easingStandard}, box-shadow ${uiMotion.durationFast} ${uiMotion.easingStandard}, transform 150ms ${uiMotion.easingSpring}, background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+    boxShadow: "none",
+    transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
   })
 
   const insetCardStyle: CSSProperties = {
@@ -579,15 +579,15 @@ export default function OptionsPage() {
                 padding: `${uiSpace[6]}px ${uiSpace[16]}px`,
                 border: "none",
                 borderRadius: uiRadius.sm - 1,
-                background: isSelected ? theme.bg.surface : "transparent",
-                color: isSelected ? theme.text.primary : theme.text.secondary,
+                background: isSelected ? `${theme.accent.primary}14` : "transparent",
+                color: isSelected ? theme.accent.primary : theme.text.secondary,
                 cursor: "pointer",
                 fontSize: uiTypography.fontSize.sm,
                 fontWeight: isSelected ? uiTypography.fontWeight.semibold : uiTypography.fontWeight.regular,
                 fontFamily: uiTypography.fontFamily,
                 outline: "none",
-                boxShadow: isSelected ? createFocusRing(theme.accent.primary) : "none",
-                transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+                boxShadow: "none",
+                transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}, color ${uiMotion.durationFast} ${uiMotion.easingStandard}`
               }}>
               {labels[value]}
             </button>
@@ -647,15 +647,15 @@ export default function OptionsPage() {
                     padding: `${uiSpace[6]}px ${uiSpace[16]}px`,
                     border: "none",
                     borderRadius: uiRadius.sm - 1,
-                    background: isSelected ? theme.bg.surface : "transparent",
-                    color: isSelected ? theme.text.primary : theme.text.secondary,
+                    background: isSelected ? `${theme.accent.primary}14` : "transparent",
+                    color: isSelected ? theme.accent.primary : theme.text.secondary,
                     cursor: "pointer",
                     fontSize: uiTypography.fontSize.sm,
                     fontWeight: isSelected ? uiTypography.fontWeight.semibold : uiTypography.fontWeight.regular,
                     fontFamily: uiTypography.fontFamily,
                     outline: "none",
-                    boxShadow: isSelected ? createFocusRing(theme.accent.primary) : "none",
-                    transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+                    boxShadow: "none",
+                    transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}, color ${uiMotion.durationFast} ${uiMotion.easingStandard}`
                   }}>
                   {labels[value]}
                 </button>
@@ -730,15 +730,6 @@ export default function OptionsPage() {
                       }}>
                       {option.label}
                     </span>
-                    <span
-                      style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: "50%",
-                        background: isSelected ? theme.accent.primary : theme.border.default,
-                        flexShrink: 0
-                      }}
-                    />
                   </div>
                   <div
                     style={{
@@ -1136,7 +1127,7 @@ export default function OptionsPage() {
                                   left: 0,
                                   width: 48,
                                   height: 30,
-                  fontSize: uiTypography.fontSize.md,
+                                  fontSize: uiTypography.fontSize.md,
                                   border: `1px solid ${theme.border.default}`,
                                   borderRadius: uiRadius.sm,
                                   padding: `0 ${uiSpace[4]}px`,
@@ -1716,7 +1707,7 @@ export default function OptionsPage() {
           </span>
         </div>
 
-                {/* Nav items */}
+        {/* Nav items */}
         <div style={{ padding: `${uiSpace[4]}px ${uiSpace[16]}px`, flex: 1 }}>
           {sections.map((section) => {
             const isActive = activeSection === section.key
