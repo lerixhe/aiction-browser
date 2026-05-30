@@ -126,6 +126,7 @@ export default function OptionsPage() {
   const [actionIconEditText, setActionIconEditText] = useState("")
   const [draggedActionIndex, setDraggedActionIndex] = useState<number | null>(null)
   const [dragOverActionIndex, setDragOverActionIndex] = useState<number | null>(null)
+  const [selectedActionId, setSelectedActionId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -1172,229 +1173,378 @@ export default function OptionsPage() {
     </section>
   )
 
+  const selectedAction = selectedActionId ? settings.actions.find((a) => a.id === selectedActionId) : null
+  const selectedActionIndex = selectedActionId ? settings.actions.findIndex((a) => a.id === selectedActionId) : -1
+
+  const handleAddAction = () => {
+    const newId = `custom-${Date.now()}`
+    saveSettingsNow((current) => ({
+      ...current,
+      actions: [
+        ...current.actions,
+        {
+          id: newId,
+          label: t("options.actions.newActionLabel"),
+          template: t("options.actions.newActionTemplate"),
+          enabled: true,
+          iconText: ""
+        }
+      ]
+    }))
+    setSelectedActionId(newId)
+  }
+
+  const handleDeleteAction = (actionId: string) => {
+    const index = settings.actions.findIndex((a) => a.id === actionId)
+    saveSettingsNow((current) => ({
+      ...current,
+      actions: current.actions.filter((action) => action.id !== actionId)
+    }))
+    // Auto-select next or previous action
+    const remaining = settings.actions.filter((a) => a.id !== actionId)
+    if (remaining.length === 0) {
+      setSelectedActionId(null)
+    } else if (index < remaining.length) {
+      setSelectedActionId(remaining[index].id)
+    } else {
+      setSelectedActionId(remaining[remaining.length - 1].id)
+    }
+  }
+
   const renderActions = () => (
-    <section style={{ ...cardStyle }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: uiSpace[16] }}>
-        <div>
-          <h2
-            style={{
-              margin: `0 0 ${uiSpace[4]}px`,
-              fontSize: uiTypography.fontSize.lg,
-              fontWeight: uiTypography.fontWeight.semibold,
-              letterSpacing: uiTypography.letterSpacing.tight
-            }}>
-            {t("options.actions.title")}
-          </h2>
-          <p style={{ margin: 0, color: theme.text.secondary, fontSize: uiTypography.fontSize.md }}>
-            {t("options.actions.desc")}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            saveSettingsNow((current) => ({
-              ...current,
-              actions: [
-                ...current.actions,
-                {
-                  id: `custom-${Date.now()}`,
-                  label: t("options.actions.newActionLabel"),
-                  template: t("options.actions.newActionTemplate"),
-                  enabled: true,
-                  iconText: ""
-                }
-              ]
-            }))
-          }}
-          onMouseDown={() => setPressedBtn("add-action")}
-          onMouseUp={() => setPressedBtn(null)}
-          onMouseLeave={() => setPressedBtn(null)}
+    <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
+      {/* Header */}
+      <div style={{ padding: `${uiSpace[20]}px ${uiSpace[24]}px ${uiSpace[16]}px`, borderBottom: `0.5px solid ${theme.border.hairline}` }}>
+        <h2
           style={{
-            ...primaryBtnStyle,
-            display: "flex",
-            alignItems: "center",
-            gap: uiSpace[4],
-            transform: pressedBtn === "add-action" ? "scale(0.96)" : "scale(1)"
+            margin: 0,
+            fontSize: uiTypography.fontSize.lg,
+            fontWeight: uiTypography.fontWeight.semibold,
+            letterSpacing: uiTypography.letterSpacing.tight
           }}>
-          <PlusIcon size={14} color={theme.text.inverse} />
-          {t("options.actions.addAction")}
-        </button>
+          {t("options.actions.title")}
+        </h2>
       </div>
 
-      <p style={{ marginTop: 0, marginBottom: uiSpace[12], color: theme.text.secondary, fontSize: uiTypography.fontSize.sm }}>
-        {t("options.actions.templateHelp")}<code style={{ background: theme.bg.surfaceMuted, padding: "2px 6px", borderRadius: 4, fontSize: uiTypography.fontSize.xs }}>{"{text}"}</code>{t("options.actions.templateHelpSuffix")}
-      </p>
-
-      {settings.actions.map((item, index) => {
-        const invalid = !hasTextPlaceholder(item.template)
-        const displayText = getAvatarDisplayText(item.iconText, item.label)
-        const isEditingIcon = editingIconActionId === item.id
-        const isDragging = draggedActionIndex === index
-        const isDragOver = dragOverActionIndex === index
-
-        return (
-          <div
-            key={item.id}
-            draggable
-            onDragStart={() => handleActionDragStart(index)}
-            onDragOver={(e) => handleActionDragOver(e, index)}
-            onDragEnd={handleActionDragEnd}
-            style={{
-              border: `1px solid ${invalid ? theme.state.warning : isDragOver ? theme.accent.primary : theme.border.hairline}`,
-              borderRadius: uiRadius.md,
-              padding: uiSpace[14],
-              marginBottom: uiSpace[10],
-              background: invalid ? theme.state.warningBg : isDragging ? theme.bg.surfaceMuted : theme.bg.surface,
-              boxShadow: invalid ? "none" : uiShadow.sm,
-              transition: `box-shadow ${uiMotion.durationFast} ${uiMotion.easingStandard}, background ${uiMotion.durationFast} ${uiMotion.easingStandard}, border-color ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
-              opacity: isDragging ? 0.6 : 1,
-              transform: isDragOver ? "translateY(2px)" : "none"
-            }}>
-            <div style={{ display: "grid", gridTemplateColumns: "20px 30px 140px 1fr auto", gap: uiSpace[8], alignItems: "center" }}>
-              <div
-                style={{
-                  cursor: "grab",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: theme.text.secondary,
-                  opacity: 0.6,
-                  padding: `${uiSpace[2]}px 0`
-                }}
-                title={t("options.actions.dragHandle")}>
-                <DragHandleIcon size={14} color={theme.text.secondary} />
+      {/* Main content: left list + right detail */}
+      <div style={{ display: "flex", minHeight: 420 }}>
+        {/* Left: Action list */}
+        <div
+          style={{
+            width: 280,
+            minWidth: 280,
+            borderRight: `0.5px solid ${theme.border.hairline}`,
+            display: "flex",
+            flexDirection: "column"
+          }}>
+          {/* List items */}
+          <div style={{ flex: 1, overflowY: "auto", padding: uiSpace[8] }}>
+            {settings.actions.length === 0 ? (
+              <div style={{ ...emptyStateStyle, margin: uiSpace[8], fontSize: uiTypography.fontSize.sm }}>
+                {t("options.actions.emptyActions")}
               </div>
-              <div style={{ position: "relative" }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingIconActionId(item.id)
-                    setActionIconEditText(item.iconText ?? "")
-                  }}
-                  title={t("options.connection.iconTooltip")}
-                  style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: uiRadius.sm,
-                    border: "none",
-                    background: getAvatarPalette(item.iconText, item.label, themeName === "dark").background,
-                    color: getAvatarPalette(item.iconText, item.label, themeName === "dark").color,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: displayText.length >= 4 ? 8 : displayText.length > 1 ? 9 : 11,
-                    fontWeight: uiTypography.fontWeight.semibold,
-                    letterSpacing: uiTypography.letterSpacing.tight,
-                    flexShrink: 0,
-                    cursor: "pointer",
-                    padding: 0,
-                    outline: "none"
-                  }}>
-                  {isEditingIcon ? "" : displayText}
-                </button>
-                {isEditingIcon ? (
-                  <input
-                    autoFocus
-                    maxLength={4}
-                    value={actionIconEditText}
-                    onChange={(e) => setActionIconEditText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        saveSettingsNow((current) => ({
-                          ...current,
-                          actions: current.actions.map((a, i) =>
-                            i === index ? { ...a, iconText: actionIconEditText.trim() } : a
-                          )
-                        }))
-                        setEditingIconActionId(null)
-                      } else if (e.key === "Escape") {
-                        setEditingIconActionId(null)
-                      }
-                    }}
-                    onBlur={() => {
-                      saveSettingsNow((current) => ({
-                        ...current,
-                        actions: current.actions.map((a, i) =>
-                          i === index ? { ...a, iconText: actionIconEditText.trim() } : a
-                        )
-                      }))
-                      setEditingIconActionId(null)
-                    }}
-                    placeholder={t("options.connection.iconPlaceholder")}
+            ) : (
+              settings.actions.map((item, index) => {
+                const displayText = getAvatarDisplayText(item.iconText, item.label)
+                const isSelected = selectedActionId === item.id
+                const isDragging = draggedActionIndex === index
+                const isDragOver = dragOverActionIndex === index
+                const invalid = !hasTextPlaceholder(item.template)
+
+                return (
+                  <div
+                    key={item.id}
+                    draggable
+                    onDragStart={() => handleActionDragStart(index)}
+                    onDragOver={(e) => handleActionDragOver(e, index)}
+                    onDragEnd={handleActionDragEnd}
+                    onClick={() => setSelectedActionId(item.id)}
                     style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      width: 48,
-                      height: 30,
-                      fontSize: uiTypography.fontSize.sm,
-                      border: `1px solid ${theme.border.default}`,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: uiSpace[8],
+                      padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
+                      marginBottom: 2,
                       borderRadius: uiRadius.sm,
-                      padding: `0 ${uiSpace[4]}px`,
-                      outline: "none",
-                      background: theme.bg.surface,
-                      color: theme.text.primary,
-                      zIndex: 10,
-                      boxShadow: uiShadow.md
-                    }}
-                  />
+                      cursor: "pointer",
+                      background: isSelected ? `${theme.accent.primary}14` : isDragOver ? theme.bg.surfaceAlt : "transparent",
+                      border: `1px solid ${invalid ? theme.state.warning : "transparent"}`,
+                      opacity: isDragging ? 0.5 : 1,
+                      transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+                    }}>
+                    {/* Drag handle */}
+                    <div
+                      style={{ cursor: "grab", display: "flex", flexShrink: 0, opacity: 0.4 }}
+                      title={t("options.actions.dragHandle")}>
+                      <DragHandleIcon size={12} color={theme.text.secondary} />
+                    </div>
+
+                    {/* Icon */}
+                    <div
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: uiRadius.sm,
+                        background: getAvatarPalette(item.iconText, item.label, themeName === "dark").background,
+                        color: getAvatarPalette(item.iconText, item.label, themeName === "dark").color,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: displayText.length >= 4 ? 7 : displayText.length > 1 ? 8 : 10,
+                        fontWeight: uiTypography.fontWeight.semibold,
+                        letterSpacing: uiTypography.letterSpacing.tight,
+                        flexShrink: 0
+                      }}>
+                      {displayText}
+                    </div>
+
+                    {/* Label */}
+                    <span
+                      style={{
+                        flex: 1,
+                        fontSize: uiTypography.fontSize.sm,
+                        fontWeight: isSelected ? uiTypography.fontWeight.semibold : uiTypography.fontWeight.regular,
+                        color: theme.text.primary,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap"
+                      }}>
+                      {item.label}
+                    </span>
+
+                    {/* Enable toggle */}
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <ToggleSwitch
+                        checked={item.enabled !== false}
+                        onChange={() => updateCustomAction(index, { enabled: item.enabled === false ? true : false })}
+                        theme={theme}
+                      />
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+          {/* Add action button */}
+          <div style={{ padding: uiSpace[8], borderTop: `0.5px solid ${theme.border.hairline}` }}>
+            <button
+              type="button"
+              onClick={handleAddAction}
+              onMouseDown={() => setPressedBtn("add-action")}
+              onMouseUp={() => setPressedBtn(null)}
+              onMouseLeave={() => setPressedBtn(null)}
+              style={{
+                ...secondaryBtnStyle,
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: uiSpace[4],
+                transform: pressedBtn === "add-action" ? "scale(0.98)" : "scale(1)"
+              }}>
+              <PlusIcon size={14} color={theme.text.primary} />
+              {t("options.actions.addAction")}
+            </button>
+          </div>
+        </div>
+
+        {/* Right: Detail panel */}
+        <div style={{ flex: 1, padding: uiSpace[24], overflowY: "auto" }}>
+          {!selectedAction ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "100%",
+                color: theme.text.secondary,
+                fontSize: uiTypography.fontSize.md
+              }}>
+              {t("options.actions.selectAction")}
+            </div>
+          ) : (
+            <div>
+              {/* Detail title */}
+              <h3
+                style={{
+                  margin: `0 0 ${uiSpace[20]}px`,
+                  fontSize: uiTypography.fontSize.md,
+                  fontWeight: uiTypography.fontWeight.semibold,
+                  color: theme.text.primary
+                }}>
+                {t("options.actions.detailTitle")}
+              </h3>
+
+              {/* Action name */}
+              <div style={{ marginBottom: uiSpace[16] }}>
+                <label style={fieldLabelStyle}>{t("options.actions.actionName")}</label>
+                <input
+                  value={selectedAction.label}
+                  onFocus={() => setFocusedField(`${selectedAction.id}-label`)}
+                  onBlur={() => setFocusedField(null)}
+                  onChange={(event) => {
+                    updateCustomAction(selectedActionIndex, { label: event.target.value })
+                  }}
+                  placeholder={t("options.actions.actionNamePlaceholder")}
+                  style={createInputStyle(`${selectedAction.id}-label`)}
+                />
+              </div>
+
+              {/* Icon */}
+              <div style={{ marginBottom: uiSpace[16] }}>
+                <label style={fieldLabelStyle}>{t("options.connection.icon")}</label>
+                <div style={{ display: "flex", alignItems: "center", gap: uiSpace[12] }}>
+                  <div style={{ position: "relative" }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingIconActionId(selectedAction.id)
+                        setActionIconEditText(selectedAction.iconText ?? "")
+                      }}
+                      title={t("options.connection.iconTooltip")}
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: uiRadius.sm,
+                        border: `1px solid ${theme.border.default}`,
+                        background: getAvatarPalette(selectedAction.iconText, selectedAction.label, themeName === "dark").background,
+                        color: getAvatarPalette(selectedAction.iconText, selectedAction.label, themeName === "dark").color,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: (() => {
+                          const dt = getAvatarDisplayText(selectedAction.iconText, selectedAction.label)
+                          return dt.length >= 4 ? 9 : dt.length > 1 ? 10 : 12
+                        })(),
+                        fontWeight: uiTypography.fontWeight.semibold,
+                        letterSpacing: uiTypography.letterSpacing.tight,
+                        cursor: "pointer",
+                        padding: 0,
+                        outline: "none"
+                      }}>
+                      {editingIconActionId === selectedAction.id ? "" : getAvatarDisplayText(selectedAction.iconText, selectedAction.label)}
+                    </button>
+                    {editingIconActionId === selectedAction.id ? (
+                      <input
+                        autoFocus
+                        maxLength={4}
+                        value={actionIconEditText}
+                        onChange={(e) => setActionIconEditText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            saveSettingsNow((current) => ({
+                              ...current,
+                              actions: current.actions.map((a) =>
+                                a.id === selectedAction.id ? { ...a, iconText: actionIconEditText.trim() } : a
+                              )
+                            }))
+                            setEditingIconActionId(null)
+                          } else if (e.key === "Escape") {
+                            setEditingIconActionId(null)
+                          }
+                        }}
+                        onBlur={() => {
+                          saveSettingsNow((current) => ({
+                            ...current,
+                            actions: current.actions.map((a) =>
+                              a.id === selectedAction.id ? { ...a, iconText: actionIconEditText.trim() } : a
+                            )
+                          }))
+                          setEditingIconActionId(null)
+                        }}
+                        placeholder={t("options.connection.iconPlaceholder")}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: 54,
+                          height: 36,
+                          fontSize: uiTypography.fontSize.md,
+                          border: `1px solid ${theme.border.default}`,
+                          borderRadius: uiRadius.sm,
+                          padding: `0 ${uiSpace[4]}px`,
+                          outline: "none",
+                          background: theme.bg.surface,
+                          color: theme.text.primary,
+                          zIndex: 10,
+                          boxShadow: uiShadow.md
+                        }}
+                      />
+                    ) : null}
+                  </div>
+                  <span style={{ fontSize: uiTypography.fontSize.sm, color: theme.text.secondary }}>
+                    {t("options.connection.iconTooltip")}
+                  </span>
+                </div>
+              </div>
+
+              {/* Template */}
+              <div style={{ marginBottom: uiSpace[16] }}>
+                <label style={fieldLabelStyle}>{t("options.actions.actionTemplate")}</label>
+                <textarea
+                  value={selectedAction.template}
+                  onFocus={() => setFocusedField(`${selectedAction.id}-template`)}
+                  onBlur={() => setFocusedField(null)}
+                  onChange={(event) => {
+                    updateCustomAction(selectedActionIndex, { template: event.target.value })
+                  }}
+                  placeholder={t("options.actions.actionTemplatePlaceholder")}
+                  rows={4}
+                  style={{
+                    ...createInputStyle(`${selectedAction.id}-template`),
+                    resize: "vertical",
+                    minHeight: 80
+                  } as CSSProperties}
+                />
+                <p style={{ margin: `${uiSpace[6]}px 0 0`, color: theme.text.secondary, fontSize: uiTypography.fontSize.xs }}>
+                  {t("options.actions.templateHelp")}<code style={{ background: theme.bg.surfaceMuted, padding: "1px 4px", borderRadius: 3 }}>{"{text}"}</code>{t("options.actions.templateHelpSuffix")}
+                </p>
+                {!hasTextPlaceholder(selectedAction.template) ? (
+                  <div style={{ marginTop: uiSpace[6], color: theme.state.warning, fontSize: uiTypography.fontSize.xs, fontWeight: uiTypography.fontWeight.medium }}>
+                    {t("options.actions.missingPlaceholder")}
+                  </div>
                 ) : null}
               </div>
-              <input
-                aria-label={t("options.actions.actionName")}
-                value={item.label}
-                onFocus={() => setFocusedField(`${item.id}-label`)}
-                onBlur={() => setFocusedField(null)}
-                onChange={(event) => {
-                  updateCustomAction(index, { label: event.target.value })
-                }}
-                placeholder={t("options.actions.actionNamePlaceholder")}
-                style={createInputStyle(`${item.id}-label`)}
-              />
-              <input
-                aria-label={t("options.actions.actionTemplate")}
-                value={item.template}
-                onFocus={() => setFocusedField(`${item.id}-template`)}
-                onBlur={() => setFocusedField(null)}
-                onChange={(event) => {
-                  updateCustomAction(index, { template: event.target.value })
-                }}
-                placeholder={t("options.actions.actionTemplatePlaceholder")}
-                style={createInputStyle(`${item.id}-template`)}
-              />
-              <div style={{ display: "flex", alignItems: "center", gap: uiSpace[8] }}>
+
+              {/* Enable toggle */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: `${uiSpace[12]}px ${uiSpace[14]}px`,
+                  border: `1px solid ${theme.border.hairline}`,
+                  borderRadius: uiRadius.md,
+                  background: theme.bg.surfaceMuted,
+                  marginBottom: uiSpace[20]
+                }}>
+                <span style={{ fontSize: uiTypography.fontSize.sm, color: theme.text.primary }}>
+                  {selectedAction.enabled === false ? t("options.actions.disabled") : t("options.actions.enabled")}
+                </span>
                 <ToggleSwitch
-                  checked={item.enabled !== false}
-                  onChange={() => updateCustomAction(index, { enabled: item.enabled === false ? true : false })}
+                  checked={selectedAction.enabled !== false}
+                  onChange={() => updateCustomAction(selectedActionIndex, { enabled: selectedAction.enabled === false ? true : false })}
                   theme={theme}
                 />
-                <button
-                  type="button"
-                  onClick={() => {
-                    saveSettingsNow((current) => ({
-                      ...current,
-                      actions: current.actions.filter((action) => action.id !== item.id)
-                    }))
-                  }}
-                  style={{ ...secondaryBtnStyle, color: theme.state.error, borderColor: theme.state.error }}>
-                  {t("options.actions.delete")}
-                </button>
               </div>
-            </div>
-            {invalid ? (
-              <div style={{ marginTop: uiSpace[8], color: theme.state.warning, fontSize: uiTypography.fontSize.sm, fontWeight: uiTypography.fontWeight.medium }}>
-                {t("options.actions.missingPlaceholder")}
-              </div>
-            ) : null}
-          </div>
-        )
-      })}
 
-      {settings.actions.length === 0 ? (
-        <div style={emptyStateStyle}>
-          {t("options.actions.emptyActions")}
+              {/* Delete button */}
+              <button
+                type="button"
+                onClick={() => handleDeleteAction(selectedAction.id)}
+                style={{
+                  ...secondaryBtnStyle,
+                  color: theme.state.error,
+                  borderColor: theme.state.error,
+                  width: "100%"
+                }}>
+                {t("options.actions.delete")}
+              </button>
+            </div>
+          )}
         </div>
-      ) : null}
+      </div>
     </section>
   )
 
@@ -1655,7 +1805,7 @@ export default function OptionsPage() {
     about: renderAbout
   }
 
-  const sidebarWidth = 320
+  const sidebarWidth = 300
 
   if (!themeReady) return null
 
@@ -1781,7 +1931,7 @@ export default function OptionsPage() {
           }}>
           <div
             style={{
-              maxWidth: 1000,
+              maxWidth: 1400,
               minWidth: 400,
               width: "100%",
               margin: "0 auto",
@@ -1809,7 +1959,7 @@ export default function OptionsPage() {
 
         <div
           style={{
-            maxWidth: 1000,
+            maxWidth: 1400,
             minWidth: 400,
             width: "100%",
             margin: "0 auto",

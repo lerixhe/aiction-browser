@@ -135,13 +135,13 @@ export const uiTypography = {
   fontFamilyDisplay: '"SF Pro Display", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif',
   fontFamilyMono: '"SF Mono", "Fira Code", "JetBrains Mono", Menlo, Monaco, Consolas, monospace',
   fontSize: {
-    xs: 11,
-    sm: 12,
-    md: 14,
-    lg: 16,
-    xl: 18,
-    xxl: 22,
-    title: 28
+    xs: 12,
+    sm: 13,
+    md: 15,
+    lg: 17,
+    xl: 19,
+    xxl: 23,
+    title: 29
   },
   fontWeight: {
     regular: 400,
