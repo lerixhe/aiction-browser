@@ -1412,7 +1412,7 @@ export default function OptionsPage() {
                     updateCustomAction(selectedActionIndex, { label: event.target.value })
                   }}
                   placeholder={t("options.actions.actionNamePlaceholder")}
-                  style={createInputStyle(`${selectedAction.id}-label`)}
+                  style={{ ...createInputStyle(`${selectedAction.id}-label`), fontSize: uiTypography.fontSize.sm }}
                 />
               </div>
 
@@ -1519,7 +1519,8 @@ export default function OptionsPage() {
                   style={{
                     ...createInputStyle(`${selectedAction.id}-template`),
                     resize: "vertical",
-                    minHeight: 80
+                    minHeight: 80,
+                    fontSize: uiTypography.fontSize.sm
                   } as CSSProperties}
                 />
                 <p style={{ margin: `${uiSpace[6]}px 0 0`, color: theme.text.secondary, fontSize: uiTypography.fontSize.xs }}>
