@@ -483,7 +483,7 @@ while (true) {
    - 模型参数调整（maxTokens、temperature、topP 等）
    - 测试连接功能
    - 获取模型列表
-3. **动作指令**：自定义动作模板管理
+3. **AI Actions**：自定义动作模板管理
 4. **备份与迁移**：导入/导出配置 JSON
 
 **状态管理示例**（`src/options/index.tsx:91-113`）：
@@ -1145,7 +1145,7 @@ export const DEFAULT_ACTIONS: ActionTemplate[] = [
 
 2. **或者通过 UI 添加**：
    - 打开扩展设置
-   - 进入"动作指令"选项卡
+   - 进入"AI Actions"选项卡
    - 点击"新增动作"
    - 填写名称和模板（必须包含 `{text}` 占位符）
 

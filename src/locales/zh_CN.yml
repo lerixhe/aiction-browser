@@ -44,7 +44,7 @@ options:
   nav:
     appearance: 外观
     connection: API提供商
-    actions: 动作指令
+    actions: AI Actions
     backup: 备份与迁移
     about: 关于
   appearance:
@@ -56,8 +56,8 @@ options:
     languageTitle: 语言
     languageDesc: 扩展界面的显示语言
     languageSystem: 跟随系统
-    menuStyleTitle: 动作指令菜单样式
-    menuStyleDesc: 触发按钮展开后的动作指令菜单样式
+    menuStyleTitle: AI Actions菜单样式
+    menuStyleDesc: 触发按钮展开后的AI Actions菜单样式
     menuStyleExplode: 环形按钮排列
     menuStyleExplodeDesc: 灵动展开，趣味反馈
     menuStylePill: 胶囊工具栏
@@ -108,7 +108,7 @@ options:
     missingUrlKeyModel: "请填写 API Base URL、API Key 和 Model 后再测试。"
     missingApiBaseUrl: 请先填写 API Base URL
   actions:
-    title: 动作指令列表
+    title: AI Actions列表
     desc: 自定义选区操作指令
     addAction: 新增动作
     newActionLabel: 新动作
@@ -144,7 +144,7 @@ options:
     featuresTitle: 主要功能
     feature1: 选中网页文本，即刻唤起 AI 工具栏
     feature2: 内置翻译、总结、解释等常用指令
-    feature3: 支持自定义动作指令，灵活扩展
+    feature3: 支持自定义AI Actions，灵活扩展
     feature4: 兼容 OpenAI、Claude、Gemini 等主流大模型
     feature5: 对话式交互，持续追问不中断
     contactTitle: 联系我们
@@ -164,9 +164,9 @@ popup:
   selectService: "选择模型服务："
   noService: 暂无可用模型服务
   unnamedService: 未命名服务
-  selectAction: "选择动作指令："
+  selectAction: "选择AI Actions："
   enabledActions: "已启用 $1 个动作"
-  noActions: 暂无可用动作指令
+  noActions: 暂无可用AI Actions
   settings: "设置 →"
 
 pdf:
