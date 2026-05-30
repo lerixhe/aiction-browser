@@ -133,6 +133,9 @@ export default function OptionsPage() {
     void getSettings().then((loaded) => {
       setSettings(loaded)
       setThemeReady(true)
+      if (loaded.actions.length > 0) {
+        setSelectedActionId(loaded.actions[0].id)
+      }
     })
     void chrome.storage.local.get("optionsActiveSection").then((result) => {
       const saved = result.optionsActiveSection as Section | undefined
@@ -1536,8 +1539,7 @@ export default function OptionsPage() {
                 style={{
                   ...secondaryBtnStyle,
                   color: theme.state.error,
-                  borderColor: theme.state.error,
-                  width: "100%"
+                  borderColor: theme.state.error
                 }}>
                 {t("options.actions.delete")}
               </button>

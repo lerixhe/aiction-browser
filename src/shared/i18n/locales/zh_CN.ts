@@ -108,7 +108,7 @@ export default {
   "options.actions.actionNamePlaceholder": "按钮名称",
   "options.actions.actionTemplate": "动作模板",
   "options.actions.actionTemplatePlaceholder": "模板，必须包含 {text}",
-  "options.actions.delete": "删除动作",
+  "options.actions.delete": "删除",
   "options.actions.missingPlaceholder": "模板缺少 {text} 占位符。",
   "options.actions.emptyActions": "还没有动作，点击下方「新增动作」开始创建。",
   "options.actions.detailTitle": "动作详情",

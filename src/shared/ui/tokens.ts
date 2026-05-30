@@ -177,10 +177,10 @@ export const uiSpace = {
 } as const
 
 export const uiRadius = {
-  sm: 6,
-  md: 8,
-  lg: 12,
-  xl: 16,
+  sm: 4,
+  md: 6,
+  lg: 8,
+  xl: 12,
   pill: 999
 } as const
 

@@ -108,7 +108,7 @@ export default {
   "options.actions.actionNamePlaceholder": "Button name",
   "options.actions.actionTemplate": "Action Template",
   "options.actions.actionTemplatePlaceholder": "Template, must contain {text}",
-  "options.actions.delete": "Delete Action",
+  "options.actions.delete": "Delete",
   "options.actions.missingPlaceholder": "Template is missing the {text} placeholder.",
   "options.actions.emptyActions": "No actions yet. Click \"Add Action\" below to create one.",
   "options.actions.detailTitle": "Action Details",

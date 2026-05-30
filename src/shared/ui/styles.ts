@@ -72,7 +72,7 @@ export function createButtonStyle(
 
   return {
     border: palette.border,
-    borderRadius: uiRadius.pill,
+    borderRadius: uiRadius.md,
     padding: compact ? `${uiSpace[6]}px ${uiSpace[12]}px` : `${uiSpace[8]}px ${uiSpace[16]}px`,
     background: palette.background,
     color: palette.color,
