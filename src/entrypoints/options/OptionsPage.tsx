@@ -1327,10 +1327,8 @@ export default function OptionsPage() {
                 )
               })
             )}
-          </div>
 
-          {/* Add action button */}
-          <div style={{ padding: uiSpace[8], borderTop: `0.5px solid ${theme.border.hairline}` }}>
+            {/* Add action button */}
             <button
               type="button"
               onClick={handleAddAction}
@@ -1338,16 +1336,40 @@ export default function OptionsPage() {
               onMouseUp={() => setPressedBtn(null)}
               onMouseLeave={() => setPressedBtn(null)}
               style={{
-                ...secondaryBtnStyle,
-                width: "100%",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: uiSpace[4],
+                gap: uiSpace[8],
+                padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
+                marginBottom: 2,
+                borderRadius: uiRadius.sm,
+                cursor: "pointer",
+                background: "transparent",
+                border: `1px dashed ${theme.border.default}`,
+                width: "100%",
+                boxSizing: "border-box",
+                transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
+                fontFamily: uiTypography.fontFamily,
+                fontSize: uiTypography.fontSize.sm,
+                color: theme.text.secondary,
                 transform: pressedBtn === "add-action" ? "scale(0.98)" : "scale(1)"
               }}>
-              <PlusIcon size={14} color={theme.text.primary} />
-              {t("options.actions.addAction")}
+              <div
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: uiRadius.sm,
+                  border: `1px dashed ${theme.border.default}`,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0
+                }}>
+                <PlusIcon size={14} color={theme.text.secondary} />
+              </div>
+              <span>
+                {t("options.actions.addAction")}
+              </span>
             </button>
           </div>
         </div>
