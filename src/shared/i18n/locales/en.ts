@@ -1,5 +1,5 @@
 export default {
-  "extName": "Aiction",
+  "extName": "AIction",
   "extDescription": "A lightweight Chrome extension for getting AI help on selected web content.",
   "errors.noApiKey": "Please set your API Key in Settings first.",
   "errors.streamDisconnected": "Stream disconnected",
@@ -125,7 +125,7 @@ export default {
   "options.backup.deleteServiceMessage": "Are you sure you want to delete this custom service? If it is currently active, the system will automatically switch to the next available service.",
   "options.backup.deleteServiceButton": "Delete Service",
   "options.about.title": "About Us",
-  "options.about.description": "Aiction is a lightweight Chrome extension that helps you get AI assistance while browsing the web. Select any text to quickly ask questions, translate, summarize, or use custom commands — making AI your browsing assistant.",
+  "options.about.description": "AIction is a lightweight Chrome extension that helps you get AI assistance while browsing the web. Select any text to quickly ask questions, translate, summarize, or use custom commands — making AI your browsing assistant.",
   "options.about.featuresTitle": "Main Features",
   "options.about.feature1": "Select web text to instantly invoke the AI toolbar",
   "options.about.feature2": "Built-in commands for translation, summarization, explanation, and more",
@@ -142,7 +142,7 @@ export default {
   "options.about.telemetryToggle": "Help Improve User Experience",
   "options.about.telemetryEnabled": "Enabled",
   "options.about.telemetryDisabled": "Disabled",
-  "options.about.copyright": "© 2026 Aiction All rights reserved.",
+  "options.about.copyright": "© 2026 AIction All rights reserved.",
   "popup.settingsLabel": "Open Settings",
   "popup.selectService": "Select Model Service:",
   "popup.noService": "No available model services",
@@ -154,5 +154,5 @@ export default {
   "pdf.noUrl": "No PDF URL provided",
   "pdf.loadFailed": "Failed to load PDF: $1",
   "pdf.loading": "Loading PDF...",
-  "background.openPdfWithAiction": "Open PDF with Aiction"
+  "background.openPdfWithAIction": "Open PDF with AIction"
 } as const

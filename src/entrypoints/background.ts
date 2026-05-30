@@ -317,7 +317,7 @@ export default defineBackground(() => {
     // Create context menu for PDF files
     chrome.contextMenus.create({
       id: "open-pdf-with-aiction",
-      title: i18nStore.t("background.openPdfWithAiction"),
+      title: i18nStore.t("background.openPdfWithAIction"),
       contexts: ["page", "frame"],
       documentUrlPatterns: [
         "*://*/*.pdf",

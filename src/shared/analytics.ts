@@ -78,7 +78,7 @@ export async function initContentScriptAnalytics(): Promise<void> {
     })
     sdkInitialized = true
   } catch (error) {
-    console.warn("[Aiction] PostHog SDK init failed:", error)
+    console.warn("[AIction] PostHog SDK init failed:", error)
   }
 }
 
@@ -97,7 +97,7 @@ export async function trackEvent(
     try {
       posthog.capture(name, properties)
     } catch (error) {
-      console.warn("[Aiction] PostHog capture failed:", error)
+      console.warn("[AIction] PostHog capture failed:", error)
     }
   }
 }
@@ -128,10 +128,10 @@ async function sendBackgroundEvent(
       })
     })
     if (!response.ok) {
-      console.warn("[Aiction] PostHog capture HTTP error:", response.status)
+      console.warn("[AIction] PostHog capture HTTP error:", response.status)
     }
   } catch (error) {
-    console.warn("[Aiction] PostHog capture failed:", error)
+    console.warn("[AIction] PostHog capture failed:", error)
   }
 }
 

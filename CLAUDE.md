@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 ## Project Overview
-Aiction is a Chrome MV3 extension built with **WXT + React + TypeScript**. Users select text on any web page, trigger AI actions from an inline toolbar, and continue the conversation in a floating chat panel. The AI backend uses an OpenAI-compatible `/chat/completions` endpoint.
+AIction is a Chrome MV3 extension built with **WXT + React + TypeScript**. Users select text on any web page, trigger AI actions from an inline toolbar, and continue the conversation in a floating chat panel. The AI backend uses an OpenAI-compatible `/chat/completions` endpoint.
 
 ## Commands
 - `npm run dev` — WXT dev build with watch mode

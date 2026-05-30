@@ -447,7 +447,7 @@ export default function Popup() {
       <div style={headerStyle}>
         <div style={titleContainerStyle}>
           <BrandIcon size={24} />
-          <h1 style={titleStyle}>Aiction</h1>
+          <h1 style={titleStyle}>AIction</h1>
         </div>
         <button
           type="button"

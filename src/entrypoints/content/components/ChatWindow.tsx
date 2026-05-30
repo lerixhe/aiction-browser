@@ -318,7 +318,7 @@ export default function ChatWindow({
               letterSpacing: uiTypography.letterSpacing.tight,
               color: theme.text.primary
             }}>
-            Aiction
+            AIction
           </span>
         </div>
         <button

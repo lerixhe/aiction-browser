@@ -1696,7 +1696,7 @@ export default function OptionsPage() {
               fontWeight: uiTypography.fontWeight.bold,
               letterSpacing: uiTypography.letterSpacing.tight
             }}>
-            Aiction
+            AIction
           </span>
           <span
             style={{

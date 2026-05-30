@@ -164,7 +164,7 @@ aiction/
 ```json
 {
   "name": "aiction",
-  "displayName": "Aiction",
+  "displayName": "AIction",
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",
@@ -1526,4 +1526,4 @@ Content Script                    Port                    Background
 
 **文档版本**：1.1  
 **最后更新**：2026-04-24  
-**维护者**：Aiction 开发团队
+**维护者**：AIction 开发团队

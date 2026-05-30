@@ -10,7 +10,7 @@ export function BrandIcon({ size }: IconProps) {
       src={iconUrl}
       width={size}
       height={size}
-      alt="Aiction"
+      alt="AIction"
       aria-hidden="true"
       style={{ borderRadius: '20%' }}
     />

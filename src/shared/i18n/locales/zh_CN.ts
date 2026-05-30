@@ -1,5 +1,5 @@
 export default {
-  "extName": "Aiction",
+  "extName": "AIction",
   "extDescription": "轻量级 Chrome 扩展，帮你随时获取 AI 辅助。",
   "errors.noApiKey": "请先在设置台填写 API Key。",
   "errors.streamDisconnected": "流式连接已断开",
@@ -125,7 +125,7 @@ export default {
   "options.backup.deleteServiceMessage": "确定删除这个自定义服务吗？如果它当前已启用，系统会自动启用下一个服务。",
   "options.backup.deleteServiceButton": "删除服务",
   "options.about.title": "关于我们",
-  "options.about.description": "Aiction 是一款轻量级 Chrome 扩展，帮助你在浏览网页时随时获取 AI 辅助。选中任意文本即可快速提问、翻译、总结或自定义指令，让 AI 成为你的浏览助手。",
+  "options.about.description": "AIction 是一款轻量级 Chrome 扩展，帮助你在浏览网页时随时获取 AI 辅助。选中任意文本即可快速提问、翻译、总结或自定义指令，让 AI 成为你的浏览助手。",
   "options.about.featuresTitle": "主要功能",
   "options.about.feature1": "选中网页文本，即刻唤起 AI 工具栏",
   "options.about.feature2": "内置翻译、总结、解释等常用指令",
@@ -142,7 +142,7 @@ export default {
   "options.about.telemetryToggle": "协助改善用户体验",
   "options.about.telemetryEnabled": "已开启",
   "options.about.telemetryDisabled": "已关闭",
-  "options.about.copyright": "© 2026 Aiction All rights reserved.",
+  "options.about.copyright": "© 2026 AIction All rights reserved.",
   "popup.settingsLabel": "打开设置",
   "popup.selectService": "选择模型服务：",
   "popup.noService": "暂无可用模型服务",
@@ -154,5 +154,5 @@ export default {
   "pdf.noUrl": "未提供 PDF URL",
   "pdf.loadFailed": "加载 PDF 失败: $1",
   "pdf.loading": "加载 PDF 中...",
-  "background.openPdfWithAiction": "用 Aiction 打开 PDF"
+  "background.openPdfWithAIction": "用 AIction 打开 PDF"
 } as const
