@@ -49,7 +49,7 @@ options:
     about: 关于
   appearance:
     themeTitle: 主题
-    themeDesc: 浅色、深色或跟随系统（需浏览器支持）
+    themeDesc: 浅色、深色或跟随系统
     themeAuto: 跟随系统
     themeLight: 浅色
     themeDark: 深色

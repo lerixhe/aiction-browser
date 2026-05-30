@@ -38,7 +38,7 @@ export default {
   "options.nav.backup": "Backup & Migration",
   "options.nav.about": "About",
   "options.appearance.themeTitle": "Theme",
-  "options.appearance.themeDesc": "Light, dark, or follow system (requires browser support)",
+  "options.appearance.themeDesc": "Light, dark, or follow system",
   "options.appearance.themeAuto": "Follow System",
   "options.appearance.themeLight": "Light",
   "options.appearance.themeDark": "Dark",
