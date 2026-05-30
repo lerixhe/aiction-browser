@@ -1,0 +1,10 @@
+{
+  "extName": {
+    "message": "Aiction",
+    "description": "扩展名称"
+  },
+  "extDescription": {
+    "message": "轻量级 Chrome 扩展，帮你随时获取 AI 辅助。",
+    "description": "扩展描述"
+  }
+}

@@ -37,7 +37,7 @@ export default {
   "options.nav.actions": "动作指令",
   "options.nav.backup": "备份与迁移",
   "options.nav.about": "关于",
-  "options.appearance.themeTitle": "主题配色",
+  "options.appearance.themeTitle": "主题",
   "options.appearance.themeDesc": "浅色、深色或跟随系统（需浏览器支持）",
   "options.appearance.themeAuto": "跟随系统",
   "options.appearance.themeLight": "浅色",

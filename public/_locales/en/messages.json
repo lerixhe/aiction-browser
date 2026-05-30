@@ -1,0 +1,10 @@
+{
+  "extName": {
+    "message": "Aiction",
+    "description": "Extension name"
+  },
+  "extDescription": {
+    "message": "A lightweight Chrome extension for getting AI help on selected web content.",
+    "description": "Extension description"
+  }
+}
