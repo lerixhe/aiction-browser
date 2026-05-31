@@ -1,19 +1,13 @@
-import { useMemo } from "react"
-
 import { type UiTheme, uiMotion, uiRadius, uiShadow, uiTypography } from "@/shared/ui/tokens"
 import { createFocusRing } from "@/shared/ui/styles"
 import { getAvatarDisplayText, getAvatarPalette } from "@/shared/ui/avatar"
 import type { ActionTemplate } from "@/shared/types"
 
 const PILL_HEIGHT = 28
-const PILL_PAD_X = 14
-const CHAR_WIDTH = 7.5
 const PILL_GAP = 6
 
 function isDarkTheme(theme: UiTheme): boolean {
-  // Simple heuristic: if background color is dark, assume dark theme
   const bgColor = theme.bg.page
-  // Parse hex color
   const hex = bgColor.replace('#', '')
   const r = parseInt(hex.substring(0, 2), 16)
   const g = parseInt(hex.substring(2, 4), 16)
@@ -28,12 +22,7 @@ interface PillActionMenuProps {
   onHoverChange: (actionId: string | null) => void
   onActionClick: (action: ActionTemplate) => void
   theme: UiTheme
-  triggerSize: number
-}
-
-function estimateWidth(_label: string) {
-  // Fixed width for icon buttons
-  return PILL_HEIGHT
+  onKeyDown?: (event: React.KeyboardEvent) => void
 }
 
 export default function PillActionMenu({
@@ -42,19 +31,13 @@ export default function PillActionMenu({
   onHoverChange,
   onActionClick,
   theme,
-  triggerSize
+  onKeyDown
 }: PillActionMenuProps) {
-  const barOffsetX = useMemo(() => {
-    const totalWidth = actions.reduce((sum, action) => sum + estimateWidth(action.label) + PILL_GAP, -PILL_GAP)
-    return -(totalWidth - triggerSize) / 2
-  }, [actions, triggerSize])
-
   return (
     <div
+      role="toolbar"
+      onKeyDown={onKeyDown}
       style={{
-        position: "absolute",
-        left: barOffsetX,
-        top: -(PILL_HEIGHT + 16),
         display: "flex",
         gap: PILL_GAP,
         padding: "6px 8px",
