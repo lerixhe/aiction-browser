@@ -180,7 +180,6 @@ export function PdfViewerPage() {
     toolbarAnchor,
     selectionContext,
     actions,
-    toolbarMode,
     closeToolbar,
     openToolbar,
     toolbarVisibleRef
@@ -364,7 +363,6 @@ export function PdfViewerPage() {
           visible={toolbarVisible}
           anchor={toolbarAnchor}
           actions={actions}
-          toolbarMode={toolbarMode}
           onAction={(template, text) => {
             void handleAction(template, selectionContext?.text ?? text)
           }}

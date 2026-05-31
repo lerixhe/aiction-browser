@@ -56,12 +56,6 @@ options:
     languageTitle: 语言
     languageDesc: 扩展界面的显示语言
     languageSystem: 跟随系统
-    menuStyleTitle: AI Actions菜单样式
-    menuStyleDesc: 触发按钮展开后的AI Actions菜单样式
-    menuStyleExplode: 环形按钮排列
-    menuStyleExplodeDesc: 灵动展开，趣味反馈
-    menuStylePill: 胶囊工具栏
-    menuStylePillDesc: 经典设计，沉稳直观
   connection:
     createTitle: 添加自定义服务
     editTitle: 编辑自定义服务

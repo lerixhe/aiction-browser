@@ -11,7 +11,7 @@ import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@
 import { createButtonStyle, createCardStyle, createFieldLabelStyle, createFocusRing, createInputStyle as createSharedInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
 import { getAvatarPalette, getAvatarDisplayText } from "@/shared/ui/avatar"
 import { useI18n } from "@/shared/i18n/context"
-import type { ActionTemplate, ExtensionSettings, LanguagePreference, ThemePreference, ToolbarMode, ApiTestResponse, FetchModelsResponse, ModelServiceConfig } from "@/shared/types"
+import type { ActionTemplate, ExtensionSettings, LanguagePreference, ThemePreference, ApiTestResponse, FetchModelsResponse, ModelServiceConfig } from "@/shared/types"
 import { MESSAGE_TYPES } from "@/shared/constants"
 import { ConfirmDialog } from "@/entrypoints/options/ConfirmDialog"
 
@@ -667,89 +667,6 @@ export default function OptionsPage() {
             })}
           </div>
         </div>
-      </div>
-
-      <div style={{ marginTop: uiSpace[20] }}>
-        <div
-          style={{
-            borderTop: `0.5px solid ${theme.border.hairline}`,
-            paddingTop: uiSpace[20],
-            marginBottom: uiSpace[20]
-          }}>
-          <h2
-            style={{
-              margin: `0 0 ${uiSpace[4]}px`,
-              fontSize: uiTypography.fontSize.lg,
-              fontWeight: uiTypography.fontWeight.semibold,
-              letterSpacing: uiTypography.letterSpacing.tight
-            }}>
-
-            {t("options.appearance.menuStyleTitle")}
-          </h2>
-          <p
-            style={{
-              margin: `0 0 ${uiSpace[16]}px`,
-              color: theme.text.secondary,
-              fontSize: uiTypography.fontSize.md
-            }}>
-            {t("options.appearance.menuStyleDesc")}
-          </p>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: uiSpace[12]
-            }}>
-            {(
-              [
-                { value: "explode", label: t("options.appearance.menuStyleExplode"), description: t("options.appearance.menuStyleExplodeDesc") },
-                { value: "pill", label: t("options.appearance.menuStylePill"), description: t("options.appearance.menuStylePillDesc") }
-              ] satisfies { value: ToolbarMode; label: string; description: string }[]
-            ).map((option) => {
-              const isSelected = settings.toolbarMode === option.value
-
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => {
-                    saveSettingsNow((current) => ({ ...current, toolbarMode: option.value }))
-                  }}
-                  aria-pressed={isSelected}
-                  style={createSelectableCardStyle(isSelected)}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      marginBottom: uiSpace[8]
-                    }}>
-                    <span
-                      style={{
-                        color: theme.text.primary,
-                        fontSize: uiTypography.fontSize.md,
-                        fontWeight: uiTypography.fontWeight.semibold,
-                        fontFamily: uiTypography.fontFamily
-                      }}>
-                      {option.label}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      color: theme.text.secondary,
-                      fontSize: uiTypography.fontSize.sm,
-                      lineHeight: 1.6,
-                      fontFamily: uiTypography.fontFamily
-                    }}>
-                    {option.description}
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
       </div>
     </section>
   )

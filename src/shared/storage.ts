@@ -1,5 +1,5 @@
 import { DEFAULT_CUSTOM_MODEL_SERVICE, DEFAULT_SETTINGS } from "@/shared/defaults"
-import type { ExtensionSettings, LanguagePreference, ModelParams, ModelServiceConfig, ModelServiceType, ThemePreference, ToolbarMode } from "@/shared/types"
+import type { ExtensionSettings, LanguagePreference, ModelParams, ModelServiceConfig, ModelServiceType, ThemePreference } from "@/shared/types"
 
 export { DEFAULT_SETTINGS }
 
@@ -71,8 +71,6 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
 
   const validThemes: ThemePreference[] = ["auto", "light", "dark"]
   const theme = validThemes.includes(saved.theme as ThemePreference) ? (saved.theme as ThemePreference) : DEFAULT_SETTINGS.theme
-  const validToolbarModes: ToolbarMode[] = ["explode", "pill"]
-  const toolbarMode = validToolbarModes.includes(saved.toolbarMode as ToolbarMode) ? (saved.toolbarMode as ToolbarMode) : DEFAULT_SETTINGS.toolbarMode
 
   const actions = Array.isArray(saved.actions)
     ? validateActions(saved.actions)
@@ -95,7 +93,6 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     modelServices,
     activeModelServiceId,
     theme,
-    toolbarMode,
     language,
     actions,
     telemetryEnabled

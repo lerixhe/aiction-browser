@@ -23,7 +23,6 @@ export default function App() {
     toolbarAnchor,
     selectionContext,
     actions,
-    toolbarMode,
     closeToolbar,
     openToolbar,
     toolbarVisibleRef
@@ -146,7 +145,6 @@ export default function App() {
         visible={toolbarVisible}
         anchor={toolbarAnchor}
         actions={actions}
-        toolbarMode={toolbarMode}
         onAction={(template, text) => {
           void handleAction(template, selectionContext?.text ?? text)
         }}

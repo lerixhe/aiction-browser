@@ -1,19 +1,17 @@
 import { useEffect, useMemo, useState } from "react"
 
-import ExplodedActionMenu from "@/entrypoints/content/components/ExplodedActionMenu"
 import PillActionMenu from "@/entrypoints/content/components/PillActionMenu"
 import { BrandIcon } from "@/shared/ui/icons"
 import { useUiTheme } from "@/shared/ui/theme"
 import { uiLayout, uiLayer, uiMotion, uiRadius, uiShadow, uiTypography } from "@/shared/ui/tokens"
 import { createFocusRing } from "@/shared/ui/styles"
 import { useI18n } from "@/shared/i18n/context"
-import type { ActionTemplate, SelectionAnchor, ToolbarMode } from "@/shared/types"
+import type { ActionTemplate, SelectionAnchor } from "@/shared/types"
 
 interface Props {
   visible: boolean
   anchor: SelectionAnchor | null
   actions: ActionTemplate[]
-  toolbarMode: ToolbarMode
   onAction: (template: string, text: string) => void
   onClose: () => void
 }
@@ -26,7 +24,6 @@ export default function SelectionToolbar({
   visible,
   anchor,
   actions,
-  toolbarMode,
   onAction,
   onClose
 }: Props) {
@@ -152,25 +149,14 @@ export default function SelectionToolbar({
       </button>
 
       {ringOpen && (
-        toolbarMode === "pill" ? (
-          <PillActionMenu
-            actions={actions}
-            hoveredActionId={ringHovered}
-            onHoverChange={setRingHovered}
-            onActionClick={handleActionClick}
-            theme={theme}
-            triggerSize={TRIGGER_SIZE}
-          />
-        ) : (
-          <ExplodedActionMenu
-            actions={actions}
-            hoveredActionId={ringHovered}
-            onHoverChange={setRingHovered}
-            onActionClick={handleActionClick}
-            theme={theme}
-            triggerSize={TRIGGER_SIZE}
-          />
-        )
+        <PillActionMenu
+          actions={actions}
+          hoveredActionId={ringHovered}
+          onHoverChange={setRingHovered}
+          onActionClick={handleActionClick}
+          theme={theme}
+          triggerSize={TRIGGER_SIZE}
+        />
       )}
     </div>
   )

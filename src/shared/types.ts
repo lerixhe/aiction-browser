@@ -1,7 +1,5 @@
 export type ThemePreference = "auto" | "light" | "dark"
 
-export type ToolbarMode = "explode" | "pill"
-
 export type LanguagePreference = "system" | "en" | "zh_CN"
 
 export interface ActionTemplate {
@@ -37,7 +35,6 @@ export interface ExtensionSettings {
   modelServices: ModelServiceConfig[]
   activeModelServiceId: string
   theme: ThemePreference
-  toolbarMode: ToolbarMode
   language: LanguagePreference
   actions: ActionTemplate[]
   telemetryEnabled: boolean

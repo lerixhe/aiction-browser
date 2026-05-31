@@ -39,7 +39,6 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   modelServices: [],
   activeModelServiceId: "",
   theme: "auto",
-  toolbarMode: "pill",
   language: "system",
   actions: DEFAULT_ACTIONS,
   telemetryEnabled: true
@@ -49,8 +48,7 @@ type SectionKey = "appearance" | "actions" | "about"
 
 export const SECTION_DEFAULTS: Record<SectionKey, Partial<ExtensionSettings>> = {
   appearance: {
-    theme: DEFAULT_SETTINGS.theme,
-    toolbarMode: DEFAULT_SETTINGS.toolbarMode
+    theme: DEFAULT_SETTINGS.theme
   },
   actions: {
     actions: DEFAULT_SETTINGS.actions
