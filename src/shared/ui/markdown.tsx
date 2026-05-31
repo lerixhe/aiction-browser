@@ -7,14 +7,15 @@ import { createMarkdownStyles } from "@/shared/ui/styles"
 
 interface MarkdownRendererProps {
   content: string
+  color?: string
 }
 
-export function MarkdownRenderer({ content }: MarkdownRendererProps) {
+export function MarkdownRenderer({ content, color }: MarkdownRendererProps) {
   const theme = useUiTheme()
 
   const html = useMemo(() => {
     marked.setOptions({
-      breaks: true,
+      breaks: false,
       gfm: true
     })
     return marked.parse(content) as string
@@ -28,9 +29,9 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
       <div
         className="markdown-content"
         style={{
-          fontSize: uiTypography.fontSize.md,
-          color: theme.text.primary,
-          lineHeight: uiTypography.lineHeight.relaxed
+          fontSize: uiTypography.fontSize.sm,
+          color: color || theme.text.primary,
+          lineHeight: 1.4
         }}
         dangerouslySetInnerHTML={{ __html: html }}
       />

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 
 import { useDraggable } from "@/entrypoints/content/hooks/useDraggable"
-import { BrandIcon } from "@/shared/ui/icons"
 import { MarkdownRenderer } from "@/shared/ui/markdown"
 import { useUiTheme } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiShadow, uiSpace, uiTypography, uiLayer } from "@/shared/ui/tokens"
@@ -47,19 +46,6 @@ function CloseIcon({ size, color }: { size: number; color: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <path d="M4 4L12 12M12 4L4 12" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function DragIcon({ size, color }: { size: number; color: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <circle cx="5" cy="4" r="1.25" fill={color} />
-      <circle cx="11" cy="4" r="1.25" fill={color} />
-      <circle cx="5" cy="8" r="1.25" fill={color} />
-      <circle cx="11" cy="8" r="1.25" fill={color} />
-      <circle cx="5" cy="12" r="1.25" fill={color} />
-      <circle cx="11" cy="12" r="1.25" fill={color} />
     </svg>
   )
 }
@@ -134,17 +120,13 @@ function ThinkingBlock({
           style={{
             padding: `0 ${uiSpace[12]}px ${uiSpace[8]}px`,
             color: theme.text.secondary,
-            lineHeight: 1.55,
-            fontSize: uiTypography.fontSize.sm,
             borderLeft: `2px solid ${theme.brand.primary}`,
             marginLeft: uiSpace[12],
             marginRight: uiSpace[4],
             marginBottom: uiSpace[4],
-            opacity: 0.85,
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word"
+            opacity: 0.85
           }}>
-          {reasoning}
+          <MarkdownRenderer content={reasoning} color={theme.text.secondary} />
         </div>
       ) : null}
       <style>{`
@@ -224,6 +206,8 @@ export default function ChatWindow({
     width: "min(80vw, 960px)",
     maxWidth: "calc(100vw - 32px)",
     height: "min(70vh, calc(100vh - 32px))",
+    minWidth: 320,
+    minHeight: 250,
     display: "flex",
     flexDirection: "column",
     borderRadius: uiRadius.xl,
@@ -232,6 +216,8 @@ export default function ChatWindow({
     zIndex: uiLayer.overlay,
     pointerEvents: "auto",
     fontFamily: uiTypography.fontFamily,
+    padding: 0,
+    resize: "both",
     animation: `floating-panel-enter 350ms ${uiMotion.easingSpring} forwards`
   }
 
@@ -294,74 +280,60 @@ export default function ChatWindow({
         }
       `}</style>
 
-      {/* Header - Draggable */}
+      {/* Close button */}
+      <button
+        onClick={onClose}
+        onMouseDown={(event) => {
+          event.stopPropagation()
+          setClosePressed(true)
+        }}
+        onMouseUp={() => setClosePressed(false)}
+        onFocus={() => setFocused("close")}
+        onBlur={() => setFocused(null)}
+        aria-label={t("chat.closePanel")}
+        style={{
+          position: "absolute",
+          top: uiSpace[8],
+          right: uiSpace[8],
+          zIndex: 10,
+          background: hovered === "close" ? theme.bg.surfaceMuted : "transparent",
+          color: theme.text.secondary,
+          width: 24,
+          height: 24,
+          borderRadius: "50%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 0,
+          border: "none",
+          cursor: "pointer",
+          transform: closePressed ? "scale(0.9)" : "scale(1)"
+        }}
+        onMouseEnter={() => setHovered("close")}
+        onMouseLeave={() => {
+          setHovered(null)
+          setClosePressed(false)
+        }}>
+        <CloseIcon size={12} color={theme.text.secondary} />
+      </button>
+
+      {/* Drag handle area */}
       <div
         onMouseDown={handleDragStart}
         onTouchStart={handleDragStart}
         style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: `${uiSpace[12]}px ${uiSpace[16]}px`,
-          borderBottom: `0.5px solid ${theme.border.hairline}`,
+          height: uiSpace[24],
           flexShrink: 0,
           cursor: "grab",
           userSelect: "none"
-        }}>
-        <div style={{ display: "flex", alignItems: "center", gap: uiSpace[10] }}>
-          <DragIcon size={16} color={theme.text.secondary} />
-          <BrandIcon size={28} />
-          <span
-            style={{
-              fontWeight: uiTypography.fontWeight.semibold,
-              fontSize: uiTypography.fontSize.xxl,
-              letterSpacing: uiTypography.letterSpacing.tight,
-              color: theme.text.primary
-            }}>
-            AIction
-          </span>
-        </div>
-        <button
-          onClick={onClose}
-          onMouseDown={(event) => {
-            event.stopPropagation()
-            setClosePressed(true)
-          }}
-          onMouseUp={() => setClosePressed(false)}
-          onFocus={() => setFocused("close")}
-          onBlur={() => setFocused(null)}
-          aria-label={t("chat.closePanel")}
-          style={{
-            ...createButtonStyle(theme, "secondary", {
-              compact: true,
-              pressed: closePressed,
-              focused: focused === "close"
-            }),
-            background: hovered === "close" ? theme.bg.surfaceMuted : "transparent",
-            color: theme.text.secondary,
-            width: 28,
-            height: 28,
-            borderRadius: "50%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 0,
-            transform: closePressed ? "scale(0.9)" : "scale(1)"
-          }}
-          onMouseEnter={() => setHovered("close")}
-          onMouseLeave={() => {
-            setHovered(null)
-            setClosePressed(false)
-          }}>
-          <CloseIcon size={14} color={theme.text.secondary} />
-        </button>
-      </div>
+        }}
+      />
 
       {/* Captured text section */}
       {hasCapturedText && (
         <div
           style={{
-            padding: `${uiSpace[10]}px ${uiSpace[16]}px`,
+            padding: `${uiSpace[4]}px ${uiSpace[8]}px`,
             borderBottom: `0.5px solid ${theme.border.hairline}`,
             flexShrink: 0
           }}>
@@ -370,7 +342,7 @@ export default function ChatWindow({
               fontSize: uiTypography.fontSize.xs,
               fontWeight: uiTypography.fontWeight.medium,
               color: theme.text.secondary,
-              marginBottom: uiSpace[6],
+              marginBottom: uiSpace[4],
               letterSpacing: uiTypography.letterSpacing.wide,
               textTransform: "uppercase"
             }}>
@@ -389,9 +361,9 @@ export default function ChatWindow({
               width: "100%",
               resize: "vertical",
               borderRadius: uiRadius.sm,
-              fontSize: uiTypography.fontSize.md,
+              fontSize: uiTypography.fontSize.sm,
               fontFamily: "inherit",
-              lineHeight: 1.55,
+              lineHeight: 1.4,
               boxSizing: "border-box"
             }}
           />
@@ -406,7 +378,7 @@ export default function ChatWindow({
           flex: 1,
           overflowY: "auto",
           overscrollBehavior: "contain",
-          padding: uiSpace[16],
+          padding: uiSpace[6],
           display: "block",
           background: theme.bg.surfaceAlt,
           minHeight: 0
@@ -416,11 +388,11 @@ export default function ChatWindow({
             style={{
               ...createStatusMessageStyle(theme, "info"),
               color: theme.text.secondary,
-              fontSize: uiTypography.fontSize.md,
+              fontSize: uiTypography.fontSize.sm,
               borderRadius: uiRadius.md,
-              padding: `${uiSpace[16]}px ${uiSpace[20]}px`,
+              padding: `${uiSpace[10]}px ${uiSpace[14]}px`,
               textAlign: "center",
-              lineHeight: 1.55
+              lineHeight: 1.4
             }}>
             {hasCapturedText
               ? t("chat.emptyWithCapture")
@@ -435,11 +407,11 @@ export default function ChatWindow({
               display: "block",
               marginLeft: item.role === "user" ? "auto" : undefined,
               maxWidth: "85%",
-              marginBottom: uiSpace[12],
+              marginBottom: uiSpace[8],
               borderRadius: uiRadius.md,
-              lineHeight: 1.55,
-              fontSize: uiTypography.fontSize.md,
-              whiteSpace: "pre-wrap",
+              lineHeight: 1.4,
+              fontSize: uiTypography.fontSize.sm,
+              whiteSpace: item.role === "user" ? "pre-wrap" : "normal",
               wordBreak: "break-word",
               background: item.role === "user" ? theme.accent.primary : theme.bg.surface,
               color: item.role === "user" ? theme.text.inverse : theme.text.primary,
@@ -458,7 +430,7 @@ export default function ChatWindow({
             {item.content ? (
               <div
                 style={{
-                  padding: `${uiSpace[10]}px ${uiSpace[14]}px`,
+                  padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
                   overflowWrap: "break-word",
                   wordBreak: "break-word"
                 }}>
@@ -479,7 +451,7 @@ export default function ChatWindow({
               ...createStatusMessageStyle(theme, "info"),
               display: "flex",
               alignItems: "center",
-              gap: uiSpace[8]
+              gap: uiSpace[6]
             }}>
             <span
               style={{
@@ -501,8 +473,8 @@ export default function ChatWindow({
         style={{
           display: "grid",
           gridTemplateColumns: "1fr auto",
-          gap: uiSpace[10],
-          padding: `${uiSpace[12]}px ${uiSpace[16]}px`,
+          gap: uiSpace[6],
+          padding: `${uiSpace[6]}px ${uiSpace[8]}px`,
           borderTop: `0.5px solid ${theme.border.hairline}`,
           background: theme.bg.surface,
           flexShrink: 0
@@ -532,13 +504,13 @@ export default function ChatWindow({
           style={{
             ...createInputStyle(theme, focused === "input"),
             flex: 1,
-            minHeight: 56,
+            minHeight: 44,
             resize: "none",
-            borderRadius: uiRadius.md,
-            padding: `${uiSpace[10]}px ${uiSpace[14]}px`,
-            fontSize: uiTypography.fontSize.md,
+            borderRadius: uiRadius.sm,
+            padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
+            fontSize: uiTypography.fontSize.sm,
             fontFamily: "inherit",
-            lineHeight: 1.5,
+            lineHeight: 1.4,
             boxShadow: focusRing(focused, "input")
           }}
         />
@@ -573,8 +545,8 @@ export default function ChatWindow({
               pressed: sendPressed,
               focused: focused === "send"
             }),
-            height: 36,
-            minWidth: 72,
+            height: 32,
+            minWidth: 60,
             alignSelf: "flex-end",
             borderRadius: uiRadius.pill,
             background: isStreaming
@@ -587,7 +559,8 @@ export default function ChatWindow({
             cursor: isStreaming ? "pointer" : sendDisabled ? "not-allowed" : "pointer",
             opacity: sendDisabled && !isStreaming ? 0.5 : 1,
             transform: sendPressed ? "scale(0.95)" : "scale(1)",
-            padding: `0 ${uiSpace[16]}px`
+            padding: `0 ${uiSpace[12]}px`,
+            fontSize: uiTypography.fontSize.sm
           }}>
           {isStreaming ? t("chat.stop") : t("chat.send")}
         </button>

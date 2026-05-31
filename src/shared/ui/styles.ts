@@ -164,9 +164,9 @@ export function createMarkdownStyles(theme: UiTheme): string {
     }
 
     .markdown-content p {
-      font-size: ${uiTypography.fontSize.md}px;
+      font-size: ${uiTypography.fontSize.sm}px;
       color: ${theme.text.primary};
-      line-height: ${uiTypography.lineHeight.relaxed};
+      line-height: 1.4;
       margin-bottom: ${uiSpace[8]}px;
     }
 
@@ -185,9 +185,9 @@ export function createMarkdownStyles(theme: UiTheme): string {
     }
 
     .markdown-content li {
-      font-size: ${uiTypography.fontSize.md}px;
+      font-size: ${uiTypography.fontSize.sm}px;
       color: ${theme.text.primary};
-      line-height: ${uiTypography.lineHeight.relaxed};
+      line-height: 1.4;
       margin-bottom: ${uiSpace[2]}px;
     }
 
