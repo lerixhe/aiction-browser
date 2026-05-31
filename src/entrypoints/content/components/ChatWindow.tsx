@@ -67,14 +67,14 @@ function ThinkingBlock({
   theme: ThinkingTheme
 }) {
   const { t } = useI18n()
-  const [expanded, setExpanded] = useState(false)
-  const autoExpandedRef = useRef(false)
+  const [expanded, setExpanded] = useState(true)
+  const prevStreamingRef = useRef(isStreaming)
 
   useEffect(() => {
-    if (isStreaming && !autoExpandedRef.current) {
-      autoExpandedRef.current = true
-      setExpanded(true)
+    if (prevStreamingRef.current && !isStreaming) {
+      setExpanded(false)
     }
+    prevStreamingRef.current = isStreaming
   }, [isStreaming])
 
   return (
@@ -210,7 +210,7 @@ export default function ChatWindow({
     minHeight: 250,
     display: "flex",
     flexDirection: "column",
-    borderRadius: uiRadius.xl,
+    borderRadius: uiRadius.lg,
     boxShadow: uiShadow.xl,
     overflow: "hidden",
     zIndex: uiLayer.overlay,
