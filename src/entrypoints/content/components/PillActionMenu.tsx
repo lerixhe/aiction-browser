@@ -2,12 +2,25 @@ import { useMemo } from "react"
 
 import { type UiTheme, uiMotion, uiRadius, uiShadow, uiTypography } from "@/shared/ui/tokens"
 import { createFocusRing } from "@/shared/ui/styles"
+import { getAvatarDisplayText, getAvatarPalette } from "@/shared/ui/avatar"
 import type { ActionTemplate } from "@/shared/types"
 
-const PILL_HEIGHT = 32
+const PILL_HEIGHT = 28
 const PILL_PAD_X = 14
 const CHAR_WIDTH = 7.5
 const PILL_GAP = 6
+
+function isDarkTheme(theme: UiTheme): boolean {
+  // Simple heuristic: if background color is dark, assume dark theme
+  const bgColor = theme.bg.page
+  // Parse hex color
+  const hex = bgColor.replace('#', '')
+  const r = parseInt(hex.substring(0, 2), 16)
+  const g = parseInt(hex.substring(2, 4), 16)
+  const b = parseInt(hex.substring(4, 6), 16)
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return luminance < 0.5
+}
 
 interface PillActionMenuProps {
   actions: ActionTemplate[]
@@ -18,8 +31,9 @@ interface PillActionMenuProps {
   triggerSize: number
 }
 
-function estimateWidth(label: string) {
-  return label.length * CHAR_WIDTH + PILL_PAD_X * 2
+function estimateWidth(_label: string) {
+  // Fixed width for icon buttons
+  return PILL_HEIGHT
 }
 
 export default function PillActionMenu({
@@ -78,6 +92,8 @@ export default function PillActionMenu({
 
       {actions.map((action, index) => {
         const isHovered = hoveredActionId === action.id
+        const displayText = getAvatarDisplayText(action.iconText, action.label)
+        const palette = getAvatarPalette(action.iconText, action.label, isDarkTheme(theme))
 
         return (
           <button
@@ -97,28 +113,30 @@ export default function PillActionMenu({
               }
             }}
             style={{
+              width: PILL_HEIGHT,
               height: PILL_HEIGHT,
-              borderRadius: uiRadius.pill,
+              borderRadius: uiRadius.sm,
               border: "none",
-              background: isHovered ? theme.accent.primary : "transparent",
-              color: isHovered ? theme.text.inverse : theme.text.primary,
+              background: isHovered ? theme.accent.primary : palette.background,
+              color: isHovered ? theme.text.inverse : palette.color,
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: uiTypography.fontSize.sm,
-              fontWeight: uiTypography.fontWeight.medium,
+              fontSize: displayText.length >= 4 ? 7 : displayText.length > 1 ? 8 : 10,
+              fontWeight: uiTypography.fontWeight.semibold,
               fontFamily: uiTypography.fontFamily,
+              letterSpacing: uiTypography.letterSpacing.tight,
               whiteSpace: "nowrap",
               outline: "none",
               boxShadow: isHovered ? createFocusRing(theme.accent.primary) : "none",
-              padding: `0 ${PILL_PAD_X}px`,
+              padding: 0,
               transform: isHovered ? "scale(1.04)" : "scale(1)",
               transition: `transform 150ms ${uiMotion.easingSpring}, background ${uiMotion.durationFast} ${uiMotion.easingStandard}, color ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
               animation: `pill-item-enter 200ms ${uiMotion.easingSpring} ${index * 30}ms both`,
               pointerEvents: "auto"
             }}>
-            {action.label}
+            {displayText}
           </button>
         )
       })}
