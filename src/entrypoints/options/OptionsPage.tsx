@@ -26,9 +26,9 @@ function ToggleSwitch({ checked, onChange, theme }: { checked: boolean; onChange
       onClick={onChange}
       style={{
         position: "relative",
-        width: 44,
-        height: 24,
-        borderRadius: 12,
+        width: 36,
+        height: 20,
+        borderRadius: 10,
         border: "none",
         background: checked ? theme.accent.primary : theme.border.default,
         cursor: "pointer",
@@ -40,9 +40,9 @@ function ToggleSwitch({ checked, onChange, theme }: { checked: boolean; onChange
         style={{
           position: "absolute",
           top: 3,
-          left: checked ? 23 : 3,
-          width: 18,
-          height: 18,
+          left: checked ? 19 : 3,
+          width: 14,
+          height: 14,
           borderRadius: "50%",
           background: "#fff",
           boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
