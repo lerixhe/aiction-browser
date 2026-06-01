@@ -354,6 +354,7 @@ export default function ChatWindow({
             onChange={(event) => onCapturedTextChange(event.target.value)}
             onFocus={() => setFocused("captured")}
             onBlur={() => setFocused(null)}
+            onKeyDown={(event) => event.stopPropagation()}
             rows={3}
             aria-label={t("chat.capturedTextareaLabel")}
             placeholder={t("chat.capturedTextareaPlaceholder")}
@@ -486,6 +487,8 @@ export default function ChatWindow({
           onFocus={() => setFocused("input")}
           onBlur={() => setFocused(null)}
           onKeyDown={(event) => {
+            event.stopPropagation()
+
             if (event.key !== "Enter" || event.shiftKey) {
               return
             }
