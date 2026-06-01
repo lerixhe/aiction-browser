@@ -132,6 +132,7 @@ export default function OptionsPage() {
   const [dragOverActionIndex, setDragOverActionIndex] = useState<number | null>(null)
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const iconPickerRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     void getSettings().then((loaded) => {
@@ -164,6 +165,17 @@ export default function OptionsPage() {
     document.body.style.padding = "0"
     document.body.style.height = "100%"
   }, [])
+
+  useEffect(() => {
+    if (!showIconPicker) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (iconPickerRef.current && !iconPickerRef.current.contains(e.target as Node)) {
+        setShowIconPicker(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [showIconPicker])
 
   useEffect(() => {
     if (!iconSearchQuery.trim()) {
@@ -1401,6 +1413,7 @@ export default function OptionsPage() {
 
                     {showIconPicker ? (
                       <div
+                        ref={iconPickerRef}
                         style={{
                           position: "absolute",
                           top: "100%",
@@ -1417,9 +1430,6 @@ export default function OptionsPage() {
                           padding: uiSpace[12]
                         }}>
                         <div style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
                           marginBottom: uiSpace[8],
                           paddingBottom: uiSpace[8],
                           borderBottom: `0.5px solid ${theme.border.hairline}`
@@ -1427,28 +1437,6 @@ export default function OptionsPage() {
                           <span style={{ fontSize: uiTypography.fontSize.sm, fontWeight: uiTypography.fontWeight.semibold, color: theme.text.primary }}>
                             {t("options.actions.selectIcon")}
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              saveSettingsNow((current) => ({
-                                ...current,
-                                actions: current.actions.map((a) =>
-                                  a.id === selectedAction.id ? { ...a, icon: undefined } : a
-                                )
-                              }))
-                              setShowIconPicker(false)
-                            }}
-                            style={{
-                              fontSize: uiTypography.fontSize.xs,
-                              color: theme.text.secondary,
-                              background: "none",
-                              border: "none",
-                              cursor: "pointer",
-                              padding: `${uiSpace[2]}px ${uiSpace[6]}px`,
-                              borderRadius: uiRadius.sm
-                            }}>
-                            {t("options.actions.clearIcon")}
-                          </button>
                         </div>
 
                         <input
