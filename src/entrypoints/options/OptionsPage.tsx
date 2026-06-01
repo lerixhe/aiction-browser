@@ -27,9 +27,9 @@ function ToggleSwitch({ checked, onChange, theme }: { checked: boolean; onChange
       onClick={onChange}
       style={{
         position: "relative",
-        width: 36,
-        height: 20,
-        borderRadius: 10,
+        width: 28,
+        height: 16,
+        borderRadius: 8,
         border: "none",
         background: checked ? theme.accent.primary : theme.border.default,
         cursor: "pointer",
@@ -40,10 +40,10 @@ function ToggleSwitch({ checked, onChange, theme }: { checked: boolean; onChange
       <span
         style={{
           position: "absolute",
-          top: 3,
-          left: checked ? 19 : 3,
-          width: 14,
-          height: 14,
+          top: 2,
+          left: checked ? 14 : 2,
+          width: 12,
+          height: 12,
           borderRadius: "50%",
           background: "#fff",
           boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
