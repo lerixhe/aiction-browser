@@ -124,6 +124,10 @@ export default function OptionsPage() {
   const [editingIconServiceId, setEditingIconServiceId] = useState<string | null>(null)
   const [iconEditText, setIconEditText] = useState("")
   const [showIconPicker, setShowIconPicker] = useState(false)
+  const [iconSearchQuery, setIconSearchQuery] = useState("")
+  const [iconSearchResults, setIconSearchResults] = useState<string[]>([])
+  const [iconSearchLoading, setIconSearchLoading] = useState(false)
+  const iconSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [draggedActionIndex, setDraggedActionIndex] = useState<number | null>(null)
   const [dragOverActionIndex, setDragOverActionIndex] = useState<number | null>(null)
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null)
@@ -160,6 +164,38 @@ export default function OptionsPage() {
     document.body.style.padding = "0"
     document.body.style.height = "100%"
   }, [])
+
+  useEffect(() => {
+    if (!iconSearchQuery.trim()) {
+      setIconSearchResults([])
+      setIconSearchLoading(false)
+      return
+    }
+    setIconSearchLoading(true)
+    if (iconSearchTimerRef.current) clearTimeout(iconSearchTimerRef.current)
+    iconSearchTimerRef.current = setTimeout(() => {
+      const q = iconSearchQuery.trim()
+      if (/^[a-z0-9]+:[a-z0-9-]+$/i.test(q)) {
+        setIconSearchResults([q])
+        setIconSearchLoading(false)
+        return
+      }
+      fetch(`https://api.iconify.design/search?query=${encodeURIComponent(q)}&limit=64`)
+        .then((res) => res.json())
+        .then((data: { icons?: string[] }) => {
+          setIconSearchResults(data.icons ?? [])
+        })
+        .catch(() => {
+          setIconSearchResults([])
+        })
+        .finally(() => {
+          setIconSearchLoading(false)
+        })
+    }, 300)
+    return () => {
+      if (iconSearchTimerRef.current) clearTimeout(iconSearchTimerRef.current)
+    }
+  }, [iconSearchQuery])
 
   const hasInvalidCustomTemplate = useMemo(() => {
     return settings.actions.some((item) => !hasTextPlaceholder(item.template))
@@ -1415,33 +1451,62 @@ export default function OptionsPage() {
                           </button>
                         </div>
 
-                        {ACTION_ICON_LIBRARY.map((category) => (
-                          <div key={category.name} style={{ marginBottom: uiSpace[12] }}>
-                            <div style={{
-                              fontSize: uiTypography.fontSize.xs,
-                              color: theme.text.secondary,
-                              marginBottom: uiSpace[6],
-                              fontWeight: uiTypography.fontWeight.medium
-                            }}>
-                              {category.name}
-                            </div>
-                            <div style={{
-                              display: "grid",
-                              gridTemplateColumns: "repeat(8, 1fr)",
-                              gap: uiSpace[4]
-                            }}>
-                              {category.icons.map((entry: IconEntry) => {
-                                const isSelected = selectedAction.icon === entry.icon
+                        <input
+                          type="text"
+                          value={iconSearchQuery}
+                          onChange={(e) => setIconSearchQuery(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              const q = iconSearchQuery.trim()
+                              if (/^[a-z0-9]+:[a-z0-9-]+$/i.test(q)) {
+                                saveSettingsNow((current) => ({
+                                  ...current,
+                                  actions: current.actions.map((a) =>
+                                    a.id === selectedAction.id ? { ...a, icon: q } : a
+                                  )
+                                }))
+                                setShowIconPicker(false)
+                              }
+                            }
+                          }}
+                          placeholder={t("options.actions.iconSearchPlaceholder")}
+                          style={{
+                            width: "100%",
+                            boxSizing: "border-box",
+                            padding: `${uiSpace[6]}px ${uiSpace[8]}px`,
+                            fontSize: uiTypography.fontSize.sm,
+                            border: `1px solid ${theme.border.default}`,
+                            borderRadius: uiRadius.sm,
+                            background: theme.bg.surface,
+                            color: theme.text.primary,
+                            outline: "none",
+                            marginBottom: uiSpace[8]
+                          }}
+                        />
+
+                        <div style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(8, 1fr)",
+                          gap: uiSpace[4]
+                        }}>
+                          {iconSearchQuery.trim() ? (
+                            iconSearchLoading ? (
+                              <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: uiSpace[16], color: theme.text.secondary, fontSize: uiTypography.fontSize.xs }}>
+                                {t("options.actions.iconSearching")}
+                              </div>
+                            ) : iconSearchResults.length > 0 ? (
+                              iconSearchResults.map((iconName) => {
+                                const isSelected = selectedAction.icon === iconName
                                 return (
                                   <button
-                                    key={entry.icon}
+                                    key={iconName}
                                     type="button"
-                                    title={entry.label}
+                                    title={iconName}
                                     onClick={() => {
                                       saveSettingsNow((current) => ({
                                         ...current,
                                         actions: current.actions.map((a) =>
-                                          a.id === selectedAction.id ? { ...a, icon: entry.icon } : a
+                                          a.id === selectedAction.id ? { ...a, icon: iconName } : a
                                         )
                                       }))
                                       setShowIconPicker(false)
@@ -1461,13 +1526,53 @@ export default function OptionsPage() {
                                       outline: "none",
                                       transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
                                     }}>
-                                    <ActionIcon icon={entry.icon} size={18} color={isSelected ? theme.accent.primary : theme.text.secondary} />
+                                    <ActionIcon icon={iconName} size={18} color={isSelected ? theme.accent.primary : theme.text.secondary} />
                                   </button>
                                 )
-                              })}
-                            </div>
-                          </div>
-                        ))}
+                              })
+                            ) : (
+                              <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: uiSpace[16], color: theme.text.secondary, fontSize: uiTypography.fontSize.xs }}>
+                                {t("options.actions.iconNoResults")}
+                              </div>
+                            )
+                          ) : (
+                            ACTION_ICON_LIBRARY.map((entry: IconEntry) => {
+                              const isSelected = selectedAction.icon === entry.icon
+                              return (
+                                <button
+                                  key={entry.icon}
+                                  type="button"
+                                  title={entry.label}
+                                  onClick={() => {
+                                    saveSettingsNow((current) => ({
+                                      ...current,
+                                      actions: current.actions.map((a) =>
+                                        a.id === selectedAction.id ? { ...a, icon: entry.icon } : a
+                                      )
+                                    }))
+                                    setShowIconPicker(false)
+                                  }}
+                                  style={{
+                                    width: 32,
+                                    height: 32,
+                                    borderRadius: uiRadius.sm,
+                                    border: isSelected ? `2px solid ${theme.accent.primary}` : `1px solid ${theme.border.hairline}`,
+                                    background: isSelected ? `${theme.accent.primary}14` : "transparent",
+                                    color: isSelected ? theme.accent.primary : theme.text.primary,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    cursor: "pointer",
+                                    padding: 0,
+                                    outline: "none",
+                                    transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+                                  }}>
+                                  <ActionIcon icon={entry.icon} size={18} color={isSelected ? theme.accent.primary : theme.text.secondary} />
+                                </button>
+                              )
+                            })
+                          )}
+                        </div>
                       </div>
                     ) : null}
                   </div>
