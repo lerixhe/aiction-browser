@@ -548,8 +548,8 @@ export default function ChatWindow({
             }),
             height: 32,
             minWidth: 60,
-            alignSelf: "flex-end",
-            borderRadius: uiRadius.pill,
+            alignSelf: "center",
+            borderRadius: uiRadius.md,
             background: isStreaming
               ? theme.bg.surfaceMuted
               : sendDisabled
