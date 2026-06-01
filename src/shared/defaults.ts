@@ -6,14 +6,14 @@ export const DEFAULT_ACTIONS: ActionTemplate[] = [
     label: "解释",
     template: "帮我解释选中内容「{text}」",
     enabled: true,
-    iconText: "释"
+    icon: "tabler:bulb"
   },
   {
     id: "translate",
     label: "翻译",
     template: "请将以下内容翻译为简体中文：\n{text}",
     enabled: true,
-    iconText: "译"
+    icon: "tabler:language"
   }
 ]
 

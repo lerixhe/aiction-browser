@@ -6,6 +6,7 @@ import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { createCardStyle, createFocusRing } from "@/shared/ui/styles"
 import { getAvatarPalette, getAvatarDisplayText } from "@/shared/ui/avatar"
+import { ActionIcon } from "@/shared/ui/iconify"
 import { useI18n } from "@/shared/i18n/context"
 import type { ActionTemplate, ExtensionSettings } from "@/shared/types"
 
@@ -126,8 +127,6 @@ function AvatarStack({
         minWidth: 0
       }}>
       {visibleActions.map((action) => {
-        const palette = getAvatarPalette(action.iconText, action.label, themeName === "dark")
-        const displayText = getAvatarDisplayText(action.iconText, action.label)
         return (
           <span
             key={action.id}
@@ -135,18 +134,19 @@ function AvatarStack({
               width: AVATAR_SIZE,
               height: AVATAR_SIZE,
               borderRadius: uiRadius.sm,
-              background: palette.background,
-              color: palette.color,
+              background: theme.bg.surface,
+              color: theme.accent.primary,
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: displayText.length >= 4 ? 8 : displayText.length > 1 ? 9 : 11,
-              fontWeight: uiTypography.fontWeight.semibold,
-              letterSpacing: uiTypography.letterSpacing.tight,
               marginLeft: AVATAR_GAP,
               flexShrink: 0
             }}>
-            {displayText}
+            {action.icon ? (
+              <ActionIcon icon={action.icon} size={16} color={theme.accent.primary} />
+            ) : (
+              <span style={{ fontSize: 10, color: theme.text.secondary }}>?</span>
+            )}
           </span>
         )
       })}
@@ -601,8 +601,6 @@ export default function Popup() {
               style={menuStyle}>
               {settings.actions.map((action) => {
                 const isEnabled = action.enabled !== false
-                const actionPalette = getAvatarPalette(action.iconText, action.label, themeName === "dark")
-                const actionDisplayText = getAvatarDisplayText(action.iconText, action.label)
 
                 return (
                   <button
@@ -620,8 +618,14 @@ export default function Popup() {
                       color: isEnabled ? theme.text.primary : theme.text.secondary,
                       transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}, color ${uiMotion.durationFast} ${uiMotion.easingStandard}`
                     }}>
-                    <span aria-hidden="true" style={menuItemAvatarStyle(actionPalette, actionDisplayText)}>
-                      {actionDisplayText}
+                    <span aria-hidden="true" style={{
+                      ...menuItemAvatarStyle({ background: theme.bg.surface, color: theme.accent.primary }, "")
+                    }}>
+                      {action.icon ? (
+                        <ActionIcon icon={action.icon} size={16} color={theme.accent.primary} />
+                      ) : (
+                        <span style={{ fontSize: 10, color: theme.text.secondary }}>?</span>
+                      )}
                     </span>
                     <span style={menuItemTextStyle}>
                       {action.label}

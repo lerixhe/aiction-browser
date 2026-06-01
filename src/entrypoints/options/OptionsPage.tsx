@@ -1,6 +1,6 @@
 import { type JSX, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 
-import { NavIcon } from "@/shared/ui/iconify"
+import { NavIcon, ActionIcon } from "@/shared/ui/iconify"
 import { hasTextPlaceholder } from "@/shared/prompt"
 import { BrandIcon } from "@/shared/ui/icons"
 import { trackEvent } from "@/shared/analytics"
@@ -10,6 +10,7 @@ import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { createButtonStyle, createCardStyle, createFieldLabelStyle, createFocusRing, createInputStyle as createSharedInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
 import { getAvatarPalette, getAvatarDisplayText } from "@/shared/ui/avatar"
+import { ACTION_ICON_LIBRARY, type IconEntry } from "@/shared/ui/icon-library"
 import { useI18n } from "@/shared/i18n/context"
 import type { ActionTemplate, ExtensionSettings, LanguagePreference, ThemePreference, ApiTestResponse, FetchModelsResponse, ModelServiceConfig } from "@/shared/types"
 import { MESSAGE_TYPES } from "@/shared/constants"
@@ -122,8 +123,7 @@ export default function OptionsPage() {
   const [pendingDeleteServiceId, setPendingDeleteServiceId] = useState<string | null>(null)
   const [editingIconServiceId, setEditingIconServiceId] = useState<string | null>(null)
   const [iconEditText, setIconEditText] = useState("")
-  const [editingIconActionId, setEditingIconActionId] = useState<string | null>(null)
-  const [actionIconEditText, setActionIconEditText] = useState("")
+  const [showIconPicker, setShowIconPicker] = useState(false)
   const [draggedActionIndex, setDraggedActionIndex] = useState<number | null>(null)
   const [dragOverActionIndex, setDragOverActionIndex] = useState<number | null>(null)
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null)
@@ -1165,7 +1165,6 @@ export default function OptionsPage() {
               </div>
             ) : (
               settings.actions.map((item, index) => {
-                const displayText = getAvatarDisplayText(item.iconText, item.label)
                 const isSelected = selectedActionId === item.id
                 const isDragging = draggedActionIndex === index
                 const isDragOver = dragOverActionIndex === index
@@ -1205,17 +1204,18 @@ export default function OptionsPage() {
                         width: 28,
                         height: 28,
                         borderRadius: uiRadius.sm,
-                        background: getAvatarPalette(item.iconText, item.label, themeName === "dark").background,
-                        color: getAvatarPalette(item.iconText, item.label, themeName === "dark").color,
+                        background: theme.bg.surface,
+                        color: theme.accent.primary,
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        fontSize: displayText.length >= 4 ? 7 : displayText.length > 1 ? 8 : 10,
-                        fontWeight: uiTypography.fontWeight.semibold,
-                        letterSpacing: uiTypography.letterSpacing.tight,
                         flexShrink: 0
                       }}>
-                      {displayText}
+                      {item.icon ? (
+                        <ActionIcon icon={item.icon} size={16} color={theme.accent.primary} />
+                      ) : (
+                        <span style={{ fontSize: 10, color: theme.text.secondary }}>?</span>
+                      )}
                     </div>
 
                     {/* Label */}
@@ -1340,83 +1340,139 @@ export default function OptionsPage() {
                   <div style={{ position: "relative" }}>
                     <button
                       type="button"
-                      onClick={() => {
-                        setEditingIconActionId(selectedAction.id)
-                        setActionIconEditText(selectedAction.iconText ?? "")
-                      }}
+                      onClick={() => setShowIconPicker(!showIconPicker)}
                       title={t("options.connection.iconTooltip")}
                       style={{
                         width: 36,
                         height: 36,
                         borderRadius: uiRadius.sm,
                         border: `1px solid ${theme.border.default}`,
-                        background: getAvatarPalette(selectedAction.iconText, selectedAction.label, themeName === "dark").background,
-                        color: getAvatarPalette(selectedAction.iconText, selectedAction.label, themeName === "dark").color,
+                        background: theme.bg.surface,
+                        color: theme.accent.primary,
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        fontSize: (() => {
-                          const dt = getAvatarDisplayText(selectedAction.iconText, selectedAction.label)
-                          return dt.length >= 4 ? 9 : dt.length > 1 ? 10 : 12
-                        })(),
-                        fontWeight: uiTypography.fontWeight.semibold,
-                        letterSpacing: uiTypography.letterSpacing.tight,
                         cursor: "pointer",
                         padding: 0,
                         outline: "none"
                       }}>
-                      {editingIconActionId === selectedAction.id ? "" : getAvatarDisplayText(selectedAction.iconText, selectedAction.label)}
+                      {selectedAction.icon ? (
+                        <ActionIcon icon={selectedAction.icon} size={20} color={theme.accent.primary} />
+                      ) : (
+                        <span style={{ fontSize: 14, color: theme.text.secondary }}>?</span>
+                      )}
                     </button>
-                    {editingIconActionId === selectedAction.id ? (
-                      <input
-                        autoFocus
-                        maxLength={4}
-                        value={actionIconEditText}
-                        onChange={(e) => setActionIconEditText(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            saveSettingsNow((current) => ({
-                              ...current,
-                              actions: current.actions.map((a) =>
-                                a.id === selectedAction.id ? { ...a, iconText: actionIconEditText.trim() } : a
-                              )
-                            }))
-                            setEditingIconActionId(null)
-                          } else if (e.key === "Escape") {
-                            setEditingIconActionId(null)
-                          }
-                        }}
-                        onBlur={() => {
-                          saveSettingsNow((current) => ({
-                            ...current,
-                            actions: current.actions.map((a) =>
-                              a.id === selectedAction.id ? { ...a, iconText: actionIconEditText.trim() } : a
-                            )
-                          }))
-                          setEditingIconActionId(null)
-                        }}
-                        placeholder={t("options.connection.iconPlaceholder")}
+
+                    {showIconPicker ? (
+                      <div
                         style={{
                           position: "absolute",
-                          top: 0,
+                          top: "100%",
                           left: 0,
-                          width: 54,
-                          height: 36,
-                          fontSize: uiTypography.fontSize.md,
-                          border: `1px solid ${theme.border.default}`,
-                          borderRadius: uiRadius.sm,
-                          padding: `0 ${uiSpace[4]}px`,
-                          outline: "none",
+                          marginTop: uiSpace[8],
+                          width: 320,
+                          maxHeight: 400,
+                          overflowY: "auto",
                           background: theme.bg.surface,
-                          color: theme.text.primary,
-                          zIndex: 10,
-                          boxShadow: uiShadow.md
-                        }}
-                      />
+                          border: `1px solid ${theme.border.default}`,
+                          borderRadius: uiRadius.md,
+                          boxShadow: uiShadow.lg,
+                          zIndex: 100,
+                          padding: uiSpace[12]
+                        }}>
+                        <div style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: uiSpace[8],
+                          paddingBottom: uiSpace[8],
+                          borderBottom: `0.5px solid ${theme.border.hairline}`
+                        }}>
+                          <span style={{ fontSize: uiTypography.fontSize.sm, fontWeight: uiTypography.fontWeight.semibold, color: theme.text.primary }}>
+                            {t("options.actions.selectIcon")}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              saveSettingsNow((current) => ({
+                                ...current,
+                                actions: current.actions.map((a) =>
+                                  a.id === selectedAction.id ? { ...a, icon: undefined } : a
+                                )
+                              }))
+                              setShowIconPicker(false)
+                            }}
+                            style={{
+                              fontSize: uiTypography.fontSize.xs,
+                              color: theme.text.secondary,
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              padding: `${uiSpace[2]}px ${uiSpace[6]}px`,
+                              borderRadius: uiRadius.sm
+                            }}>
+                            {t("options.actions.clearIcon")}
+                          </button>
+                        </div>
+
+                        {ACTION_ICON_LIBRARY.map((category) => (
+                          <div key={category.name} style={{ marginBottom: uiSpace[12] }}>
+                            <div style={{
+                              fontSize: uiTypography.fontSize.xs,
+                              color: theme.text.secondary,
+                              marginBottom: uiSpace[6],
+                              fontWeight: uiTypography.fontWeight.medium
+                            }}>
+                              {category.name}
+                            </div>
+                            <div style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(8, 1fr)",
+                              gap: uiSpace[4]
+                            }}>
+                              {category.icons.map((entry: IconEntry) => {
+                                const isSelected = selectedAction.icon === entry.icon
+                                return (
+                                  <button
+                                    key={entry.icon}
+                                    type="button"
+                                    title={entry.label}
+                                    onClick={() => {
+                                      saveSettingsNow((current) => ({
+                                        ...current,
+                                        actions: current.actions.map((a) =>
+                                          a.id === selectedAction.id ? { ...a, icon: entry.icon } : a
+                                        )
+                                      }))
+                                      setShowIconPicker(false)
+                                    }}
+                                    style={{
+                                      width: 32,
+                                      height: 32,
+                                      borderRadius: uiRadius.sm,
+                                      border: isSelected ? `2px solid ${theme.accent.primary}` : `1px solid ${theme.border.hairline}`,
+                                      background: isSelected ? `${theme.accent.primary}14` : "transparent",
+                                      color: isSelected ? theme.accent.primary : theme.text.primary,
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      cursor: "pointer",
+                                      padding: 0,
+                                      outline: "none",
+                                      transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+                                    }}>
+                                    <ActionIcon icon={entry.icon} size={18} color={isSelected ? theme.accent.primary : theme.text.secondary} />
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     ) : null}
                   </div>
                   <span style={{ fontSize: uiTypography.fontSize.sm, color: theme.text.secondary }}>
-                    {t("options.connection.iconTooltip")}
+                    {selectedAction.icon ? t("options.actions.iconSelected") : t("options.connection.iconTooltip")}
                   </span>
                 </div>
               </div>

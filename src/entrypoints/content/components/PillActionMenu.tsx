@@ -1,6 +1,6 @@
 import { type UiTheme, uiMotion, uiRadius, uiShadow, uiTypography } from "@/shared/ui/tokens"
 import { createFocusRing } from "@/shared/ui/styles"
-import { getAvatarDisplayText, getAvatarPalette } from "@/shared/ui/avatar"
+import { ActionIcon } from "@/shared/ui/iconify"
 import type { ActionTemplate } from "@/shared/types"
 
 const PILL_HEIGHT = 28
@@ -75,8 +75,6 @@ export default function PillActionMenu({
 
       {actions.map((action, index) => {
         const isHovered = hoveredActionId === action.id
-        const displayText = getAvatarDisplayText(action.iconText, action.label)
-        const palette = getAvatarPalette(action.iconText, action.label, isDarkTheme(theme))
 
         return (
           <button
@@ -100,17 +98,12 @@ export default function PillActionMenu({
               height: PILL_HEIGHT,
               borderRadius: uiRadius.sm,
               border: "none",
-              background: isHovered ? theme.accent.primary : palette.background,
-              color: isHovered ? theme.text.inverse : palette.color,
+              background: isHovered ? theme.accent.primary : theme.bg.surface,
+              color: isHovered ? theme.text.inverse : theme.accent.primary,
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: displayText.length >= 4 ? 7 : displayText.length > 1 ? 8 : 10,
-              fontWeight: uiTypography.fontWeight.semibold,
-              fontFamily: uiTypography.fontFamily,
-              letterSpacing: uiTypography.letterSpacing.tight,
-              whiteSpace: "nowrap",
               outline: "none",
               boxShadow: isHovered ? createFocusRing(theme.accent.primary) : "none",
               padding: 0,
@@ -119,7 +112,11 @@ export default function PillActionMenu({
               animation: `pill-item-enter 200ms ${uiMotion.easingSpring} ${index * 30}ms both`,
               pointerEvents: "auto"
             }}>
-            {displayText}
+            {action.icon ? (
+              <ActionIcon icon={action.icon} size={16} color={isHovered ? theme.text.inverse : theme.accent.primary} />
+            ) : (
+              <span style={{ fontSize: 10, color: isHovered ? theme.text.inverse : theme.text.secondary }}>?</span>
+            )}
           </button>
         )
       })}
