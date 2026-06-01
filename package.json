@@ -8,8 +8,9 @@
   "scripts": {
     "dev": "wxt",
     "dev:firefox": "wxt -b firefox",
-    "build": "wxt build",
-    "build:firefox": "wxt build -b firefox",
+    "bundle-icons": "npx tsx scripts/bundle-icons.ts",
+    "build": "npm run bundle-icons && wxt build",
+    "build:firefox": "npm run bundle-icons && wxt build -b firefox",
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
     "typecheck": "tsc --noEmit",
@@ -24,10 +25,12 @@
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
+    "@iconify/json": "^2.2.481",
     "@types/chrome": "^0.1.42",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "@wxt-dev/auto-icons": "^1.1.1",
+    "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "wxt": "^0.20.26"
   }

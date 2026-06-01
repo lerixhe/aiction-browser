@@ -159,3 +159,10 @@ export interface FetchModelsResponse {
   models?: string[]
   error?: string
 }
+
+// User icon data stored in chrome.storage.sync
+export interface UserIconData {
+  body: string
+  width?: number
+  height?: number
+}

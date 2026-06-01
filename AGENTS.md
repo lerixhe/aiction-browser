@@ -83,6 +83,110 @@ Two files define the icon — keep them in sync:
 - Use sharp with `density: 600` for crisp edges when generating PNG from SVG.
 - The PNG should have transparent corners (use `clipPath` with rounded rect if converting from SVG).
 
+## Icon Caching System
+
+Two-tier architecture for offline icon rendering and fast icon picker.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│ Runtime Loading (iconify.tsx)                        │
+│                                                     │
+│ 1. addCollection(BUNDLED_TABLER_ICONS)  ← static    │
+│    106 icons, zero network, instant                  │
+│                                                     │
+│ 2. First render: lazy load user icons                │
+│    chrome.storage.sync.get("aiction:icons")          │
+│    → addIcon() per icon                              │
+│                                                     │
+│ 3. User picks new icon → fetch SVG → saveUserIcon()  │
+│    → addIcon() → persist to storage                  │
+└─────────────────────────────────────────────────────┘
+```
+
+### Two Storage Tiers
+
+| Tier | Location | Content | Update Trigger |
+|------|----------|---------|----------------|
+| **Built-in** | `src/shared/ui/bundled-icons.ts` (generated) | 104 default + 2 nav icons (106 total) | Manual: `npm run bundle-icons` |
+| **User icons** | `chrome.storage.sync` → `aiction:icons` | User-selected icon SVG data | On icon pick or config import |
+
+### Icon Data Format (IconifyJSON)
+
+```typescript
+{
+  prefix: "tabler",
+  icons: {
+    "sparkles": { body: "<path fill='none'.../>" },
+    "bulb": { body: "<g fill='none'...>...</g>" }
+  },
+  width: 24,
+  height: 24
+}
+```
+
+- `body`: SVG inner paths (no outer `<svg>` tag), ~100-400 bytes per icon
+- `width/height`: viewport size (Tabler uses 24×24)
+
+### Files
+
+| File | Role |
+|------|------|
+| `scripts/bundle-icons.ts` | Build script: extracts 106 icons from `@iconify/json` → generates `bundled-icons.ts` |
+| `src/shared/ui/bundled-icons.ts` | **Generated**: exports `BUNDLED_TABLER_ICONS` (IconifyJSON, ~22KB) |
+| `src/shared/ui/iconify.tsx` | Calls `addCollection()` at module load; lazy loads user icons on first render |
+| `src/shared/storage.ts` | `getUserIcons()`, `saveUserIcon()`, `loadAndRegisterUserIcons()` |
+| `src/shared/types.ts` | `UserIconData` interface |
+
+### Commands
+
+- `npm run bundle-icons` — regenerate `bundled-icons.ts` from `@iconify/json` (manual, not auto)
+- `npm run build` — runs `bundle-icons` automatically before WXT build
+
+### Icon Selection Flow (OptionsPage)
+
+When user picks an icon:
+
+1. Check if icon is in built-in set (`BUNDLED_TABLER_ICONS.icons`)
+2. **If built-in**: copy body from `BUNDLED_TABLER_ICONS` → `saveUserIcon()`
+3. **If not built-in**: fetch from `api.iconify.design` → parse SVG body → `saveUserIcon()` + `addIcon()`
+4. Save settings with icon name string
+
+**Important**: `handleIconSelect` is async — always `await` it before saving settings.
+
+### Export/Import
+
+**Export** (`handleExportSettings`):
+```json
+{
+  "app": "aiction",
+  "version": 1,
+  "exportedAt": "...",
+  "settings": { ... },
+  "userIcons": { "tabler:sparkles": { "body": "...", "width": 24, "height": 24 } }
+}
+```
+
+**Import** (`confirmImportSettings`):
+1. Parse JSON → extract `settings` and `userIcons`
+2. `normalizeSettings(settings)` → save
+3. For each user icon: `saveUserIcon(name, data)` → persist to `chrome.storage.sync`
+
+### Size Budget
+
+| Item | Size |
+|------|------|
+| Built-in icons (106) | ~22KB raw / ~8KB gzip |
+| Per user icon | ~200B |
+| User icons cap (50) | ~10KB (well under `chrome.storage.sync` 100KB limit) |
+
+### Dependencies
+
+- `@iconify/json` (devDependency) — full Tabler icon set JSON for build script
+- `@iconify/react` (dependency) — `addCollection()`, `addIcon()`, `Icon` component
+- `tsx` (devDependency) — runs `scripts/bundle-icons.ts`
+
 ## Reference Projects
 
 `reference/` 文件夹下有两个同类 Chrome 扩展项目，详见 `reference/README.md`。

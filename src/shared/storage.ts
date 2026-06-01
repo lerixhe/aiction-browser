@@ -1,9 +1,10 @@
 import { DEFAULT_CUSTOM_MODEL_SERVICE, DEFAULT_SETTINGS } from "@/shared/defaults"
-import type { ExtensionSettings, LanguagePreference, ModelParams, ModelServiceConfig, ModelServiceType, ThemePreference } from "@/shared/types"
+import type { ExtensionSettings, LanguagePreference, ModelParams, ModelServiceConfig, ModelServiceType, ThemePreference, UserIconData } from "@/shared/types"
 
 export { DEFAULT_SETTINGS }
 
 const SETTINGS_KEY = "aiction:settings"
+const USER_ICONS_KEY = "aiction:icons"
 
 function validateActions(items: unknown[]): ExtensionSettings["actions"] {
   return items
@@ -137,4 +138,36 @@ export function getThemeFromCache(): "auto" | "light" | "dark" {
 
 export function getActiveModelService(settings: ExtensionSettings): ModelServiceConfig | null {
   return settings.modelServices.find((service) => service.id === settings.activeModelServiceId) ?? null
+}
+
+// User icon functions
+export async function getUserIcons(): Promise<Record<string, UserIconData>> {
+  try {
+    const result = await chrome.storage.sync.get(USER_ICONS_KEY)
+    const icons = result[USER_ICONS_KEY]
+    if (icons && typeof icons === "object") {
+      return icons as Record<string, UserIconData>
+    }
+  } catch {
+    // Extension context may have been invalidated
+  }
+  return {}
+}
+
+export async function saveUserIcon(iconName: string, data: UserIconData): Promise<void> {
+  try {
+    const icons = await getUserIcons()
+    icons[iconName] = data
+    await chrome.storage.sync.set({ [USER_ICONS_KEY]: icons })
+  } catch {
+    // Extension context may have been invalidated
+  }
+}
+
+export async function loadAndRegisterUserIcons(): Promise<void> {
+  const { addIcon } = await import("@iconify/react")
+  const icons = await getUserIcons()
+  for (const [name, data] of Object.entries(icons)) {
+    addIcon(name, { body: data.body, width: data.width ?? 24, height: data.height ?? 24 })
+  }
 }

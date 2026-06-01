@@ -1,18 +1,20 @@
 import { type JSX, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
+import { addIcon } from "@iconify/react"
 
 import { NavIcon, ActionIcon } from "@/shared/ui/iconify"
 import { hasTextPlaceholder } from "@/shared/prompt"
 import { BrandIcon } from "@/shared/ui/icons"
 import { trackEvent } from "@/shared/analytics"
 import { DEFAULT_CUSTOM_MODEL_SERVICE, DEFAULT_SETTINGS } from "@/shared/defaults"
-import { getSettings, normalizeSettings, saveSettings } from "@/shared/storage"
+import { getSettings, normalizeSettings, saveSettings, saveUserIcon, getUserIcons } from "@/shared/storage"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { createButtonStyle, createCardStyle, createFieldLabelStyle, createFocusRing, createInputStyle as createSharedInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
 import { getAvatarPalette, getAvatarDisplayText } from "@/shared/ui/avatar"
 import { ACTION_ICON_LIBRARY, type IconEntry } from "@/shared/ui/icon-library"
+import { BUNDLED_TABLER_ICONS } from "@/shared/ui/bundled-icons"
 import { useI18n } from "@/shared/i18n/context"
-import type { ActionTemplate, ExtensionSettings, LanguagePreference, ThemePreference, ApiTestResponse, FetchModelsResponse, ModelServiceConfig } from "@/shared/types"
+import type { ActionTemplate, ExtensionSettings, LanguagePreference, ThemePreference, ApiTestResponse, FetchModelsResponse, ModelServiceConfig, UserIconData } from "@/shared/types"
 import { MESSAGE_TYPES } from "@/shared/constants"
 import { ConfirmDialog } from "@/entrypoints/options/ConfirmDialog"
 
@@ -95,6 +97,45 @@ export default function OptionsPage() {
   const themeName = useUiThemeName()
   const theme = uiThemes[themeName]
 
+  // Check if an icon is in the bundled set
+  const isBundledIcon = (iconName: string): boolean => {
+    if (!iconName.startsWith("tabler:")) return false
+    const name = iconName.replace("tabler:", "")
+    return name in (BUNDLED_TABLER_ICONS.icons as Record<string, { body: string }>)
+  }
+
+  // Handle icon selection: copy from bundled or fetch from API
+  const handleIconSelect = async (iconName: string) => {
+    if (isBundledIcon(iconName)) {
+      // Copy from bundled icons to user icons
+      const name = iconName.replace("tabler:", "")
+      const iconData = (BUNDLED_TABLER_ICONS.icons as Record<string, { body: string }>)[name]
+      if (iconData) {
+        await saveUserIcon(iconName, {
+          body: iconData.body,
+          width: BUNDLED_TABLER_ICONS.width,
+          height: BUNDLED_TABLER_ICONS.height
+        })
+      }
+    } else {
+      // Fetch from Iconify API
+      try {
+        const response = await fetch(`https://api.iconify.design/${iconName}.svg?height=24`)
+        if (response.ok) {
+          const svgText = await response.text()
+          // Extract body from SVG (remove outer svg tag)
+          const bodyMatch = svgText.match(/<svg[^>]*>([\s\S]*?)<\/svg>/)
+          if (bodyMatch) {
+            await saveUserIcon(iconName, { body: bodyMatch[1], width: 24, height: 24 })
+            addIcon(iconName, { body: bodyMatch[1], width: 24, height: 24 })
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch icon:", error)
+      }
+    }
+  }
+
   const sections: { key: Section; label: string; icon: string }[] = [
     { key: "appearance", label: t("options.nav.appearance"), icon: "tabler:palette" },
     { key: "connection", label: t("options.nav.connection"), icon: "tabler:api" },
@@ -117,6 +158,7 @@ export default function OptionsPage() {
   const [hoveredNav, setHoveredNav] = useState<string | null>(null)
   const [backupStatus, setBackupStatus] = useState<{ success: boolean; message: string } | null>(null)
   const [pendingImportSettings, setPendingImportSettings] = useState<ExtensionSettings | null>(null)
+  const [pendingImportUserIcons, setPendingImportUserIcons] = useState<Record<string, UserIconData> | null>(null)
   const [connectionView, setConnectionView] = useState<"list" | "create" | "edit">("list")
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null)
   const [serviceDraft, setServiceDraft] = useState<ModelServiceConfig>(createCustomServiceDraft())
@@ -361,12 +403,14 @@ export default function OptionsPage() {
     )
   }
 
-  const handleExportSettings = () => {
+  const handleExportSettings = async () => {
+    const userIcons = await getUserIcons()
     const payload = {
       app: "aiction",
       version: 1,
       exportedAt: new Date().toISOString(),
-      settings: normalizeSettings(settings)
+      settings: normalizeSettings(settings),
+      userIcons
     }
 
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })
@@ -396,10 +440,12 @@ export default function OptionsPage() {
 
     try {
       const content = await file.text()
-      const parsed = JSON.parse(content) as ExtensionSettings | { settings?: unknown }
+      const parsed = JSON.parse(content) as ExtensionSettings | { settings?: unknown; userIcons?: Record<string, UserIconData> }
       const imported = normalizeSettings("settings" in parsed ? parsed.settings : parsed)
+      const userIcons = "userIcons" in parsed ? parsed.userIcons ?? {} : {}
 
       setPendingImportSettings(imported)
+      setPendingImportUserIcons(userIcons)
       setBackupStatus(null)
     } catch (error) {
       const message = error instanceof Error ? error.message : t("options.connection.parseFileError")
@@ -419,16 +465,27 @@ export default function OptionsPage() {
     setSaving(true)
     setBackupStatus(null)
 
-    void saveSettings({
-      ...pendingImportSettings,
-      modelServices: pendingImportSettings.modelServices.map((service) => ({
-        ...service,
-        name: service.name.trim(),
-        apiBaseUrl: service.apiBaseUrl.trim(),
-        apiKey: service.apiKey.trim(),
-        model: service.model.trim()
-      }))
-    })
+    // Save user icons if present
+    const saveUserIconsPromise = pendingImportUserIcons
+      ? Promise.all(
+          Object.entries(pendingImportUserIcons).map(([iconName, data]) =>
+            saveUserIcon(iconName, data)
+          )
+        )
+      : Promise.resolve()
+
+    void saveUserIconsPromise.then(() =>
+      saveSettings({
+        ...pendingImportSettings,
+        modelServices: pendingImportSettings.modelServices.map((service) => ({
+          ...service,
+          name: service.name.trim(),
+          apiBaseUrl: service.apiBaseUrl.trim(),
+          apiKey: service.apiKey.trim(),
+          model: service.model.trim()
+        }))
+      })
+    )
       .then(() => {
         setBackupStatus({ success: true, message: t("options.connection.configImported") })
       })
@@ -439,6 +496,7 @@ export default function OptionsPage() {
       .finally(() => {
         setSaving(false)
         setPendingImportSettings(null)
+        setPendingImportUserIcons(null)
       })
   }
 
@@ -1443,10 +1501,11 @@ export default function OptionsPage() {
                           type="text"
                           value={iconSearchQuery}
                           onChange={(e) => setIconSearchQuery(e.target.value)}
-                          onKeyDown={(e) => {
+                          onKeyDown={async (e) => {
                             if (e.key === "Enter") {
                               const q = iconSearchQuery.trim()
                               if (/^[a-z0-9]+:[a-z0-9-]+$/i.test(q)) {
+                                await handleIconSelect(q)
                                 saveSettingsNow((current) => ({
                                   ...current,
                                   actions: current.actions.map((a) =>
@@ -1490,7 +1549,8 @@ export default function OptionsPage() {
                                     key={iconName}
                                     type="button"
                                     title={iconName}
-                                    onClick={() => {
+                                    onClick={async () => {
+                                      await handleIconSelect(iconName)
                                       saveSettingsNow((current) => ({
                                         ...current,
                                         actions: current.actions.map((a) =>
@@ -1531,7 +1591,8 @@ export default function OptionsPage() {
                                   key={entry.icon}
                                   type="button"
                                   title={entry.label}
-                                  onClick={() => {
+                                  onClick={async () => {
+                                    await handleIconSelect(entry.icon)
                                     saveSettingsNow((current) => ({
                                       ...current,
                                       actions: current.actions.map((a) =>
