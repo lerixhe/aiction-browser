@@ -362,6 +362,7 @@ export function PdfViewerPage() {
         <SelectionToolbar
           visible={toolbarVisible}
           anchor={toolbarAnchor}
+          selectionStart={null}
           actions={actions}
           onAction={(template, text) => {
             void handleAction(template, selectionContext?.text ?? text)

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import SelectionToolbar from "@/entrypoints/content/components/SelectionToolbar"
 import ChatWindow from "@/entrypoints/content/components/ChatWindow"
 import { useChatState } from "@/entrypoints/content/hooks/useChatState"
 import { useSelectionDetection } from "@/entrypoints/content/hooks/useSelectionDetection"
+import type { SelectionStart } from "@/entrypoints/content/hooks/useSelectionDetection"
 import { useToolbarState } from "@/entrypoints/content/hooks/useToolbarState"
 import { initContentScriptAnalytics, trackEvent } from "@/shared/analytics"
 import { resolveActionTemplate, formatFreeInputPrompt } from "@/shared/prompt"
@@ -12,6 +13,7 @@ import type { SelectionAnchor, SelectionContext } from "@/shared/types"
 
 export default function App() {
   const extensionRootRef = useRef<HTMLDivElement | null>(null)
+  const [selectionStart, setSelectionStart] = useState<SelectionStart | null>(null)
 
   useEffect(() => {
     void initContentScriptAnalytics()
@@ -44,15 +46,17 @@ export default function App() {
 
   // Handle selection change — suppress while panel is open
   const handleSelectionChange = useCallback(
-    (context: SelectionContext | null, anchor: SelectionAnchor | null) => {
+    (context: SelectionContext | null, anchor: SelectionAnchor | null, start: SelectionStart | null) => {
       if (panelOpen) {
         return
       }
 
       if (context && anchor) {
+        setSelectionStart(start)
         openToolbar(context, anchor)
         void trackEvent("selection_detected", { text_length: context.text.length })
       } else {
+        setSelectionStart(null)
         closeToolbar()
       }
     },
@@ -144,6 +148,7 @@ export default function App() {
       <SelectionToolbar
         visible={toolbarVisible}
         anchor={toolbarAnchor}
+        selectionStart={selectionStart}
         actions={actions}
         onAction={(template, text) => {
           void handleAction(template, selectionContext?.text ?? text)
