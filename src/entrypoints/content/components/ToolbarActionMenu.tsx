@@ -7,7 +7,7 @@ import type { ActionTemplate } from "@/shared/types"
 const BUTTON_HEIGHT = 28
 const BUTTON_GAP = 2
 
-interface PillActionMenuProps {
+interface ToolbarActionMenuProps {
   actions: ActionTemplate[]
   onActionClick: (action: ActionTemplate) => void
   theme: UiTheme
@@ -62,13 +62,13 @@ function ToolbarTooltip({ label, children }: { label: string; children: React.Re
   )
 }
 
-export default function PillActionMenu({
+export default function ToolbarActionMenu({
   actions,
   onActionClick,
   theme,
   onClose,
   onKeyDown
-}: PillActionMenuProps) {
+}: ToolbarActionMenuProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
   return (

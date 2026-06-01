@@ -94,7 +94,7 @@ Content Script 检测选择事件
     └──→ 用户点击动作
          │
          ▼
-    打开 UnifiedPanel（对话窗）
+     打开 ChatWindow（对话窗口）
          │
          ▼
     构建 Prompt（含上下文）
@@ -130,9 +130,8 @@ aiction/
 │   ├── contents/              # 内容脚本 UI 和逻辑
 │   │   ├── components/        # React 组件
 │   │   │   ├── SelectionToolbar.tsx   # 触发按钮定位 + 渲染入口
-│   │   │   ├── ExplodedActionMenu.tsx # 环形展开菜单
-│   │   │   ├── PillActionMenu.tsx     # 胶囊工具栏菜单
-│   │   │   └── UnifiedPanel.tsx       # 对话窗
+│   │   │   ├── ToolbarActionMenu.tsx  # 工具条菜单
+│   │   │   └── ChatWindow.tsx         # 对话窗口
 │   │   ├── hooks/             # 自定义 Hooks
 │   │   └── utils/             # DOM 工具函数
 │   ├── options/               # 选项页组件
@@ -191,7 +190,7 @@ aiction/
 
 **职责**：
 - 作为 WXT Content Script 的入口组件（使用 `defineContentScript` 和 `createShadowRootUi`）
-- 协调 SelectionToolbar 和 UnifiedPanel 的渲染
+- 协调 SelectionToolbar 和 ChatWindow 的渲染
 - 整合三个核心 Hook：`useToolbarState`、`useChatState`、`useSelectionDetection`
 
 **关键代码结构**：
@@ -216,7 +215,7 @@ function App() {
   return (
     <div ref={extensionRootRef} data-aiction-root="true" style={{ pointerEvents: "none" }}>
       <SelectionToolbar ... />
-      {panelOpen && <UnifiedPanel ... />}
+      {panelOpen && <ChatWindow ... />}
     </div>
   )
 }
@@ -234,7 +233,7 @@ function App() {
 
 **功能**：
 - 渐变圆形触发按钮（BrandIcon）
-- 根据 `toolbarMode` 渲染两种菜单：`ExplodedActionMenu`（环形展开）或 `PillActionMenu`（胶囊工具栏）
+- 渲染 `ToolbarActionMenu`（工具条菜单）
 - 基于鼠标位置的智能定位
 
 **定位算法**（`src/contents/components/SelectionToolbar.tsx:57-83`）：
@@ -259,9 +258,9 @@ const position = useMemo(() => {
 }, [anchor])
 ```
 
-##### UnifiedPanel.tsx（对话窗）
+##### ChatWindow.tsx（对话窗口）
 
-**文件位置**：`src/contents/components/UnifiedPanel.tsx`
+**文件位置**：`src/contents/components/ChatWindow.tsx`
 
 **功能**：
 - 模态浮层聊天窗口
@@ -287,7 +286,6 @@ const position = useMemo(() => {
   toolbarAnchor: SelectionAnchor | null,  // 定位锚点
   selectionContext: SelectionContext | null,  // 选区上下文
   actions: ActionTemplate[],    // 动作模板列表
-  toolbarMode: ToolbarMode      // "explode" | "pill"
 }
 ```
 
@@ -1496,9 +1494,8 @@ Content Script                    Port                    Background
 |----------|----------|------|
 | `src/contents/main.tsx` | 1-167 | Content Script 入口 |
 | `src/contents/components/SelectionToolbar.tsx` | 1-175 | 触发按钮定位 + 菜单渲染入口 |
-| `src/contents/components/ExplodedActionMenu.tsx` | 1-191 | 环形展开菜单 |
-| `src/contents/components/PillActionMenu.tsx` | 1-127 | 胶囊工具栏菜单 |
-| `src/contents/components/UnifiedPanel.tsx` | 1-556 | 对话窗 |
+| `src/contents/components/ToolbarActionMenu.tsx` | 1-173 | 工具条菜单 |
+| `src/contents/components/ChatWindow.tsx` | 1-556 | 对话窗口 |
 | `src/contents/hooks/useToolbarState.ts` | 1-90 | 工具栏状态 Hook |
 | `src/contents/hooks/useChatState.ts` | 1-218 | 聊天状态 Hook |
 | `src/contents/hooks/useSelectionDetection.ts` | 1-180 | 选择检测 Hook |

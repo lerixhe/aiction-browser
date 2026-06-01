@@ -15,7 +15,7 @@ AIction is a Chrome MV3 extension built with **WXT + React + TypeScript**. Users
 
 | Context | Entry point | Key files |
 |---------|-------------|-----------|
-| **Content script UI** | `src/entrypoints/content/index.tsx` | `App.tsx`, `components/SelectionToolbar.tsx`, `components/UnifiedPanel.tsx` |
+| **Content script UI** | `src/entrypoints/content/index.tsx` | `App.tsx`, `components/SelectionToolbar.tsx`, `components/ChatWindow.tsx` |
 | **Background service worker** | `src/entrypoints/background.ts` | — |
 | **Options page** | `src/entrypoints/options/` | `OptionsPage.tsx`, `ConfirmDialog.tsx` |
 | **Popup** | `src/entrypoints/popup/` | `Popup.tsx` |

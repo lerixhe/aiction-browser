@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 
-import PillActionMenu from "@/entrypoints/content/components/PillActionMenu"
+import ToolbarActionMenu from "@/entrypoints/content/components/ToolbarActionMenu"
 import { useUiTheme } from "@/shared/ui/theme"
 import { uiLayer, uiMotion, uiRadius, uiTypography } from "@/shared/ui/tokens"
 import type { ActionTemplate, SelectionAnchor } from "@/shared/types"
@@ -254,7 +254,7 @@ export default function SelectionToolbar({
           flexShrink: 0
         }} />
 
-        <PillActionMenu
+        <ToolbarActionMenu
           actions={actions}
           onActionClick={handleActionClick}
           theme={theme}

@@ -8,7 +8,7 @@ Select text on any page, trigger AI actions from an inline toolbar, and continue
 
 ## Features
 
-- **Inline AI Toolbar** — Select text and instantly trigger AI actions via an exploded ring menu or pill toolbar
+- **Inline AI Toolbar** — Select text and instantly trigger AI actions via a toolbar
 - **Floating Chat Panel** — Continue the conversation in a draggable, resizable panel with streaming responses
 - **Custom Actions** — Create your own prompt templates with `{text}` placeholders
 - **Multi-Model Support** — Connect to OpenAI, DeepSeek, or any OpenAI-compatible API
