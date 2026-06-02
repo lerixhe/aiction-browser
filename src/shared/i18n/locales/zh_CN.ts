@@ -66,6 +66,7 @@ export default {
   "options.connection.paramTopP": "核采样概率阈值",
   "options.connection.paramPresencePenalty": "存在惩罚",
   "options.connection.paramFrequencyPenalty": "频率惩罚",
+  "options.connection.noSupportedParams": "该模型不支持可调参数",
   "options.connection.saveService": "保存服务",
   "options.connection.cancel": "取消",
   "options.connection.listTitle": "API提供商列表",

@@ -1,6 +1,5 @@
 import { DEFAULT_CUSTOM_MODEL_SERVICE, DEFAULT_SETTINGS } from "@/shared/defaults"
-import { PROVIDERS } from "@/shared/providers"
-import type { ExtensionSettings, LanguagePreference, ModelParams, ProviderConfig, ProviderType, ThemePreference, UserIconData } from "@/shared/types"
+import type { ExtensionSettings, LanguagePreference, ModelParams, ProviderConfig, ThemePreference, UserIconData } from "@/shared/types"
 
 export { DEFAULT_SETTINGS }
 
@@ -40,36 +39,19 @@ function validateModelParams(value: unknown): ModelParams {
   }
 }
 
-const VALID_PROVIDERS: ProviderType[] = ["openai", "anthropic", "google", "deepseek", "openrouter", "openai-compatible"]
-
-function validateProvider(value: unknown, oldValue?: unknown): ProviderType {
-  if (typeof value === "string" && VALID_PROVIDERS.includes(value as ProviderType)) {
-    return value as ProviderType
-  }
-  // Migration: old type → new provider
-  if (oldValue === "official-premium" || oldValue === "official-free") return "openai"
-  if (oldValue === "custom") return "openai-compatible"
-  return "openai-compatible"
-}
-
 function validateProviders(items: unknown[]): ProviderConfig[] {
   return items
     .filter((item) => item && typeof item === "object")
     .map((item, index) => {
       const record = item as Record<string, unknown>
       const id = typeof record.id === "string" && record.id.trim() ? record.id.trim() : `service-${Date.now()}-${index}`
-      const provider = validateProvider(record.provider, record.type)
-      const meta = PROVIDERS[provider]
 
       return {
         id,
-        provider,
         name: typeof record.name === "string" ? record.name : DEFAULT_CUSTOM_MODEL_SERVICE.name,
         apiKey: typeof record.apiKey === "string" ? record.apiKey : DEFAULT_CUSTOM_MODEL_SERVICE.apiKey,
         model: typeof record.model === "string" ? record.model : DEFAULT_CUSTOM_MODEL_SERVICE.model,
-        apiBaseUrl: typeof record.apiBaseUrl === "string"
-          ? record.apiBaseUrl
-          : meta.defaultBaseUrl || undefined,
+        apiBaseUrl: typeof record.apiBaseUrl === "string" ? record.apiBaseUrl : undefined,
         modelParams: validateModelParams(record.modelParams),
         icon: typeof record.icon === "string" ? record.icon : undefined,
         modelsDevId: typeof record.modelsDevId === "string" ? record.modelsDevId : undefined

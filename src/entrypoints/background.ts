@@ -10,6 +10,7 @@ import { i18nStore } from "@/shared/i18n/index"
 import { formatApiError, getErrorMessage, isAbortError } from "@/shared/errors"
 import { getActiveProvider, getSettings } from "@/shared/storage"
 import { resolveLanguageModel } from "@/shared/model-provider"
+import { fetchModelsDev } from "@/shared/models-dev"
 import {
   trackBackgroundEvent,
   startBackgroundBatching,
@@ -33,12 +34,13 @@ async function streamChat(
 
   onEvent({ type: "started" })
 
-  if (activeService.provider === "openai-compatible" && !activeService.apiBaseUrl?.trim()) {
+  if (!activeService.modelsDevId && !activeService.apiBaseUrl?.trim()) {
     onEvent({ type: "failed", error: ERROR_MESSAGES.API_TEST_MISSING_FIELDS })
     return
   }
 
-  const model = resolveLanguageModel(activeService)
+  const modelsDevData = await fetchModelsDev()
+  const model = resolveLanguageModel(activeService, modelsDevData)
 
   const result = streamText({
     model,
@@ -193,32 +195,22 @@ export default defineBackground(() => {
       const startTime = performance.now()
 
       try {
+        const modelsDevData = await fetchModelsDev()
         const service = {
           id: "test",
-          provider: "openai" as const,
           name: "test",
           apiKey: apiKey.trim(),
           model: model.trim(),
           apiBaseUrl: apiBaseUrl?.trim() || undefined,
           modelParams: { maxTokens: 5, temperature: 0, topP: 1, presencePenalty: 0, frequencyPenalty: 0 },
         }
-        const resolvedModel = resolveLanguageModel(service)
+        const resolvedModel = resolveLanguageModel(service, modelsDevData)
         const result = await generateText({
           model: resolvedModel,
           messages: [{ role: "user", content: "Hi" }],
           maxOutputTokens: 5,
         })
         const latencyMs = Math.round(performance.now() - startTime)
-
-        if (!result.text) {
-          void trackBackgroundEvent("api_test_completed", { success: false, latency_ms: latencyMs })
-          sendResponse({
-            success: false,
-            error: ERROR_MESSAGES.NO_VALID_CONTENT,
-            latencyMs
-          } satisfies ApiTestResponse)
-          return
-        }
 
         void trackBackgroundEvent("api_test_completed", { success: true, latency_ms: latencyMs })
         sendResponse({ success: true, latencyMs } satisfies ApiTestResponse)

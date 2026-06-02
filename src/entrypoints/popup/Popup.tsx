@@ -1,7 +1,6 @@
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react"
 
 import { getSettings, saveSettings } from "@/shared/storage"
-import { PROVIDERS } from "@/shared/providers"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { createFieldLabelStyle, createInputStyle } from "@/shared/ui/styles"
@@ -159,7 +158,7 @@ export default function Popup() {
   const actionsMenuRef = useRef<HTMLDivElement | null>(null)
   const activeService =
     settings?.providers.find((provider) => provider.id === settings.activeProviderId) ?? null
-  const avatarPalette = getAvatarPalette(activeService ? PROVIDERS[activeService.provider]?.name : undefined, activeService?.name, themeName === "dark")
+  const avatarPalette = getAvatarPalette(activeService?.name, activeService?.name, themeName === "dark")
   const enabledActionsCount = settings?.actions.filter((a) => a.enabled !== false).length ?? 0
 
   useEffect(() => {
@@ -393,9 +392,9 @@ export default function Popup() {
             <div aria-hidden="true" style={triggerLeftIcon}>
               <span
                 style={{
-                  ...avatarStyle(avatarPalette, AVATAR_SIZE, getAvatarDisplayText(activeService ? PROVIDERS[activeService.provider]?.name : undefined, activeService?.name).length)
+                  ...avatarStyle(avatarPalette, AVATAR_SIZE, getAvatarDisplayText(activeService?.name, activeService?.name).length)
                 }}>
-                {getAvatarDisplayText(activeService ? PROVIDERS[activeService.provider]?.name : undefined, activeService?.name)}
+                {getAvatarDisplayText(activeService?.name, activeService?.name)}
               </span>
             </div>
             <span style={{ ...menuItemTextStyle, flex: 1 }}>
@@ -410,9 +409,9 @@ export default function Popup() {
           {serviceMenuOpen && settings?.providers.length ? (
             <div role="listbox" style={menuStyle}>
               {settings.providers.map((service) => {
-                const palette = getAvatarPalette(PROVIDERS[service.provider]?.name, service.name, themeName === "dark")
+                const palette = getAvatarPalette(service.name, service.name, themeName === "dark")
                 const selected = service.id === settings.activeProviderId
-                const displayText = getAvatarDisplayText(PROVIDERS[service.provider]?.name, service.name)
+                const displayText = getAvatarDisplayText(service.name, service.name)
 
                 return (
                   <button

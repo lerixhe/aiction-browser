@@ -5,35 +5,41 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { createDeepSeek } from "@ai-sdk/deepseek"
 import { createOpenRouter } from "@openrouter/ai-sdk-provider"
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
-import type { ProviderConfig, ProviderType } from "./types"
-import { PROVIDERS } from "./providers"
+import type { ProviderConfig } from "./types"
+import type { ModelsDevData } from "./models-dev"
 
-type ProviderFactory = (config: ProviderConfig) => { languageModel: (modelId: string) => LanguageModel }
+type ProviderFactory = (config: { apiKey: string; baseURL?: string }) => { languageModel: (modelId: string) => LanguageModel }
 
-const FACTORIES: Record<ProviderType, ProviderFactory> = {
-  openai: (c) => createOpenAI({ apiKey: c.apiKey, baseURL: c.apiBaseUrl }),
-  anthropic: (c) => createAnthropic({ apiKey: c.apiKey, baseURL: c.apiBaseUrl }),
-  google: (c) => createGoogleGenerativeAI({ apiKey: c.apiKey, baseURL: c.apiBaseUrl }),
-  deepseek: (c) => createDeepSeek({ apiKey: c.apiKey }),
-  openrouter: (c) => createOpenRouter({ apiKey: c.apiKey }),
-  "openai-compatible": (c) => createOpenAICompatible({ name: c.name || "custom", apiKey: c.apiKey, baseURL: c.apiBaseUrl! }),
-} as const
-
-const PROVIDER_HEADERS: Partial<Record<ProviderType, Record<string, string>>> = {
-  anthropic: { "anthropic-dangerous-direct-browser-access": "true" },
+const NPM_FACTORIES: Record<string, ProviderFactory> = {
+  "@ai-sdk/openai": ({ apiKey, baseURL }) => createOpenAI({ apiKey, baseURL }),
+  "@ai-sdk/anthropic": ({ apiKey, baseURL }) => createAnthropic({ apiKey, baseURL }),
+  "@ai-sdk/google": ({ apiKey, baseURL }) => createGoogleGenerativeAI({ apiKey, baseURL }),
+  "@ai-sdk/deepseek": ({ apiKey }) => createDeepSeek({ apiKey }),
+  "@openrouter/ai-sdk-provider": ({ apiKey }) => createOpenRouter({ apiKey }),
 }
 
-export function resolveLanguageModel(provider: ProviderConfig) {
-  const factory = FACTORIES[provider.provider]
-  if (!factory) throw new Error(`Unknown provider: ${provider.provider}`)
-  const result = factory(provider)
+export function resolveLanguageModel(provider: ProviderConfig, modelsDevData?: ModelsDevData) {
+  let baseURL = provider.apiBaseUrl
+  let npm = "@ai-sdk/openai-compatible"
+
+  if (provider.modelsDevId && modelsDevData) {
+    const providerData = modelsDevData[provider.modelsDevId]
+    if (providerData) {
+      if (providerData.api && !baseURL) {
+        baseURL = providerData.api
+      }
+      if (providerData.npm) {
+        npm = providerData.npm
+      }
+    }
+  }
+
+  if (!baseURL) {
+    throw new Error("API Base URL is required")
+  }
+
+  const factory = NPM_FACTORIES[npm] ?? (({ apiKey, baseURL }) => createOpenAICompatible({ name: "custom", apiKey, baseURL: baseURL! }))
+
+  const result = factory({ apiKey: provider.apiKey, baseURL })
   return result.languageModel(provider.model)
-}
-
-export function getProviderHeaders(provider: ProviderType): Record<string, string> | undefined {
-  return PROVIDER_HEADERS[provider]
-}
-
-export function getProviderFallbackModels(provider: ProviderConfig): string[] {
-  return PROVIDERS[provider.provider]?.fallbackModels ?? []
 }

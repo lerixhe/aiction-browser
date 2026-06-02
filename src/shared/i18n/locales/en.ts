@@ -66,6 +66,7 @@ export default {
   "options.connection.paramTopP": "Nucleus sampling probability threshold",
   "options.connection.paramPresencePenalty": "Presence penalty",
   "options.connection.paramFrequencyPenalty": "Frequency penalty",
+  "options.connection.noSupportedParams": "This model does not support adjustable parameters",
   "options.connection.saveService": "Save Service",
   "options.connection.cancel": "Cancel",
   "options.connection.listTitle": "API Provider List",

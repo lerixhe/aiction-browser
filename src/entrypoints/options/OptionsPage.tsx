@@ -7,8 +7,7 @@ import { BrandIcon } from "@/shared/ui/icons"
 import { trackEvent } from "@/shared/analytics"
 import { DEFAULT_CUSTOM_MODEL_SERVICE, DEFAULT_SETTINGS } from "@/shared/defaults"
 import { getSettings, normalizeSettings, saveSettings, saveUserIcon, getUserIcons } from "@/shared/storage"
-import { PROVIDERS, PROVIDER_LIST } from "@/shared/providers"
-import { fetchModelsDev, getModelsForProvider, getAllProviders, mapModelsDevProviderToType, type ModelsDevData, type ModelsDevModel, type ModelsDevProviderInfo } from "@/shared/models-dev"
+import { fetchModelsDev, getModelsForProvider, getAllProviders, getModelParamSupport, type ModelsDevData, type ModelsDevModel, type ModelsDevProviderInfo, type ModelParamSupport } from "@/shared/models-dev"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { createButtonStyle, createCardStyle, createFieldLabelStyle, createFocusRing, createInputStyle as createSharedInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
@@ -16,7 +15,7 @@ import { getAvatarPalette, getAvatarDisplayText } from "@/shared/ui/avatar"
 import { ACTION_ICON_LIBRARY, type IconEntry } from "@/shared/ui/icon-library"
 import { BUNDLED_TABLER_ICONS } from "@/shared/ui/bundled-icons"
 import { useI18n } from "@/shared/i18n/context"
-import type { ActionTemplate, ExtensionSettings, LanguagePreference, ThemePreference, ApiTestResponse, FetchModelsResponse, ProviderConfig, UserIconData, ProviderType, ModelParams } from "@/shared/types"
+import type { ActionTemplate, ExtensionSettings, LanguagePreference, ThemePreference, ApiTestResponse, FetchModelsResponse, ProviderConfig, UserIconData, ModelParams } from "@/shared/types"
 import { MESSAGE_TYPES } from "@/shared/constants"
 import { ConfirmDialog } from "@/entrypoints/options/ConfirmDialog"
 
@@ -87,45 +86,6 @@ function RefreshIcon({ size, color }: { size: number; color: string }) {
   )
 }
 
-function ProviderLogo({ provider, size = 24, themeName, theme }: { provider: ProviderType; size?: number; themeName: string; theme: any }) {
-  const [error, setError] = useState(false)
-  const logoUrl = `https://models.dev/logos/${PROVIDERS[provider].id}.svg`
-
-  if (error) {
-    return (
-      <div style={{
-        width: size,
-        height: size,
-        borderRadius: uiRadius.sm,
-        background: theme.bg.surfaceMuted,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: size * 0.5,
-        fontWeight: uiTypography.fontWeight.semibold,
-        color: theme.accent.primary,
-        flexShrink: 0
-      }}>
-        {PROVIDERS[provider].name.charAt(0)}
-      </div>
-    )
-  }
-
-  return (
-    <img
-      src={logoUrl}
-      width={size}
-      height={size}
-      onError={() => setError(true)}
-      style={{
-        borderRadius: uiRadius.sm,
-        filter: themeName === "dark" ? "invert(1)" : "none",
-        flexShrink: 0
-      }}
-    />
-  )
-}
-
 function ProviderLogoById({ providerId, name, size = 24, theme }: { providerId: string; name: string; size?: number; theme: any }) {
   const [error, setError] = useState(false)
 
@@ -163,15 +123,12 @@ function ProviderLogoById({ providerId, name, size = 24, theme }: { providerId: 
   )
 }
 
-function createServiceDraft(provider: ProviderType): ProviderConfig {
-  const meta = PROVIDERS[provider]
+function createServiceDraft(): ProviderConfig {
   return {
     id: `service-${Date.now()}`,
-    provider,
-    name: meta.name,
+    name: "",
     apiKey: "",
-    model: meta.fallbackModels[0] ?? "",
-    apiBaseUrl: meta.defaultBaseUrl || undefined,
+    model: "",
     modelParams: DEFAULT_CUSTOM_MODEL_SERVICE.modelParams
   }
 }
@@ -245,7 +202,7 @@ export default function OptionsPage() {
   const [pendingImportUserIcons, setPendingImportUserIcons] = useState<Record<string, UserIconData> | null>(null)
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
   const [showProviderSelect, setShowProviderSelect] = useState(false)
-  const [serviceDraft, setServiceDraft] = useState<ProviderConfig>(createServiceDraft("openai"))
+  const [serviceDraft, setServiceDraft] = useState<ProviderConfig>(createServiceDraft())
   const [pendingDeleteServiceId, setPendingDeleteServiceId] = useState<string | null>(null)
   const [modelsDevData, setModelsDevData] = useState<ModelsDevData | null>(null)
   const [modelSearchQuery, setModelSearchQuery] = useState("")
@@ -367,7 +324,7 @@ export default function OptionsPage() {
     Boolean(serviceDraft.name.trim()) &&
     Boolean(serviceDraft.apiKey.trim()) &&
     Boolean(serviceDraft.model.trim()) &&
-    (serviceDraft.provider !== "openai-compatible" || Boolean(serviceDraft.apiBaseUrl?.trim()))
+    (Boolean(serviceDraft.modelsDevId) || Boolean(serviceDraft.apiBaseUrl?.trim()))
 
   const saveSettingsNow = (updater: (current: ExtensionSettings) => ExtensionSettings) => {
     setSettings((current) => {
@@ -435,7 +392,7 @@ export default function OptionsPage() {
       setTestResult({ success: false, message: t("options.connection.missingUrlKeyModel") })
       return
     }
-    if (serviceDraft.provider === "openai-compatible" && !trimmedUrl) {
+    if (!serviceDraft.modelsDevId && !trimmedUrl) {
       setTestResult({ success: false, message: t("options.connection.missingUrlKeyModel") })
       return
     }
@@ -571,7 +528,7 @@ export default function OptionsPage() {
 
     setSettings(pendingImportSettings)
     setSelectedServiceId(null)
-    setServiceDraft(createServiceDraft("openai"))
+    setServiceDraft(createServiceDraft())
     setSaving(true)
     setBackupStatus(null)
 
@@ -615,8 +572,8 @@ export default function OptionsPage() {
     setProviderSearchQuery("")
   }
 
-  const selectProviderAndCreate = (provider: ProviderType) => {
-    const newService = createServiceDraft(provider)
+  const selectProviderAndCreate = () => {
+    const newService = createServiceDraft()
     saveSettingsNow((current) => ({
       ...current,
       providers: [...current.providers, newService],
@@ -633,8 +590,7 @@ export default function OptionsPage() {
   }
 
   const selectModelsDevProvider = (providerInfo: ModelsDevProviderInfo) => {
-    const providerType = mapModelsDevProviderToType(providerInfo.id)
-    const newService = createServiceDraft(providerType)
+    const newService = createServiceDraft()
     newService.name = providerInfo.name
     newService.modelsDevId = providerInfo.id
     if (providerInfo.api) {
@@ -657,7 +613,7 @@ export default function OptionsPage() {
 
   const closeConnectionEditor = () => {
     setSelectedServiceId(null)
-    setServiceDraft(createServiceDraft("openai"))
+    setServiceDraft(createServiceDraft())
     setModels([])
     setFetchError(null)
     setTestResult(null)
@@ -745,7 +701,7 @@ export default function OptionsPage() {
       setServiceDraft({ ...remaining[0], modelParams: { ...remaining[0].modelParams } })
     } else {
       setSelectedServiceId(null)
-      setServiceDraft(createServiceDraft("openai"))
+    setServiceDraft(createServiceDraft())
     }
     
     setPendingDeleteServiceId(null)
@@ -1000,8 +956,7 @@ export default function OptionsPage() {
               settings.providers.map((service) => {
                 const isSelected = selectedServiceId === service.id
                 const isActive = settings.activeProviderId === service.id
-                const providerMeta = PROVIDERS[service.provider]
-                const displayName = service.name || providerMeta.name
+                const displayName = service.name || "Custom"
 
                 return (
                   <div
@@ -1029,7 +984,21 @@ export default function OptionsPage() {
                     {service.modelsDevId ? (
                       <ProviderLogoById providerId={service.modelsDevId} name={displayName} size={28} theme={theme} />
                     ) : (
-                      <ProviderLogo provider={service.provider} size={28} themeName={themeName} theme={theme} />
+                      <div style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: uiRadius.sm,
+                        background: theme.bg.surfaceMuted,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 14,
+                        fontWeight: uiTypography.fontWeight.semibold,
+                        color: theme.accent.primary,
+                        flexShrink: 0
+                      }}>
+                        {displayName.charAt(0)}
+                      </div>
                     )}
 
                     {/* Name */}
@@ -1080,14 +1049,28 @@ export default function OptionsPage() {
               {/* Provider badge */}
               <div style={{ display: "flex", alignItems: "center", gap: uiSpace[10], marginBottom: uiSpace[16], padding: `${uiSpace[10]}px ${uiSpace[14]}px`, background: theme.bg.surfaceMuted, borderRadius: uiRadius.md, border: `1px solid ${theme.border.hairline}` }}>
                 {serviceDraft.modelsDevId ? (
-                  <ProviderLogoById providerId={serviceDraft.modelsDevId} name={serviceDraft.name || PROVIDERS[serviceDraft.provider].name} size={28} theme={theme} />
+                  <ProviderLogoById providerId={serviceDraft.modelsDevId} name={serviceDraft.name || "Custom"} size={28} theme={theme} />
                 ) : (
-                  <ProviderLogo provider={serviceDraft.provider} size={28} themeName={themeName} theme={theme} />
+                  <div style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: uiRadius.sm,
+                    background: theme.bg.surfaceMuted,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 14,
+                    fontWeight: uiTypography.fontWeight.semibold,
+                    color: theme.accent.primary,
+                    flexShrink: 0
+                  }}>
+                    {(serviceDraft.name || "C").charAt(0)}
+                  </div>
                 )}
                 <span style={{ fontSize: uiTypography.fontSize.md, fontWeight: uiTypography.fontWeight.semibold, color: theme.text.primary }}>
-                  {serviceDraft.name || PROVIDERS[serviceDraft.provider].name}
+                  {serviceDraft.name || "Custom"}
                 </span>
-                {serviceDraft.provider !== "openai-compatible" && serviceDraft.apiBaseUrl ? (
+                {serviceDraft.modelsDevId && serviceDraft.apiBaseUrl ? (
                   <span style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary, marginLeft: "auto" }}>
                     {serviceDraft.apiBaseUrl}
                   </span>
@@ -1111,7 +1094,7 @@ export default function OptionsPage() {
               </div>
 
               {/* API Base URL (for custom provider) */}
-              {serviceDraft.provider === "openai-compatible" ? (
+              {!serviceDraft.modelsDevId ? (
                 <div style={{ marginBottom: uiSpace[16] }}>
                   <label htmlFor="service-api-base-url" style={fieldLabelStyle}>{t("options.connection.apiBaseUrl")}</label>
                   <input
@@ -1149,7 +1132,7 @@ export default function OptionsPage() {
               <div style={{ marginBottom: uiSpace[16] }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: uiSpace[6] }}>
                   <label htmlFor="service-model" style={fieldLabelStyle}>{t("options.connection.model")}</label>
-                  {serviceDraft.provider === "openai-compatible" ? (
+                  {!serviceDraft.modelsDevId ? (
                     <button
                       type="button"
                       onClick={handleFetchModels}
@@ -1167,7 +1150,7 @@ export default function OptionsPage() {
                     </button>
                   ) : null}
                 </div>
-                {models.length > 0 ? (
+                {!serviceDraft.modelsDevId && models.length > 0 ? (
                   <div style={{ display: "flex", gap: uiSpace[8] }}>
                     <select
                       id="service-model"
@@ -1199,17 +1182,15 @@ export default function OptionsPage() {
                       onChange={(event) => {
                         updateServiceField("model", event.target.value)
                       }}
-                      placeholder={PROVIDERS[serviceDraft.provider].fallbackModels[0] ?? "model-name"}
+                      placeholder="model-name"
                       style={createInputStyle("model")}
                     />
                     {/* Model suggestions from models.dev or fallback */}
                     {(() => {
-                      const devModels = modelsDevData
-                        ? getModelsForProvider(modelsDevData, serviceDraft.provider)
+                      const devModels = modelsDevData && serviceDraft.modelsDevId
+                        ? getModelsForProvider(modelsDevData, serviceDraft.modelsDevId)
                         : []
                       const hasDevModels = devModels.length > 0
-                      const fallbackList = PROVIDERS[serviceDraft.provider].fallbackModels
-                      const showSearch = devModels.length > 12
                       const query = modelSearchQuery.trim().toLowerCase()
                       const filtered = query
                         ? devModels.filter(
@@ -1219,31 +1200,29 @@ export default function OptionsPage() {
                           )
                         : devModels
 
-                      if (!hasDevModels && fallbackList.length === 0) return null
+                      if (!hasDevModels) return null
 
                       return (
                         <div style={{ marginTop: uiSpace[8] }}>
-                          {showSearch ? (
-                            <input
-                              type="text"
-                              value={modelSearchQuery}
-                              onChange={(e) => setModelSearchQuery(e.target.value)}
-                              placeholder={t("options.connection.modelSearchPlaceholder")}
-                              style={{
-                                width: "100%",
-                                boxSizing: "border-box",
-                                padding: `${uiSpace[4]}px ${uiSpace[8]}px`,
-                                fontSize: uiTypography.fontSize.xs,
-                                border: `1px solid ${theme.border.hairline}`,
-                                borderRadius: uiRadius.sm,
-                                background: theme.bg.surface,
-                                color: theme.text.primary,
-                                outline: "none",
-                                marginBottom: uiSpace[6],
-                                fontFamily: uiTypography.fontFamily
-                              }}
-                            />
-                          ) : null}
+                          <input
+                            type="text"
+                            value={modelSearchQuery}
+                            onChange={(e) => setModelSearchQuery(e.target.value)}
+                            placeholder={t("options.connection.modelSearchPlaceholder")}
+                            style={{
+                              width: "100%",
+                              boxSizing: "border-box",
+                              padding: `${uiSpace[4]}px ${uiSpace[8]}px`,
+                              fontSize: uiTypography.fontSize.xs,
+                              border: `1px solid ${theme.border.hairline}`,
+                              borderRadius: uiRadius.sm,
+                              background: theme.bg.surface,
+                              color: theme.text.primary,
+                              outline: "none",
+                              marginBottom: uiSpace[6],
+                              fontFamily: uiTypography.fontFamily
+                            }}
+                          />
                           {hasDevModels ? (
                             <div style={{ display: "flex", flexDirection: "column", gap: uiSpace[2], maxHeight: 240, overflowY: "auto" }}>
                               {filtered.map((m) => {
@@ -1323,32 +1302,7 @@ export default function OptionsPage() {
                                 </div>
                               ) : null}
                             </div>
-                          ) : (
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: uiSpace[6] }}>
-                              {fallbackList.map((modelId) => (
-                                <button
-                                  key={modelId}
-                                  type="button"
-                                  onClick={() => {
-                                    updateServiceField("model", modelId)
-                                  }}
-                                  style={{
-                                    padding: `${uiSpace[4]}px ${uiSpace[10]}px`,
-                                    border: `1px solid ${serviceDraft.model === modelId ? theme.accent.primary : theme.border.hairline}`,
-                                    borderRadius: uiRadius.pill,
-                                    background: serviceDraft.model === modelId ? `${theme.accent.primary}14` : "transparent",
-                                    color: serviceDraft.model === modelId ? theme.accent.primary : theme.text.secondary,
-                                    fontSize: uiTypography.fontSize.xs,
-                                    cursor: "pointer",
-                                    outline: "none",
-                                    fontFamily: uiTypography.fontFamily,
-                                    transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`
-                                  }}>
-                                  {modelId}
-                                </button>
-                              ))}
-                            </div>
-                          )}
+                          ) : null}
                         </div>
                       )
                     })()}
@@ -1419,46 +1373,64 @@ export default function OptionsPage() {
                   {t("options.connection.modelParamsDesc")}
                 </p>
 
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: `${uiSpace[12]}px ${uiSpace[16]}px`
-                  }}>
-                  {(
-                    [
-                      { key: "maxTokens" as const, label: "Max Tokens", placeholder: "1024", min: 1, max: 128000, step: 1, desc: t("options.connection.paramMaxTokens") },
-                      { key: "temperature" as const, label: "Temperature", placeholder: "0.3", min: 0, max: 2, step: 0.1, desc: t("options.connection.paramTemperature") },
-                      { key: "topP" as const, label: "Top P", placeholder: "0.9", min: 0, max: 1, step: 0.05, desc: t("options.connection.paramTopP") },
-                      { key: "presencePenalty" as const, label: "Presence Penalty", placeholder: "0", min: -2, max: 2, step: 0.1, desc: t("options.connection.paramPresencePenalty") },
-                      { key: "frequencyPenalty" as const, label: "Frequency Penalty", placeholder: "0", min: -2, max: 2, step: 0.1, desc: t("options.connection.paramFrequencyPenalty") }
-                    ]
-                  ).map((param) => (
-                    <div key={param.key}>
-                      <label htmlFor={`model-param-${param.key}`} style={{ ...fieldLabelStyle, marginBottom: uiSpace[4] }}>{param.label}</label>
-                      <div style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary, marginBottom: uiSpace[6] }}>
-                        {param.desc}
+                {(() => {
+                  const paramSupport = modelsDevData && serviceDraft.modelsDevId
+                    ? getModelParamSupport(modelsDevData, serviceDraft.modelsDevId, serviceDraft.model)
+                    : { maxTokens: true, temperature: true, topP: true, presencePenalty: true, frequencyPenalty: true }
+
+                  const allParams = [
+                    { key: "maxTokens" as const, label: "Max Tokens", placeholder: "1024", min: 1, max: 128000, step: 1, desc: t("options.connection.paramMaxTokens") },
+                    { key: "temperature" as const, label: "Temperature", placeholder: "0.3", min: 0, max: 2, step: 0.1, desc: t("options.connection.paramTemperature") },
+                    { key: "topP" as const, label: "Top P", placeholder: "0.9", min: 0, max: 1, step: 0.05, desc: t("options.connection.paramTopP") },
+                    { key: "presencePenalty" as const, label: "Presence Penalty", placeholder: "0", min: -2, max: 2, step: 0.1, desc: t("options.connection.paramPresencePenalty") },
+                    { key: "frequencyPenalty" as const, label: "Frequency Penalty", placeholder: "0", min: -2, max: 2, step: 0.1, desc: t("options.connection.paramFrequencyPenalty") }
+                  ]
+
+                  const supportedParams = allParams.filter((p) => paramSupport[p.key])
+
+                  if (supportedParams.length === 0) {
+                    return (
+                      <div style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary, fontStyle: "italic" }}>
+                        {t("options.connection.noSupportedParams")}
                       </div>
-                      <input
-                        id={`model-param-${param.key}`}
-                        type="number"
-                        value={serviceDraft.modelParams[param.key]}
-                        min={param.min}
-                        max={param.max}
-                        step={param.step}
-                        onFocus={() => setFocusedField(`modelParams-${param.key}`)}
-                        onBlur={() => setFocusedField(null)}
-                        onChange={(event) => {
-                          const raw = event.target.value
-                          const value = raw === "" ? DEFAULT_CUSTOM_MODEL_SERVICE.modelParams[param.key] : Number(raw)
-                          updateServiceModelParam(param.key, value)
-                        }}
-                        placeholder={param.placeholder}
-                        style={createInputStyle(`modelParams-${param.key}`)}
-                      />
+                    )
+                  }
+
+                  return (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: `${uiSpace[12]}px ${uiSpace[16]}px`
+                      }}>
+                      {supportedParams.map((param) => (
+                        <div key={param.key}>
+                          <label htmlFor={`model-param-${param.key}`} style={{ ...fieldLabelStyle, marginBottom: uiSpace[4] }}>{param.label}</label>
+                          <div style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary, marginBottom: uiSpace[6] }}>
+                            {param.desc}
+                          </div>
+                          <input
+                            id={`model-param-${param.key}`}
+                            type="number"
+                            value={serviceDraft.modelParams[param.key]}
+                            min={param.min}
+                            max={param.max}
+                            step={param.step}
+                            onFocus={() => setFocusedField(`modelParams-${param.key}`)}
+                            onBlur={() => setFocusedField(null)}
+                            onChange={(event) => {
+                              const raw = event.target.value
+                              const value = raw === "" ? DEFAULT_CUSTOM_MODEL_SERVICE.modelParams[param.key] : Number(raw)
+                              updateServiceModelParam(param.key, value)
+                            }}
+                            placeholder={param.placeholder}
+                            style={createInputStyle(`modelParams-${param.key}`)}
+                          />
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  )
+                })()}
               </div>
 
               {/* Delete button */}
@@ -1585,7 +1557,7 @@ export default function OptionsPage() {
               {/* Custom provider option */}
               <button
                 type="button"
-                onClick={() => selectProviderAndCreate("openai-compatible")}
+                onClick={() => selectProviderAndCreate()}
                 style={{
                   display: "flex",
                   flexDirection: "column",

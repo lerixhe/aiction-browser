@@ -1,5 +1,3 @@
-import type { ProviderType } from "./types"
-
 const MODELS_DEV_URL = "https://models.dev/api.json"
 const CACHE_KEY = "aiction:models-dev-cache"
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
@@ -20,6 +18,7 @@ export interface ModelsDevProvider {
   id: string
   name: string
   api?: string
+  npm?: string
   env?: string[]
   models: Record<string, ModelsDevModel>
 }
@@ -29,14 +28,6 @@ export type ModelsDevData = Record<string, ModelsDevProvider>
 interface CachedData {
   timestamp: number
   data: ModelsDevData
-}
-
-const PROVIDER_MAP: Partial<Record<ProviderType, string>> = {
-  openai: "openai",
-  anthropic: "anthropic",
-  google: "google",
-  deepseek: "deepseek",
-  openrouter: "openrouter",
 }
 
 let memoryCache: ModelsDevData | null = null
@@ -95,10 +86,8 @@ export async function fetchModelsDev(forceRefresh = false): Promise<ModelsDevDat
 
 export function getModelsForProvider(
   data: ModelsDevData,
-  provider: ProviderType
+  providerId: string
 ): ModelsDevModel[] {
-  const providerId = PROVIDER_MAP[provider]
-  if (!providerId) return []
   const entry = data[providerId]
   if (!entry) return []
   return Object.values(entry.models).filter(
@@ -108,17 +97,13 @@ export function getModelsForProvider(
 
 export function getModelMeta(
   data: ModelsDevData,
-  provider: ProviderType,
+  providerId: string,
   modelId: string
 ): ModelsDevModel | undefined {
-  const providerId = PROVIDER_MAP[provider]
-  if (!providerId) return undefined
   return data[providerId]?.models[modelId]
 }
 
-export function getProviderEnv(data: ModelsDevData, provider: ProviderType): string[] {
-  const providerId = PROVIDER_MAP[provider]
-  if (!providerId) return []
+export function getProviderEnv(data: ModelsDevData, providerId: string): string[] {
   return data[providerId]?.env ?? []
 }
 
@@ -143,7 +128,41 @@ export function getAllProviders(data: ModelsDevData): ModelsDevProviderInfo[] {
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 
-export function mapModelsDevProviderToType(providerId: string): ProviderType {
-  const match = Object.entries(PROVIDER_MAP).find(([, v]) => v === providerId)
-  return (match?.[0] as ProviderType) ?? "openai-compatible"
+export interface ModelParamSupport {
+  maxTokens: boolean
+  temperature: boolean
+  topP: boolean
+  presencePenalty: boolean
+  frequencyPenalty: boolean
+}
+
+export function getModelParamSupport(
+  data: ModelsDevData,
+  providerId: string,
+  modelId: string
+): ModelParamSupport {
+  const model = getModelMeta(data, providerId, modelId)
+  if (!model) {
+    return { maxTokens: true, temperature: true, topP: true, presencePenalty: true, frequencyPenalty: true }
+  }
+
+  const isReasoningModel = model.reasoning === true
+  const isEmbeddingModel = modelId.toLowerCase().includes("embed")
+  const temperatureSupported = model.temperature !== false
+
+  if (isEmbeddingModel) {
+    return { maxTokens: false, temperature: false, topP: false, presencePenalty: false, frequencyPenalty: false }
+  }
+
+  if (isReasoningModel) {
+    return { maxTokens: true, temperature: false, topP: false, presencePenalty: false, frequencyPenalty: false }
+  }
+
+  return {
+    maxTokens: true,
+    temperature: temperatureSupported,
+    topP: temperatureSupported,
+    presencePenalty: temperatureSupported,
+    frequencyPenalty: temperatureSupported
+  }
 }

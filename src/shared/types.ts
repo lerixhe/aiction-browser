@@ -18,17 +18,8 @@ export interface ModelParams {
   frequencyPenalty: number
 }
 
-export type ProviderType =
-  | "openai"
-  | "anthropic"
-  | "google"
-  | "deepseek"
-  | "openrouter"
-  | "openai-compatible"
-
 export interface ProviderConfig {
   id: string
-  provider: ProviderType
   name: string
   apiKey: string
   model: string

@@ -27,10 +27,9 @@ export const DEFAULT_MODEL_PARAMS: ModelParams = {
 
 export const DEFAULT_CUSTOM_MODEL_SERVICE: ProviderConfig = {
   id: "",
-  provider: "openai",
   name: "",
   apiKey: "",
-  model: "gpt-4o-mini",
+  model: "",
   modelParams: DEFAULT_MODEL_PARAMS
 }
 
