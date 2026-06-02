@@ -133,6 +133,7 @@ export interface ApiTestRequest {
     apiBaseUrl: string
     apiKey: string
     model: string
+    modelsDevId?: string
   }
 }
 

@@ -371,7 +371,8 @@ export default function OptionsPage() {
         payload: {
           apiBaseUrl: trimmedUrl || "",
           apiKey: trimmedKey,
-          model: trimmedModel
+          model: trimmedModel,
+          modelsDevId: serviceDraft.modelsDevId
         }
       },
       (response: ApiTestResponse | undefined) => {

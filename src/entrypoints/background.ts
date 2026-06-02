@@ -223,6 +223,7 @@ export default defineBackground(() => {
           model: model.trim(),
           apiBaseUrl: apiBaseUrl?.trim() || undefined,
           modelParams: { maxTokens: 5, temperature: 0, topP: 1, presencePenalty: 0, frequencyPenalty: 0 },
+          modelsDevId: request.payload.modelsDevId,
         }
         const resolvedModel = resolveLanguageModel(service, modelsDevData)
         const result = await generateText({
