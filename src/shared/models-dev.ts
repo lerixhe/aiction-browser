@@ -1,3 +1,6 @@
+import { MESSAGE_TYPES } from "@/shared/constants"
+import type { ModelsDevRequest, ModelsDevResponse } from "@/shared/types"
+
 const MODELS_DEV_URL = "https://models.dev/api.json"
 const CACHE_KEY = "aiction:models-dev-cache"
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
@@ -30,8 +33,6 @@ interface CachedData {
   data: ModelsDevData
 }
 
-let memoryCache: ModelsDevData | null = null
-
 async function readCache(): Promise<CachedData | null> {
   try {
     const result = await chrome.storage.local.get(CACHE_KEY)
@@ -56,12 +57,9 @@ async function writeCache(data: ModelsDevData): Promise<void> {
 }
 
 export async function fetchModelsDev(forceRefresh = false): Promise<ModelsDevData> {
-  if (memoryCache && !forceRefresh) return memoryCache
-
   if (!forceRefresh) {
     const cached = await readCache()
     if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-      memoryCache = cached.data
       return cached.data
     }
   }
@@ -70,14 +68,12 @@ export async function fetchModelsDev(forceRefresh = false): Promise<ModelsDevDat
     const response = await fetch(MODELS_DEV_URL)
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const data = (await response.json()) as ModelsDevData
-    memoryCache = data
     void writeCache(data)
     return data
   } catch {
     // Fall back to stale cache
     const cached = await readCache()
     if (cached) {
-      memoryCache = cached.data
       return cached.data
     }
     return {}
@@ -165,4 +161,25 @@ export function getModelParamSupport(
     presencePenalty: temperatureSupported,
     frequencyPenalty: temperatureSupported
   }
+}
+
+export async function requestModelsDev(): Promise<ModelsDevData> {
+  const request: ModelsDevRequest = {
+    type: MESSAGE_TYPES.MODELS_DEV_REQUEST
+  }
+
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(request, (response: ModelsDevResponse) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message))
+        return
+      }
+
+      if (response?.success && response.data) {
+        resolve(response.data as ModelsDevData)
+      } else {
+        reject(new Error(response?.error || "Failed to fetch models.dev data"))
+      }
+    })
+  })
 }

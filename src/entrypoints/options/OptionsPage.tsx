@@ -8,7 +8,7 @@ import { BrandIcon } from "@/shared/ui/icons"
 import { trackEvent } from "@/shared/analytics"
 import { DEFAULT_CUSTOM_MODEL_SERVICE, DEFAULT_SETTINGS } from "@/shared/defaults"
 import { getSettings, normalizeSettings, saveSettings, saveUserIcon, getUserIcons } from "@/shared/storage"
-import { fetchModelsDev, getModelsForProvider, getAllProviders, getModelParamSupport, type ModelsDevData, type ModelsDevModel, type ModelsDevProviderInfo, type ModelParamSupport } from "@/shared/models-dev"
+import { requestModelsDev, getModelsForProvider, getAllProviders, getModelParamSupport, type ModelsDevData, type ModelsDevModel, type ModelsDevProviderInfo, type ModelParamSupport } from "@/shared/models-dev"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { createButtonStyle, createCardStyle, createFieldLabelStyle, createFocusRing, createInputStyle as createSharedInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
@@ -205,7 +205,7 @@ export default function OptionsPage() {
       }
       setLoaded(true)
     })
-    void fetchModelsDev().then(setModelsDevData)
+    void requestModelsDev().then(setModelsDevData)
   }, [])
 
   useEffect(() => {

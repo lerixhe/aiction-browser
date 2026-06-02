@@ -164,3 +164,14 @@ export interface UserIconData {
   width?: number
   height?: number
 }
+
+// Models.dev cache request/response
+export interface ModelsDevRequest {
+  type: "AICTION_MODELS_DEV_REQUEST"
+}
+
+export interface ModelsDevResponse {
+  success: boolean
+  data?: Record<string, unknown>
+  error?: string
+}

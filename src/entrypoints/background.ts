@@ -3,7 +3,8 @@ import type {
   ChatStreamEvent,
   ChatStreamRequest,
   ApiTestRequest,
-  ApiTestResponse
+  ApiTestResponse,
+  ModelsDevResponse
 } from "@/shared/types"
 import { MESSAGE_TYPES, ERROR_MESSAGES } from "@/shared/constants"
 import { i18nStore } from "@/shared/i18n/index"
@@ -176,6 +177,25 @@ export default defineBackground(() => {
 
   chrome.runtime.onSuspend?.addListener?.(() => {
     stopBackgroundBatching()
+  })
+
+  chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+    if (request?.type !== MESSAGE_TYPES.MODELS_DEV_REQUEST) {
+      return false
+    }
+
+    fetchModelsDev()
+      .then((data) => {
+        sendResponse({ success: true, data } satisfies ModelsDevResponse)
+      })
+      .catch((error: unknown) => {
+        sendResponse({
+          success: false,
+          error: getErrorMessage(error)
+        } satisfies ModelsDevResponse)
+      })
+
+    return true
   })
 
   chrome.runtime.onMessage.addListener((request: ApiTestRequest, _sender, sendResponse) => {
