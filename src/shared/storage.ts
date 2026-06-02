@@ -71,7 +71,8 @@ function validateModelServices(items: unknown[]): ModelServiceConfig[] {
           ? record.apiBaseUrl
           : meta.defaultBaseUrl || undefined,
         modelParams: validateModelParams(record.modelParams),
-        icon: typeof record.icon === "string" ? record.icon : undefined
+        icon: typeof record.icon === "string" ? record.icon : undefined,
+        modelsDevId: typeof record.modelsDevId === "string" ? record.modelsDevId : undefined
       }
     })
 }

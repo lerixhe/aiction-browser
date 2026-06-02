@@ -3,7 +3,6 @@ import type { ProviderType } from "./types"
 export interface ProviderMeta {
   id: ProviderType
   name: string
-  icon: string
   defaultBaseUrl: string
   requiresBaseUrl: boolean
   website: string
@@ -14,7 +13,6 @@ export const PROVIDERS: Record<ProviderType, ProviderMeta> = {
   openai: {
     id: "openai",
     name: "OpenAI",
-    icon: "simple-icons:openai",
     defaultBaseUrl: "https://api.openai.com/v1",
     requiresBaseUrl: false,
     website: "https://platform.openai.com",
@@ -23,7 +21,6 @@ export const PROVIDERS: Record<ProviderType, ProviderMeta> = {
   anthropic: {
     id: "anthropic",
     name: "Anthropic",
-    icon: "simple-icons:anthropic",
     defaultBaseUrl: "https://api.anthropic.com/v1",
     requiresBaseUrl: false,
     website: "https://console.anthropic.com",
@@ -32,7 +29,6 @@ export const PROVIDERS: Record<ProviderType, ProviderMeta> = {
   google: {
     id: "google",
     name: "Google",
-    icon: "simple-icons:google",
     defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
     requiresBaseUrl: false,
     website: "https://aistudio.google.com",
@@ -41,7 +37,6 @@ export const PROVIDERS: Record<ProviderType, ProviderMeta> = {
   deepseek: {
     id: "deepseek",
     name: "DeepSeek",
-    icon: "simple-icons:deepseek",
     defaultBaseUrl: "https://api.deepseek.com/v1",
     requiresBaseUrl: false,
     website: "https://platform.deepseek.com",
@@ -50,7 +45,6 @@ export const PROVIDERS: Record<ProviderType, ProviderMeta> = {
   openrouter: {
     id: "openrouter",
     name: "OpenRouter",
-    icon: "simple-icons:openrouter",
     defaultBaseUrl: "https://openrouter.ai/api/v1",
     requiresBaseUrl: false,
     website: "https://openrouter.ai",
@@ -59,7 +53,6 @@ export const PROVIDERS: Record<ProviderType, ProviderMeta> = {
   "openai-compatible": {
     id: "openai-compatible",
     name: "Custom",
-    icon: "tabler:plug-connected",
     defaultBaseUrl: "",
     requiresBaseUrl: true,
     website: "",
