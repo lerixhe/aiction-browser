@@ -270,6 +270,11 @@ export default function OptionsPage() {
       if (loaded.actions.length > 0) {
         setSelectedActionId(loaded.actions[0].id)
       }
+      if (loaded.providers.length > 0) {
+        const first = loaded.providers[0]
+        setSelectedServiceId(first.id)
+        setServiceDraft({ ...first, modelParams: { ...first.modelParams } })
+      }
     })
     void chrome.storage.local.get("optionsActiveSection").then((result) => {
       const saved = result.optionsActiveSection as Section | undefined
@@ -937,7 +942,7 @@ export default function OptionsPage() {
   const renderConnection = () => (
     <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
       {/* Header */}
-      <div style={{ padding: `${uiSpace[20]}px ${uiSpace[24]}px ${uiSpace[16]}px`, borderBottom: `0.5px solid ${theme.border.hairline}` }}>
+      <div style={{ padding: `${uiSpace[20]}px ${uiSpace[24]}px ${uiSpace[16]}px`, borderBottom: `0.5px solid ${theme.border.hairline}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <h2
           style={{
             margin: 0,
@@ -947,6 +952,31 @@ export default function OptionsPage() {
           }}>
           {t("options.connection.listTitle")}
         </h2>
+        <button
+          type="button"
+          onClick={openCreateService}
+          onMouseDown={() => setPressedBtn("add-service")}
+          onMouseUp={() => setPressedBtn(null)}
+          onMouseLeave={() => setPressedBtn(null)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: uiSpace[6],
+            padding: `${uiSpace[6]}px ${uiSpace[14]}px`,
+            borderRadius: uiRadius.sm,
+            cursor: "pointer",
+            background: theme.accent.primary,
+            border: "none",
+            transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
+            fontFamily: uiTypography.fontFamily,
+            fontSize: uiTypography.fontSize.sm,
+            fontWeight: uiTypography.fontWeight.medium,
+            color: "#fff",
+            transform: pressedBtn === "add-service" ? "scale(0.96)" : "scale(1)"
+          }}>
+          <PlusIcon size={14} color="#fff" />
+          <span>{t("options.connection.addProvider")}</span>
+        </button>
       </div>
 
       {/* Main content: left list + right detail */}
@@ -1028,50 +1058,6 @@ export default function OptionsPage() {
                 )
               })
             )}
-
-            {/* Add provider button */}
-            <button
-              type="button"
-              onClick={openCreateService}
-              onMouseDown={() => setPressedBtn("add-service")}
-              onMouseUp={() => setPressedBtn(null)}
-              onMouseLeave={() => setPressedBtn(null)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: uiSpace[8],
-                padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
-                marginBottom: 2,
-                borderRadius: uiRadius.sm,
-                cursor: "pointer",
-                background: "transparent",
-                border: `1px dashed ${theme.border.default}`,
-                width: "100%",
-                boxSizing: "border-box",
-                transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
-                fontFamily: uiTypography.fontFamily,
-                fontSize: uiTypography.fontSize.sm,
-                color: theme.text.secondary,
-                transform: pressedBtn === "add-service" ? "scale(0.98)" : "scale(1)"
-              }}>
-              <div
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: uiRadius.sm,
-                  border: `1px dashed ${theme.border.default}`,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0
-                }}>
-                <PlusIcon size={14} color={theme.text.secondary} />
-              </div>
-              <span>
-                {t("options.connection.addProvider")}
-              </span>
-            </button>
           </div>
         </div>
 
@@ -1758,7 +1744,7 @@ export default function OptionsPage() {
   const renderActions = () => (
     <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
       {/* Header */}
-      <div style={{ padding: `${uiSpace[20]}px ${uiSpace[24]}px ${uiSpace[16]}px`, borderBottom: `0.5px solid ${theme.border.hairline}` }}>
+      <div style={{ padding: `${uiSpace[20]}px ${uiSpace[24]}px ${uiSpace[16]}px`, borderBottom: `0.5px solid ${theme.border.hairline}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <h2
           style={{
             margin: 0,
@@ -1768,6 +1754,31 @@ export default function OptionsPage() {
           }}>
           {t("options.actions.title")}
         </h2>
+        <button
+          type="button"
+          onClick={handleAddAction}
+          onMouseDown={() => setPressedBtn("add-action")}
+          onMouseUp={() => setPressedBtn(null)}
+          onMouseLeave={() => setPressedBtn(null)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: uiSpace[6],
+            padding: `${uiSpace[6]}px ${uiSpace[14]}px`,
+            borderRadius: uiRadius.sm,
+            cursor: "pointer",
+            background: theme.accent.primary,
+            border: "none",
+            transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
+            fontFamily: uiTypography.fontFamily,
+            fontSize: uiTypography.fontSize.sm,
+            fontWeight: uiTypography.fontWeight.medium,
+            color: "#fff",
+            transform: pressedBtn === "add-action" ? "scale(0.96)" : "scale(1)"
+          }}>
+          <PlusIcon size={14} color="#fff" />
+          <span>{t("options.actions.addAction")}</span>
+        </button>
       </div>
 
       {/* Main content: left list + right detail */}
@@ -1868,50 +1879,6 @@ export default function OptionsPage() {
                 )
               })
             )}
-
-            {/* Add action button */}
-            <button
-              type="button"
-              onClick={handleAddAction}
-              onMouseDown={() => setPressedBtn("add-action")}
-              onMouseUp={() => setPressedBtn(null)}
-              onMouseLeave={() => setPressedBtn(null)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: uiSpace[8],
-                padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
-                marginBottom: 2,
-                borderRadius: uiRadius.sm,
-                cursor: "pointer",
-                background: "transparent",
-                border: `1px dashed ${theme.border.default}`,
-                width: "100%",
-                boxSizing: "border-box",
-                transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
-                fontFamily: uiTypography.fontFamily,
-                fontSize: uiTypography.fontSize.sm,
-                color: theme.text.secondary,
-                transform: pressedBtn === "add-action" ? "scale(0.98)" : "scale(1)"
-              }}>
-              <div
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: uiRadius.sm,
-                  border: `1px dashed ${theme.border.default}`,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0
-                }}>
-                <PlusIcon size={14} color={theme.text.secondary} />
-              </div>
-              <span>
-                {t("options.actions.addAction")}
-              </span>
-            </button>
           </div>
         </div>
 
