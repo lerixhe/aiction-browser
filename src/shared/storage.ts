@@ -53,7 +53,6 @@ function validateProviders(items: unknown[]): ProviderConfig[] {
         model: typeof record.model === "string" ? record.model : DEFAULT_CUSTOM_MODEL_SERVICE.model,
         apiBaseUrl: typeof record.apiBaseUrl === "string" ? record.apiBaseUrl : undefined,
         modelParams: validateModelParams(record.modelParams),
-        icon: typeof record.icon === "string" ? record.icon : undefined,
         modelsDevId: typeof record.modelsDevId === "string" ? record.modelsDevId : undefined
       }
     })

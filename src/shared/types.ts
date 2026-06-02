@@ -25,7 +25,6 @@ export interface ProviderConfig {
   model: string
   apiBaseUrl?: string
   modelParams: ModelParams
-  icon?: string
   modelsDevId?: string
 }
 
