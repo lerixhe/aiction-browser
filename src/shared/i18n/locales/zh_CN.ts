@@ -14,6 +14,7 @@ export default {
   "errors.fetchModelsMissingUrl": "请先填写 API Base URL",
   "errors.fetchModelsEmpty": "未找到可用模型",
   "errors.contextInvalidated": "扩展上下文已失效，请刷新页面重试。",
+  "errors.requestTimeout": "请求超时",
   "ui.loading": "AI 正在生成中...",
   "ui.emptyChat": "请选择动作，或直接输入一个问题开始对话。",
   "ui.saveSuccess": "保存成功",

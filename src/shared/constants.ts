@@ -33,7 +33,8 @@ export const ERROR_MESSAGES = {
   get FETCH_MODELS_FAILED() { return i18nStore.t("errors.fetchModelsFailed") },
   get FETCH_MODELS_MISSING_URL() { return i18nStore.t("errors.fetchModelsMissingUrl") },
   get FETCH_MODELS_EMPTY() { return i18nStore.t("errors.fetchModelsEmpty") },
-  get CONTEXT_INVALIDATED() { return i18nStore.t("errors.contextInvalidated") }
+  get CONTEXT_INVALIDATED() { return i18nStore.t("errors.contextInvalidated") },
+  get REQUEST_TIMEOUT() { return i18nStore.t("errors.requestTimeout") }
 } as const
 
 // UI messages

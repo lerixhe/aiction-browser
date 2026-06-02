@@ -214,6 +214,8 @@ export default defineBackground(() => {
     const doActualTest = async () => {
       const { generateText } = await import("ai")
       const startTime = performance.now()
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 30_000)
 
       try {
         const modelsDevData = await fetchModelsDev()
@@ -231,6 +233,7 @@ export default defineBackground(() => {
           model: resolvedModel,
           messages: [{ role: "user", content: "Hi" }],
           maxOutputTokens: 5,
+          abortSignal: controller.signal,
         })
         const latencyMs = Math.round(performance.now() - startTime)
 
@@ -239,11 +242,16 @@ export default defineBackground(() => {
       } catch (error: unknown) {
         const latencyMs = Math.round(performance.now() - startTime)
         void trackBackgroundEvent("api_test_completed", { success: false, latency_ms: latencyMs })
+        const message = controller.signal.aborted
+          ? ERROR_MESSAGES.REQUEST_TIMEOUT
+          : `${ERROR_MESSAGES.REQUEST_FAILED}: ${getErrorMessage(error)}`
         sendResponse({
           success: false,
-          error: `${ERROR_MESSAGES.REQUEST_FAILED}: ${getErrorMessage(error)}`,
+          error: message,
           latencyMs
         } satisfies ApiTestResponse)
+      } finally {
+        clearTimeout(timeout)
       }
     }
 

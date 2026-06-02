@@ -14,6 +14,7 @@ export default {
   "errors.fetchModelsMissingUrl": "Please fill in API Base URL first",
   "errors.fetchModelsEmpty": "No available models found",
   "errors.contextInvalidated": "Extension context invalidated. Please refresh the page and try again.",
+  "errors.requestTimeout": "Request timed out",
   "ui.loading": "AI is generating...",
   "ui.emptyChat": "Select an AI Action, or type a question to start a conversation.",
   "ui.saveSuccess": "Saved successfully",
