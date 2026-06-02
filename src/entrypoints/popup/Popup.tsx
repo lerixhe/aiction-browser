@@ -6,6 +6,7 @@ import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@
 import { createFieldLabelStyle, createInputStyle } from "@/shared/ui/styles"
 import { getAvatarPalette, getAvatarDisplayText } from "@/shared/ui/avatar"
 import { ActionIcon } from "@/shared/ui/iconify"
+import { ToggleSwitch } from "@/shared/ui/toggle-switch"
 import { useI18n } from "@/shared/i18n/context"
 import type { ActionTemplate, ExtensionSettings } from "@/shared/types"
 
@@ -31,46 +32,6 @@ function CheckIcon({ color }: { color: string }) {
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
       <path d="M3 7L6 10L11 4" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
-  )
-}
-
-
-function ToggleSwitch({ checked, onChange, theme }: { checked: boolean; onChange: () => void; theme: any }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={(e) => {
-        e.stopPropagation()
-        onChange()
-      }}
-      style={{
-        position: "relative",
-        width: 28,
-        height: 16,
-        borderRadius: 8,
-        border: "none",
-        background: checked ? theme.accent.primary : theme.border.default,
-        cursor: "pointer",
-        transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
-        padding: 0,
-        flexShrink: 0
-      }}>
-      <span
-        style={{
-          position: "absolute",
-          top: 2,
-          left: checked ? 14 : 2,
-          width: 12,
-          height: 12,
-          borderRadius: "50%",
-          background: "#fff",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-          transition: `left ${uiMotion.durationFast} ${uiMotion.easingStandard}`
-        }}
-      />
-    </button>
   )
 }
 
@@ -536,6 +497,7 @@ export default function Popup() {
                       checked={isEnabled}
                       onChange={() => void handleActionToggle(action.id)}
                       theme={theme}
+                      stopPropagation
                     />
                   </button>
                 )

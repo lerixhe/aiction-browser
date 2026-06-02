@@ -2,6 +2,7 @@ import { type JSX, useEffect, useMemo, useRef, useState, type CSSProperties } fr
 import { addIcon } from "@iconify/react"
 
 import { NavIcon, ActionIcon } from "@/shared/ui/iconify"
+import { ToggleSwitch } from "@/shared/ui/toggle-switch"
 import { hasTextPlaceholder } from "@/shared/prompt"
 import { BrandIcon } from "@/shared/ui/icons"
 import { trackEvent } from "@/shared/analytics"
@@ -20,42 +21,6 @@ import { MESSAGE_TYPES } from "@/shared/constants"
 import { ConfirmDialog } from "@/entrypoints/options/ConfirmDialog"
 
 type Section = "appearance" | "connection" | "actions" | "backup" | "about"
-
-function ToggleSwitch({ checked, onChange, theme }: { checked: boolean; onChange: () => void; theme: any }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={onChange}
-      style={{
-        position: "relative",
-        width: 28,
-        height: 16,
-        borderRadius: 8,
-        border: "none",
-        background: checked ? theme.accent.primary : theme.border.default,
-        cursor: "pointer",
-        transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
-        padding: 0,
-        flexShrink: 0
-      }}>
-      <span
-        style={{
-          position: "absolute",
-          top: 2,
-          left: checked ? 14 : 2,
-          width: 12,
-          height: 12,
-          borderRadius: "50%",
-          background: "#fff",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-          transition: `left ${uiMotion.durationFast} ${uiMotion.easingStandard}`
-        }}
-      />
-    </button>
-  )
-}
 
 function PlusIcon({ size, color }: { size: number; color: string }) {
   return (
