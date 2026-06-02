@@ -8,6 +8,7 @@ import { trackEvent } from "@/shared/analytics"
 import { DEFAULT_CUSTOM_MODEL_SERVICE, DEFAULT_SETTINGS } from "@/shared/defaults"
 import { getSettings, normalizeSettings, saveSettings, saveUserIcon, getUserIcons } from "@/shared/storage"
 import { PROVIDERS, PROVIDER_LIST } from "@/shared/providers"
+import { fetchModelsDev, getModelsForProvider, type ModelsDevData, type ModelsDevModel } from "@/shared/models-dev"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { createButtonStyle, createCardStyle, createFieldLabelStyle, createFocusRing, createInputStyle as createSharedInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
@@ -170,6 +171,8 @@ export default function OptionsPage() {
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null)
   const [serviceDraft, setServiceDraft] = useState<ModelServiceConfig>(createServiceDraft("openai"))
   const [pendingDeleteServiceId, setPendingDeleteServiceId] = useState<string | null>(null)
+  const [modelsDevData, setModelsDevData] = useState<ModelsDevData | null>(null)
+  const [modelSearchQuery, setModelSearchQuery] = useState("")
   const [editingIconServiceId, setEditingIconServiceId] = useState<string | null>(null)
   const [iconEditText, setIconEditText] = useState("")
   const [showIconPicker, setShowIconPicker] = useState(false)
@@ -198,6 +201,7 @@ export default function OptionsPage() {
       }
       setLoaded(true)
     })
+    void fetchModelsDev().then(setModelsDevData)
   }, [])
 
   useEffect(() => {
@@ -527,6 +531,7 @@ export default function OptionsPage() {
     setModels([])
     setFetchError(null)
     setTestResult(null)
+    setModelSearchQuery("")
   }
 
   const openEditService = (serviceId: string) => {
@@ -541,6 +546,7 @@ export default function OptionsPage() {
     setModels([])
     setFetchError(null)
     setTestResult(null)
+    setModelSearchQuery("")
   }
 
   const closeConnectionEditor = () => {
@@ -550,6 +556,7 @@ export default function OptionsPage() {
     setModels([])
     setFetchError(null)
     setTestResult(null)
+    setModelSearchQuery("")
   }
 
   const saveServiceDraft = () => {
@@ -871,7 +878,9 @@ export default function OptionsPage() {
                   {provider.name}
                 </span>
                 <span style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary, textAlign: "center" }}>
-                  {provider.fallbackModels[0] ?? ""}
+                  {modelsDevData
+                    ? `${getModelsForProvider(modelsDevData, provider.id).length} models`
+                    : provider.fallbackModels[0] ?? ""}
                 </span>
               </button>
             ))}
@@ -1079,33 +1088,156 @@ export default function OptionsPage() {
                   placeholder={PROVIDERS[serviceDraft.provider].fallbackModels[0] ?? "model-name"}
                   style={createInputStyle("model")}
                 />
-                {/* Fallback model suggestions */}
-                {PROVIDERS[serviceDraft.provider].fallbackModels.length > 0 ? (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: uiSpace[6], marginTop: uiSpace[8] }}>
-                    {PROVIDERS[serviceDraft.provider].fallbackModels.map((modelId) => (
-                      <button
-                        key={modelId}
-                        type="button"
-                        onClick={() => {
-                          setServiceDraft((current) => ({ ...current, model: modelId }))
-                        }}
-                        style={{
-                          padding: `${uiSpace[4]}px ${uiSpace[10]}px`,
-                          border: `1px solid ${serviceDraft.model === modelId ? theme.accent.primary : theme.border.hairline}`,
-                          borderRadius: uiRadius.pill,
-                          background: serviceDraft.model === modelId ? `${theme.accent.primary}14` : "transparent",
-                          color: serviceDraft.model === modelId ? theme.accent.primary : theme.text.secondary,
-                          fontSize: uiTypography.fontSize.xs,
-                          cursor: "pointer",
-                          outline: "none",
-                          fontFamily: uiTypography.fontFamily,
-                          transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`
-                        }}>
-                        {modelId}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
+                {/* Model suggestions from models.dev or fallback */}
+                {(() => {
+                  const devModels = modelsDevData
+                    ? getModelsForProvider(modelsDevData, serviceDraft.provider)
+                    : []
+                  const hasDevModels = devModels.length > 0
+                  const fallbackList = PROVIDERS[serviceDraft.provider].fallbackModels
+                  const showSearch = devModels.length > 12
+                  const query = modelSearchQuery.trim().toLowerCase()
+                  const filtered = query
+                    ? devModels.filter(
+                        (m) =>
+                          m.id.toLowerCase().includes(query) ||
+                          m.name.toLowerCase().includes(query)
+                      )
+                    : devModels
+
+                  if (!hasDevModels && fallbackList.length === 0) return null
+
+                  return (
+                    <div style={{ marginTop: uiSpace[8] }}>
+                      {showSearch ? (
+                        <input
+                          type="text"
+                          value={modelSearchQuery}
+                          onChange={(e) => setModelSearchQuery(e.target.value)}
+                          placeholder={t("options.connection.modelSearchPlaceholder")}
+                          style={{
+                            width: "100%",
+                            boxSizing: "border-box",
+                            padding: `${uiSpace[4]}px ${uiSpace[8]}px`,
+                            fontSize: uiTypography.fontSize.xs,
+                            border: `1px solid ${theme.border.hairline}`,
+                            borderRadius: uiRadius.sm,
+                            background: theme.bg.surface,
+                            color: theme.text.primary,
+                            outline: "none",
+                            marginBottom: uiSpace[6],
+                            fontFamily: uiTypography.fontFamily
+                          }}
+                        />
+                      ) : null}
+                      {hasDevModels ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: uiSpace[2], maxHeight: 240, overflowY: "auto" }}>
+                          {filtered.map((m) => {
+                            const isSelected = serviceDraft.model === m.id
+                            return (
+                              <button
+                                key={m.id}
+                                type="button"
+                                onClick={() => {
+                                  setServiceDraft((current) => ({ ...current, model: m.id }))
+                                }}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: uiSpace[8],
+                                  padding: `${uiSpace[4]}px ${uiSpace[10]}px`,
+                                  border: `1px solid ${isSelected ? theme.accent.primary : "transparent"}`,
+                                  borderRadius: uiRadius.sm,
+                                  background: isSelected ? `${theme.accent.primary}14` : "transparent",
+                                  color: isSelected ? theme.accent.primary : theme.text.primary,
+                                  fontSize: uiTypography.fontSize.xs,
+                                  cursor: "pointer",
+                                  outline: "none",
+                                  fontFamily: uiTypography.fontFamily,
+                                  textAlign: "left",
+                                  transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
+                                  lineHeight: 1.5
+                                }}>
+                                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {m.name}
+                                </span>
+                                {m.reasoning ? (
+                                  <span style={{
+                                    padding: `1px ${uiSpace[4]}px`,
+                                    borderRadius: uiRadius.pill,
+                                    background: `${theme.accent.primary}18`,
+                                    color: theme.accent.primary,
+                                    fontSize: 10,
+                                    fontWeight: uiTypography.fontWeight.medium,
+                                    flexShrink: 0
+                                  }}>
+                                    reasoning
+                                  </span>
+                                ) : null}
+                                {m.tool_call ? (
+                                  <span style={{
+                                    padding: `1px ${uiSpace[4]}px`,
+                                    borderRadius: uiRadius.pill,
+                                    background: `${theme.state.success ?? "#22c55e"}18`,
+                                    color: theme.state.success ?? "#22c55e",
+                                    fontSize: 10,
+                                    fontWeight: uiTypography.fontWeight.medium,
+                                    flexShrink: 0
+                                  }}>
+                                    tools
+                                  </span>
+                                ) : null}
+                                {m.attachment ? (
+                                  <span style={{
+                                    padding: `1px ${uiSpace[4]}px`,
+                                    borderRadius: uiRadius.pill,
+                                    background: `${theme.state.warning ?? "#f59e0b"}18`,
+                                    color: theme.state.warning ?? "#f59e0b",
+                                    fontSize: 10,
+                                    fontWeight: uiTypography.fontWeight.medium,
+                                    flexShrink: 0
+                                  }}>
+                                    attach
+                                  </span>
+                                ) : null}
+                              </button>
+                            )
+                          })}
+                          {filtered.length === 0 ? (
+                            <div style={{ textAlign: "center", padding: uiSpace[12], color: theme.text.secondary, fontSize: uiTypography.fontSize.xs }}>
+                              No models matching "{modelSearchQuery}"
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: uiSpace[6] }}>
+                          {fallbackList.map((modelId) => (
+                            <button
+                              key={modelId}
+                              type="button"
+                              onClick={() => {
+                                setServiceDraft((current) => ({ ...current, model: modelId }))
+                              }}
+                              style={{
+                                padding: `${uiSpace[4]}px ${uiSpace[10]}px`,
+                                border: `1px solid ${serviceDraft.model === modelId ? theme.accent.primary : theme.border.hairline}`,
+                                borderRadius: uiRadius.pill,
+                                background: serviceDraft.model === modelId ? `${theme.accent.primary}14` : "transparent",
+                                color: serviceDraft.model === modelId ? theme.accent.primary : theme.text.secondary,
+                                fontSize: uiTypography.fontSize.xs,
+                                cursor: "pointer",
+                                outline: "none",
+                                fontFamily: uiTypography.fontFamily,
+                                transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+                              }}>
+                              {modelId}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
               </>
             )}
             {fetchError ? (

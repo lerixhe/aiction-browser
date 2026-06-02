@@ -85,6 +85,7 @@ export default {
   "options.connection.connectionSuccess": "Connection successful$1",
   "options.connection.testFailed": "Test failed",
   "options.connection.fetchModelsError": "Failed to fetch model list",
+  "options.connection.modelSearchPlaceholder": "Search models...",
   "options.connection.parseFileError": "Unable to parse file",
   "options.connection.importFailed": "Import failed: $1",
   "options.connection.configExported": "Configuration exported as JSON file.",

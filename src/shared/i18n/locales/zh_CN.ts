@@ -85,6 +85,7 @@ export default {
   "options.connection.connectionSuccess": "连接成功$1",
   "options.connection.testFailed": "测试失败",
   "options.connection.fetchModelsError": "获取模型列表失败",
+  "options.connection.modelSearchPlaceholder": "搜索模型...",
   "options.connection.parseFileError": "无法解析文件",
   "options.connection.importFailed": "导入失败：$1",
   "options.connection.configExported": "配置已导出为 JSON 文件。",
