@@ -14,8 +14,8 @@ const NPM_FACTORIES: Record<string, ProviderFactory> = {
   "@ai-sdk/openai": ({ apiKey, baseURL }) => createOpenAI({ apiKey, baseURL }),
   "@ai-sdk/anthropic": ({ apiKey, baseURL }) => createAnthropic({ apiKey, baseURL }),
   "@ai-sdk/google": ({ apiKey, baseURL }) => createGoogleGenerativeAI({ apiKey, baseURL }),
-  "@ai-sdk/deepseek": ({ apiKey }) => createDeepSeek({ apiKey }),
-  "@openrouter/ai-sdk-provider": ({ apiKey }) => createOpenRouter({ apiKey }),
+  "@ai-sdk/deepseek": ({ apiKey, baseURL }) => createDeepSeek({ apiKey, baseURL }),
+  "@openrouter/ai-sdk-provider": ({ apiKey, baseURL }) => createOpenRouter({ apiKey, baseURL }),
 }
 
 export function resolveLanguageModel(provider: ProviderConfig, modelsDevData?: ModelsDevData) {
