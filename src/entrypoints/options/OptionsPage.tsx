@@ -8,7 +8,7 @@ import { trackEvent } from "@/shared/analytics"
 import { DEFAULT_CUSTOM_MODEL_SERVICE, DEFAULT_SETTINGS } from "@/shared/defaults"
 import { getSettings, normalizeSettings, saveSettings, saveUserIcon, getUserIcons } from "@/shared/storage"
 import { PROVIDERS, PROVIDER_LIST } from "@/shared/providers"
-import { fetchModelsDev, getModelsForProvider, type ModelsDevData, type ModelsDevModel } from "@/shared/models-dev"
+import { fetchModelsDev, getModelsForProvider, getAllProviders, mapModelsDevProviderToType, type ModelsDevData, type ModelsDevModel, type ModelsDevProviderInfo } from "@/shared/models-dev"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { createButtonStyle, createCardStyle, createFieldLabelStyle, createFocusRing, createInputStyle as createSharedInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
@@ -16,7 +16,7 @@ import { getAvatarPalette, getAvatarDisplayText } from "@/shared/ui/avatar"
 import { ACTION_ICON_LIBRARY, type IconEntry } from "@/shared/ui/icon-library"
 import { BUNDLED_TABLER_ICONS } from "@/shared/ui/bundled-icons"
 import { useI18n } from "@/shared/i18n/context"
-import type { ActionTemplate, ExtensionSettings, LanguagePreference, ThemePreference, ApiTestResponse, FetchModelsResponse, ModelServiceConfig, UserIconData, ProviderType } from "@/shared/types"
+import type { ActionTemplate, ExtensionSettings, LanguagePreference, ThemePreference, ApiTestResponse, FetchModelsResponse, ModelServiceConfig, UserIconData, ProviderType, ModelParams } from "@/shared/types"
 import { MESSAGE_TYPES } from "@/shared/constants"
 import { ConfirmDialog } from "@/entrypoints/options/ConfirmDialog"
 
@@ -84,6 +84,82 @@ function RefreshIcon({ size, color }: { size: number; color: string }) {
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <path d="M13.5 8A5.5 5.5 0 1 1 8 2.5M13.5 2.5V6.5H9.5" stroke={color} strokeWidth={1.2} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  )
+}
+
+function ProviderLogo({ provider, size = 24, themeName, theme }: { provider: ProviderType; size?: number; themeName: string; theme: any }) {
+  const [error, setError] = useState(false)
+  const logoUrl = `https://models.dev/logos/${PROVIDERS[provider].id}.svg`
+
+  if (error) {
+    return (
+      <div style={{
+        width: size,
+        height: size,
+        borderRadius: uiRadius.sm,
+        background: theme.bg.surfaceMuted,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: size * 0.5,
+        fontWeight: uiTypography.fontWeight.semibold,
+        color: theme.accent.primary,
+        flexShrink: 0
+      }}>
+        {PROVIDERS[provider].name.charAt(0)}
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={logoUrl}
+      width={size}
+      height={size}
+      onError={() => setError(true)}
+      style={{
+        borderRadius: uiRadius.sm,
+        filter: themeName === "dark" ? "invert(1)" : "none",
+        flexShrink: 0
+      }}
+    />
+  )
+}
+
+function ProviderLogoById({ providerId, name, size = 24, theme }: { providerId: string; name: string; size?: number; theme: any }) {
+  const [error, setError] = useState(false)
+
+  if (error) {
+    return (
+      <div style={{
+        width: size,
+        height: size,
+        borderRadius: uiRadius.sm,
+        background: theme.bg.surfaceMuted,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: size * 0.5,
+        fontWeight: uiTypography.fontWeight.semibold,
+        color: theme.accent.primary,
+        flexShrink: 0
+      }}>
+        {name.charAt(0)}
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={`https://models.dev/logos/${providerId}.svg`}
+      width={size}
+      height={size}
+      onError={() => setError(true)}
+      style={{
+        borderRadius: uiRadius.sm,
+        flexShrink: 0
+      }}
+    />
   )
 }
 
@@ -167,12 +243,13 @@ export default function OptionsPage() {
   const [backupStatus, setBackupStatus] = useState<{ success: boolean; message: string } | null>(null)
   const [pendingImportSettings, setPendingImportSettings] = useState<ExtensionSettings | null>(null)
   const [pendingImportUserIcons, setPendingImportUserIcons] = useState<Record<string, UserIconData> | null>(null)
-  const [connectionView, setConnectionView] = useState<"list" | "providerSelect" | "create" | "edit">("list")
-  const [editingServiceId, setEditingServiceId] = useState<string | null>(null)
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
+  const [showProviderSelect, setShowProviderSelect] = useState(false)
   const [serviceDraft, setServiceDraft] = useState<ModelServiceConfig>(createServiceDraft("openai"))
   const [pendingDeleteServiceId, setPendingDeleteServiceId] = useState<string | null>(null)
   const [modelsDevData, setModelsDevData] = useState<ModelsDevData | null>(null)
   const [modelSearchQuery, setModelSearchQuery] = useState("")
+  const [providerSearchQuery, setProviderSearchQuery] = useState("")
   const [editingIconServiceId, setEditingIconServiceId] = useState<string | null>(null)
   const [iconEditText, setIconEditText] = useState("")
   const [showIconPicker, setShowIconPicker] = useState(false)
@@ -266,8 +343,21 @@ export default function OptionsPage() {
     return settings.actions.some((item) => !hasTextPlaceholder(item.template))
   }, [settings.actions])
 
-  const isEditingConnection = connectionView === "create" || connectionView === "edit"
-  const isProviderSelection = connectionView === "providerSelect"
+  const selectedService = selectedServiceId
+    ? settings.modelServices.find((s) => s.id === selectedServiceId)
+    : null
+
+  const allProviders = useMemo(() => {
+    if (!modelsDevData) return []
+    return getAllProviders(modelsDevData)
+  }, [modelsDevData])
+
+  const filteredProviders = useMemo(() => {
+    if (!providerSearchQuery.trim()) return allProviders
+    const query = providerSearchQuery.trim().toLowerCase()
+    return allProviders.filter((p) => p.name.toLowerCase().includes(query) || p.id.toLowerCase().includes(query))
+  }, [allProviders, providerSearchQuery])
+
   const isServiceDraftValid =
     Boolean(serviceDraft.name.trim()) &&
     Boolean(serviceDraft.apiKey.trim()) &&
@@ -475,8 +565,7 @@ export default function OptionsPage() {
     }
 
     setSettings(pendingImportSettings)
-    setConnectionView("list")
-    setEditingServiceId(null)
+    setSelectedServiceId(null)
     setServiceDraft(createServiceDraft("openai"))
     setSaving(true)
     setBackupStatus(null)
@@ -517,41 +606,52 @@ export default function OptionsPage() {
   }
 
   const openCreateService = () => {
-    setConnectionView("providerSelect")
-    setEditingServiceId(null)
-    setModels([])
-    setFetchError(null)
-    setTestResult(null)
+    setShowProviderSelect(true)
+    setProviderSearchQuery("")
   }
 
   const selectProviderAndCreate = (provider: ProviderType) => {
-    setConnectionView("create")
-    setEditingServiceId(null)
-    setServiceDraft(createServiceDraft(provider))
+    const newService = createServiceDraft(provider)
+    saveSettingsNow((current) => ({
+      ...current,
+      modelServices: [...current.modelServices, newService],
+      activeModelServiceId: current.activeModelServiceId || newService.id
+    }))
+    setSelectedServiceId(newService.id)
+    setServiceDraft(newService)
+    setShowProviderSelect(false)
     setModels([])
     setFetchError(null)
     setTestResult(null)
     setModelSearchQuery("")
+    setProviderSearchQuery("")
   }
 
-  const openEditService = (serviceId: string) => {
-    const target = settings.modelServices.find((service) => service.id === serviceId)
-    if (!target) {
-      return
+  const selectModelsDevProvider = (providerInfo: ModelsDevProviderInfo) => {
+    const providerType = mapModelsDevProviderToType(providerInfo.id)
+    const newService = createServiceDraft(providerType)
+    newService.name = providerInfo.name
+    newService.modelsDevId = providerInfo.id
+    if (providerInfo.api) {
+      newService.apiBaseUrl = providerInfo.api
     }
-
-    setConnectionView("edit")
-    setEditingServiceId(serviceId)
-    setServiceDraft({ ...target, modelParams: { ...target.modelParams } })
+    saveSettingsNow((current) => ({
+      ...current,
+      modelServices: [...current.modelServices, newService],
+      activeModelServiceId: current.activeModelServiceId || newService.id
+    }))
+    setSelectedServiceId(newService.id)
+    setServiceDraft(newService)
+    setShowProviderSelect(false)
     setModels([])
     setFetchError(null)
     setTestResult(null)
     setModelSearchQuery("")
+    setProviderSearchQuery("")
   }
 
   const closeConnectionEditor = () => {
-    setConnectionView("list")
-    setEditingServiceId(null)
+    setSelectedServiceId(null)
     setServiceDraft(createServiceDraft("openai"))
     setModels([])
     setFetchError(null)
@@ -560,7 +660,7 @@ export default function OptionsPage() {
   }
 
   const saveServiceDraft = () => {
-    if (!isServiceDraftValid) {
+    if (!isServiceDraftValid || !selectedServiceId) {
       return
     }
 
@@ -572,31 +672,50 @@ export default function OptionsPage() {
       model: serviceDraft.model.trim()
     }
 
-    saveSettingsNow((current) => {
-      if (connectionView === "edit" && editingServiceId) {
-        return {
-          ...current,
-          modelServices: current.modelServices.map((service) => (service.id === editingServiceId ? normalizedDraft : service))
-        }
-      }
+    saveSettingsNow((current) => ({
+      ...current,
+      modelServices: current.modelServices.map((service) => (service.id === selectedServiceId ? normalizedDraft : service))
+    }))
+  }
 
-      return {
-        ...current,
-        modelServices: [...current.modelServices, normalizedDraft],
-        activeModelServiceId: current.activeModelServiceId || normalizedDraft.id
-      }
-    })
+  const updateServiceField = (field: string, value: string) => {
+    if (!selectedServiceId) return
+    
+    setServiceDraft((current) => ({ ...current, [field]: value }))
+    
+    saveSettingsNow((current) => ({
+      ...current,
+      modelServices: current.modelServices.map((service) =>
+        service.id === selectedServiceId ? { ...service, [field]: value } : service
+      )
+    }))
+  }
 
-    closeConnectionEditor()
+  const updateServiceModelParam = (key: keyof ModelParams, value: number) => {
+    if (!selectedServiceId) return
+    
+    setServiceDraft((current) => ({
+      ...current,
+      modelParams: { ...current.modelParams, [key]: value }
+    }))
+    
+    saveSettingsNow((current) => ({
+      ...current,
+      modelServices: current.modelServices.map((service) =>
+        service.id === selectedServiceId
+          ? { ...service, modelParams: { ...service.modelParams, [key]: value } }
+          : service
+      )
+    }))
   }
 
   const toggleServiceActive = (serviceId: string) => {
     saveSettingsNow((current) => {
-      const isCurrentlyActive = current.activeModelServiceId === serviceId
-      if (isCurrentlyActive) {
-        const otherService = current.modelServices.find((s) => s.id !== serviceId)
-        return { ...current, activeModelServiceId: otherService?.id ?? "" }
+      // 单选模式：如果点击的是已启用的，不允许禁用
+      if (current.activeModelServiceId === serviceId) {
+        return current
       }
+      // 启用新的，自动禁用旧的
       return { ...current, activeModelServiceId: serviceId }
     })
   }
@@ -613,6 +732,17 @@ export default function OptionsPage() {
         activeModelServiceId
       }
     })
+    
+    // 自动选中下一个provider
+    const remaining = settings.modelServices.filter((s) => s.id !== serviceId)
+    if (remaining.length > 0) {
+      setSelectedServiceId(remaining[0].id)
+      setServiceDraft({ ...remaining[0], modelParams: { ...remaining[0].modelParams } })
+    } else {
+      setSelectedServiceId(null)
+      setServiceDraft(createServiceDraft("openai"))
+    }
+    
     setPendingDeleteServiceId(null)
   }
 
@@ -805,52 +935,683 @@ export default function OptionsPage() {
   )
 
   const renderConnection = () => (
-    <section style={{ ...cardStyle, marginBottom: uiSpace[16] }}>
-      {isProviderSelection ? (
-        <>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: uiSpace[16], marginBottom: uiSpace[20] }}>
-            <div>
-              <h2
+    <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
+      {/* Header */}
+      <div style={{ padding: `${uiSpace[20]}px ${uiSpace[24]}px ${uiSpace[16]}px`, borderBottom: `0.5px solid ${theme.border.hairline}` }}>
+        <h2
+          style={{
+            margin: 0,
+            fontSize: uiTypography.fontSize.lg,
+            fontWeight: uiTypography.fontWeight.semibold,
+            letterSpacing: uiTypography.letterSpacing.tight
+          }}>
+          {t("options.connection.listTitle")}
+        </h2>
+      </div>
+
+      {/* Main content: left list + right detail */}
+      <div style={{ display: "flex", minHeight: 420 }}>
+        {/* Left: Provider list */}
+        <div
+          style={{
+            width: 280,
+            minWidth: 280,
+            borderRight: `0.5px solid ${theme.border.hairline}`,
+            display: "flex",
+            flexDirection: "column"
+          }}>
+          {/* List items */}
+          <div style={{ flex: 1, overflowY: "auto", padding: uiSpace[8] }}>
+            {settings.modelServices.length === 0 ? (
+              <div style={{ ...emptyStateStyle, margin: uiSpace[8], fontSize: uiTypography.fontSize.sm }}>
+                {t("options.connection.emptyServiceList")}
+              </div>
+            ) : (
+              settings.modelServices.map((service) => {
+                const isSelected = selectedServiceId === service.id
+                const isActive = settings.activeModelServiceId === service.id
+                const providerMeta = PROVIDERS[service.provider]
+                const displayName = service.name || providerMeta.name
+
+                return (
+                  <div
+                    key={service.id}
+                    onClick={() => {
+                      setSelectedServiceId(service.id)
+                      setServiceDraft({ ...service, modelParams: { ...service.modelParams } })
+                      setModels([])
+                      setFetchError(null)
+                      setTestResult(null)
+                      setModelSearchQuery("")
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: uiSpace[8],
+                      padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
+                      marginBottom: 2,
+                      borderRadius: uiRadius.sm,
+                      cursor: "pointer",
+                      background: isSelected ? `${theme.accent.primary}14` : "transparent",
+                      transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+                    }}>
+                    {/* Provider Logo */}
+                    {service.modelsDevId ? (
+                      <ProviderLogoById providerId={service.modelsDevId} name={displayName} size={28} theme={theme} />
+                    ) : (
+                      <ProviderLogo provider={service.provider} size={28} themeName={themeName} theme={theme} />
+                    )}
+
+                    {/* Name */}
+                    <span
+                      style={{
+                        flex: 1,
+                        fontSize: uiTypography.fontSize.sm,
+                        fontWeight: isSelected ? uiTypography.fontWeight.semibold : uiTypography.fontWeight.regular,
+                        color: theme.text.primary,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap"
+                      }}>
+                      {displayName}
+                    </span>
+
+                    {/* Toggle */}
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <ToggleSwitch
+                        checked={isActive}
+                        onChange={() => toggleServiceActive(service.id)}
+                        theme={theme}
+                      />
+                    </div>
+                  </div>
+                )
+              })
+            )}
+
+            {/* Add provider button */}
+            <button
+              type="button"
+              onClick={openCreateService}
+              onMouseDown={() => setPressedBtn("add-service")}
+              onMouseUp={() => setPressedBtn(null)}
+              onMouseLeave={() => setPressedBtn(null)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: uiSpace[8],
+                padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
+                marginBottom: 2,
+                borderRadius: uiRadius.sm,
+                cursor: "pointer",
+                background: "transparent",
+                border: `1px dashed ${theme.border.default}`,
+                width: "100%",
+                boxSizing: "border-box",
+                transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
+                fontFamily: uiTypography.fontFamily,
+                fontSize: uiTypography.fontSize.sm,
+                color: theme.text.secondary,
+                transform: pressedBtn === "add-service" ? "scale(0.98)" : "scale(1)"
+              }}>
+              <div
                 style={{
-                  margin: `0 0 ${uiSpace[4]}px`,
-                  fontSize: uiTypography.fontSize.lg,
-                  fontWeight: uiTypography.fontWeight.semibold,
-                  letterSpacing: uiTypography.letterSpacing.tight
+                  width: 28,
+                  height: 28,
+                  borderRadius: uiRadius.sm,
+                  border: `1px dashed ${theme.border.default}`,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0
                 }}>
-                {t("options.connection.selectProvider")}
-              </h2>
-              <p
-                style={{
-                  margin: 0,
-                  color: theme.text.secondary,
-                  fontSize: uiTypography.fontSize.md
-                }}>
-                {t("options.connection.selectProviderDesc")}
-              </p>
-            </div>
-            <button type="button" onClick={closeConnectionEditor} style={secondaryBtnStyle}>
-              {t("options.connection.backToList")}
+                <PlusIcon size={14} color={theme.text.secondary} />
+              </div>
+              <span>
+                {t("options.connection.addProvider")}
+              </span>
             </button>
           </div>
+        </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: uiSpace[12] }}>
-            {PROVIDER_LIST.filter((p) => p.id !== "openai-compatible").map((provider) => (
+        {/* Right: Detail panel */}
+        <div style={{ flex: 1, padding: uiSpace[24], overflowY: "auto" }}>
+          {!selectedService ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "100%",
+                color: theme.text.secondary,
+                fontSize: uiTypography.fontSize.md
+              }}>
+              {t("options.connection.selectProvider")}
+            </div>
+          ) : (
+            <div>
+              {/* Provider badge */}
+              <div style={{ display: "flex", alignItems: "center", gap: uiSpace[10], marginBottom: uiSpace[16], padding: `${uiSpace[10]}px ${uiSpace[14]}px`, background: theme.bg.surfaceMuted, borderRadius: uiRadius.md, border: `1px solid ${theme.border.hairline}` }}>
+                {serviceDraft.modelsDevId ? (
+                  <ProviderLogoById providerId={serviceDraft.modelsDevId} name={serviceDraft.name || PROVIDERS[serviceDraft.provider].name} size={28} theme={theme} />
+                ) : (
+                  <ProviderLogo provider={serviceDraft.provider} size={28} themeName={themeName} theme={theme} />
+                )}
+                <span style={{ fontSize: uiTypography.fontSize.md, fontWeight: uiTypography.fontWeight.semibold, color: theme.text.primary }}>
+                  {serviceDraft.name || PROVIDERS[serviceDraft.provider].name}
+                </span>
+                {serviceDraft.provider !== "openai-compatible" && serviceDraft.apiBaseUrl ? (
+                  <span style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary, marginLeft: "auto" }}>
+                    {serviceDraft.apiBaseUrl}
+                  </span>
+                ) : null}
+              </div>
+
+              {/* Name */}
+              <div style={{ marginBottom: uiSpace[16] }}>
+                <label htmlFor="service-name" style={fieldLabelStyle}>{t("options.connection.serviceName")}</label>
+                <input
+                  id="service-name"
+                  value={serviceDraft.name}
+                  onFocus={() => setFocusedField("service-name")}
+                  onBlur={() => setFocusedField(null)}
+                  onChange={(event) => {
+                    updateServiceField("name", event.target.value)
+                  }}
+                  placeholder={t("options.connection.serviceNamePlaceholder")}
+                  style={createInputStyle("service-name")}
+                />
+              </div>
+
+              {/* API Base URL (for custom provider) */}
+              {serviceDraft.provider === "openai-compatible" ? (
+                <div style={{ marginBottom: uiSpace[16] }}>
+                  <label htmlFor="service-api-base-url" style={fieldLabelStyle}>{t("options.connection.apiBaseUrl")}</label>
+                  <input
+                    id="service-api-base-url"
+                    value={serviceDraft.apiBaseUrl ?? ""}
+                    onFocus={() => setFocusedField("apiBaseUrl")}
+                    onBlur={() => setFocusedField(null)}
+                    onChange={(event) => {
+                      updateServiceField("apiBaseUrl", event.target.value)
+                    }}
+                    placeholder="https://api.example.com/v1"
+                    style={createInputStyle("apiBaseUrl")}
+                  />
+                </div>
+              ) : null}
+
+              {/* API Key */}
+              <div style={{ marginBottom: uiSpace[16] }}>
+                <label htmlFor="service-api-key" style={fieldLabelStyle}>{t("options.connection.apiKey")}</label>
+                <input
+                  id="service-api-key"
+                  type="password"
+                  value={serviceDraft.apiKey}
+                  onFocus={() => setFocusedField("apiKey")}
+                  onBlur={() => setFocusedField(null)}
+                  onChange={(event) => {
+                    updateServiceField("apiKey", event.target.value)
+                  }}
+                  placeholder="sk-..."
+                  style={createInputStyle("apiKey")}
+                />
+              </div>
+
+              {/* Model */}
+              <div style={{ marginBottom: uiSpace[16] }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: uiSpace[6] }}>
+                  <label htmlFor="service-model" style={fieldLabelStyle}>{t("options.connection.model")}</label>
+                  {serviceDraft.provider === "openai-compatible" ? (
+                    <button
+                      type="button"
+                      onClick={handleFetchModels}
+                      disabled={fetchingModels}
+                      style={{
+                        ...secondaryBtnStyle,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: uiSpace[4],
+                        opacity: fetchingModels ? 0.5 : 1,
+                        cursor: fetchingModels ? "not-allowed" : "pointer"
+                      }}>
+                      <RefreshIcon size={14} color={theme.text.primary} />
+                      {fetchingModels ? t("options.connection.fetching") : t("options.connection.fetchModels")}
+                    </button>
+                  ) : null}
+                </div>
+                {models.length > 0 ? (
+                  <div style={{ display: "flex", gap: uiSpace[8] }}>
+                    <select
+                      id="service-model"
+                      value={serviceDraft.model}
+                      onChange={(event) => {
+                        updateServiceField("model", event.target.value)
+                      }}
+                      style={{ ...createInputStyle("model"), flex: 1, cursor: "pointer" }}>
+                      {models.map((id) => (
+                        <option key={id} value={id}>
+                          {id}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setModels([])}
+                      style={secondaryBtnStyle}>
+                      {t("options.connection.manualInput")}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      id="service-model"
+                      value={serviceDraft.model}
+                      onFocus={() => setFocusedField("model")}
+                      onBlur={() => setFocusedField(null)}
+                      onChange={(event) => {
+                        updateServiceField("model", event.target.value)
+                      }}
+                      placeholder={PROVIDERS[serviceDraft.provider].fallbackModels[0] ?? "model-name"}
+                      style={createInputStyle("model")}
+                    />
+                    {/* Model suggestions from models.dev or fallback */}
+                    {(() => {
+                      const devModels = modelsDevData
+                        ? getModelsForProvider(modelsDevData, serviceDraft.provider)
+                        : []
+                      const hasDevModels = devModels.length > 0
+                      const fallbackList = PROVIDERS[serviceDraft.provider].fallbackModels
+                      const showSearch = devModels.length > 12
+                      const query = modelSearchQuery.trim().toLowerCase()
+                      const filtered = query
+                        ? devModels.filter(
+                            (m) =>
+                              m.id.toLowerCase().includes(query) ||
+                              m.name.toLowerCase().includes(query)
+                          )
+                        : devModels
+
+                      if (!hasDevModels && fallbackList.length === 0) return null
+
+                      return (
+                        <div style={{ marginTop: uiSpace[8] }}>
+                          {showSearch ? (
+                            <input
+                              type="text"
+                              value={modelSearchQuery}
+                              onChange={(e) => setModelSearchQuery(e.target.value)}
+                              placeholder={t("options.connection.modelSearchPlaceholder")}
+                              style={{
+                                width: "100%",
+                                boxSizing: "border-box",
+                                padding: `${uiSpace[4]}px ${uiSpace[8]}px`,
+                                fontSize: uiTypography.fontSize.xs,
+                                border: `1px solid ${theme.border.hairline}`,
+                                borderRadius: uiRadius.sm,
+                                background: theme.bg.surface,
+                                color: theme.text.primary,
+                                outline: "none",
+                                marginBottom: uiSpace[6],
+                                fontFamily: uiTypography.fontFamily
+                              }}
+                            />
+                          ) : null}
+                          {hasDevModels ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: uiSpace[2], maxHeight: 240, overflowY: "auto" }}>
+                              {filtered.map((m) => {
+                                const isSelected = serviceDraft.model === m.id
+                                return (
+                                  <button
+                                    key={m.id}
+                                    type="button"
+                                    onClick={() => {
+                                      updateServiceField("model", m.id)
+                                    }}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: uiSpace[8],
+                                      padding: `${uiSpace[4]}px ${uiSpace[10]}px`,
+                                      border: `1px solid ${isSelected ? theme.accent.primary : "transparent"}`,
+                                      borderRadius: uiRadius.sm,
+                                      background: isSelected ? `${theme.accent.primary}14` : "transparent",
+                                      color: isSelected ? theme.accent.primary : theme.text.primary,
+                                      fontSize: uiTypography.fontSize.xs,
+                                      cursor: "pointer",
+                                      outline: "none",
+                                      fontFamily: uiTypography.fontFamily,
+                                      textAlign: "left",
+                                      transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
+                                      lineHeight: 1.5
+                                    }}>
+                                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                      {m.name}
+                                    </span>
+                                    {m.reasoning ? (
+                                      <span style={{
+                                        padding: `1px ${uiSpace[4]}px`,
+                                        borderRadius: uiRadius.pill,
+                                        background: `${theme.accent.primary}18`,
+                                        color: theme.accent.primary,
+                                        fontSize: 10,
+                                        fontWeight: uiTypography.fontWeight.medium,
+                                        flexShrink: 0
+                                      }}>
+                                        reasoning
+                                      </span>
+                                    ) : null}
+                                    {m.tool_call ? (
+                                      <span style={{
+                                        padding: `1px ${uiSpace[4]}px`,
+                                        borderRadius: uiRadius.pill,
+                                        background: `${theme.state.success ?? "#22c55e"}18`,
+                                        color: theme.state.success ?? "#22c55e",
+                                        fontSize: 10,
+                                        fontWeight: uiTypography.fontWeight.medium,
+                                        flexShrink: 0
+                                      }}>
+                                        tools
+                                      </span>
+                                    ) : null}
+                                    {m.attachment ? (
+                                      <span style={{
+                                        padding: `1px ${uiSpace[4]}px`,
+                                        borderRadius: uiRadius.pill,
+                                        background: `${theme.state.warning ?? "#f59e0b"}18`,
+                                        color: theme.state.warning ?? "#f59e0b",
+                                        fontSize: 10,
+                                        fontWeight: uiTypography.fontWeight.medium,
+                                        flexShrink: 0
+                                      }}>
+                                        attach
+                                      </span>
+                                    ) : null}
+                                  </button>
+                                )
+                              })}
+                              {filtered.length === 0 ? (
+                                <div style={{ textAlign: "center", padding: uiSpace[12], color: theme.text.secondary, fontSize: uiTypography.fontSize.xs }}>
+                                  No models matching "{modelSearchQuery}"
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: uiSpace[6] }}>
+                              {fallbackList.map((modelId) => (
+                                <button
+                                  key={modelId}
+                                  type="button"
+                                  onClick={() => {
+                                    updateServiceField("model", modelId)
+                                  }}
+                                  style={{
+                                    padding: `${uiSpace[4]}px ${uiSpace[10]}px`,
+                                    border: `1px solid ${serviceDraft.model === modelId ? theme.accent.primary : theme.border.hairline}`,
+                                    borderRadius: uiRadius.pill,
+                                    background: serviceDraft.model === modelId ? `${theme.accent.primary}14` : "transparent",
+                                    color: serviceDraft.model === modelId ? theme.accent.primary : theme.text.secondary,
+                                    fontSize: uiTypography.fontSize.xs,
+                                    cursor: "pointer",
+                                    outline: "none",
+                                    fontFamily: uiTypography.fontFamily,
+                                    transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+                                  }}>
+                                  {modelId}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
+                  </>
+                )}
+                {fetchError ? (
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    style={{ marginTop: uiSpace[8], ...createStatusMessageStyle(theme, "error") }}>
+                    {fetchError}
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Test connection */}
+              <div style={{ display: "flex", alignItems: "center", gap: uiSpace[10], marginBottom: uiSpace[16], flexWrap: "wrap" }}>
+                <button
+                  disabled={testing}
+                  onClick={handleTestConnection}
+                  onMouseDown={() => setPressedBtn("test")}
+                  onMouseUp={() => setPressedBtn(null)}
+                  onMouseLeave={() => setPressedBtn(null)}
+                  style={{
+                    ...primaryBtnStyle,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: uiSpace[6],
+                    opacity: testing ? 0.6 : 1,
+                    cursor: testing ? "not-allowed" : "pointer",
+                    background: testing ? theme.state.disabled : theme.accent.primary,
+                    transform: pressedBtn === "test" ? "scale(0.96)" : "scale(1)"
+                  }}>
+                  {testing ? t("options.connection.testing") : t("options.connection.testConnection")}
+                </button>
+                {testResult ? (
+                  <span
+                    role="status"
+                    aria-live="polite"
+                    style={{
+                      ...createStatusMessageStyle(theme, testResult.success ? "success" : "error"),
+                      borderRadius: uiRadius.pill,
+                      fontWeight: uiTypography.fontWeight.medium,
+                      lineHeight: 1.5
+                    }}>
+                    {testResult.message}
+                  </span>
+                ) : null}
+              </div>
+
+              {/* Model params */}
+              <div style={{ borderTop: `0.5px solid ${theme.border.hairline}`, paddingTop: uiSpace[20], marginTop: uiSpace[4] }}>
+                <h3
+                  style={{
+                    margin: `0 0 ${uiSpace[4]}px`,
+                    fontSize: uiTypography.fontSize.md,
+                    fontWeight: uiTypography.fontWeight.semibold,
+                    letterSpacing: uiTypography.letterSpacing.tight
+                  }}>
+                  {t("options.connection.modelParams")}
+                </h3>
+                <p
+                  style={{
+                    margin: `0 0 ${uiSpace[16]}px`,
+                    color: theme.text.secondary,
+                    fontSize: uiTypography.fontSize.sm
+                  }}>
+                  {t("options.connection.modelParamsDesc")}
+                </p>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: `${uiSpace[12]}px ${uiSpace[16]}px`
+                  }}>
+                  {(
+                    [
+                      { key: "maxTokens" as const, label: "Max Tokens", placeholder: "1024", min: 1, max: 128000, step: 1, desc: t("options.connection.paramMaxTokens") },
+                      { key: "temperature" as const, label: "Temperature", placeholder: "0.3", min: 0, max: 2, step: 0.1, desc: t("options.connection.paramTemperature") },
+                      { key: "topP" as const, label: "Top P", placeholder: "0.9", min: 0, max: 1, step: 0.05, desc: t("options.connection.paramTopP") },
+                      { key: "presencePenalty" as const, label: "Presence Penalty", placeholder: "0", min: -2, max: 2, step: 0.1, desc: t("options.connection.paramPresencePenalty") },
+                      { key: "frequencyPenalty" as const, label: "Frequency Penalty", placeholder: "0", min: -2, max: 2, step: 0.1, desc: t("options.connection.paramFrequencyPenalty") }
+                    ]
+                  ).map((param) => (
+                    <div key={param.key}>
+                      <label htmlFor={`model-param-${param.key}`} style={{ ...fieldLabelStyle, marginBottom: uiSpace[4] }}>{param.label}</label>
+                      <div style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary, marginBottom: uiSpace[6] }}>
+                        {param.desc}
+                      </div>
+                      <input
+                        id={`model-param-${param.key}`}
+                        type="number"
+                        value={serviceDraft.modelParams[param.key]}
+                        min={param.min}
+                        max={param.max}
+                        step={param.step}
+                        onFocus={() => setFocusedField(`modelParams-${param.key}`)}
+                        onBlur={() => setFocusedField(null)}
+                        onChange={(event) => {
+                          const raw = event.target.value
+                          const value = raw === "" ? DEFAULT_CUSTOM_MODEL_SERVICE.modelParams[param.key] : Number(raw)
+                          updateServiceModelParam(param.key, value)
+                        }}
+                        placeholder={param.placeholder}
+                        style={createInputStyle(`modelParams-${param.key}`)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Delete button */}
+              <div style={{ marginTop: uiSpace[20], borderTop: `0.5px solid ${theme.border.hairline}`, paddingTop: uiSpace[20] }}>
+                <button
+                  type="button"
+                  onClick={() => setPendingDeleteServiceId(selectedServiceId)}
+                  style={{
+                    ...secondaryBtnStyle,
+                    color: theme.state.error,
+                    borderColor: theme.state.error
+                  }}>
+                  {t("options.connection.delete")}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Provider selection modal */}
+      {showProviderSelect ? (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            backdropFilter: "blur(4px)"
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowProviderSelect(false)
+              setProviderSearchQuery("")
+            }
+          }}>
+          <div
+            style={{
+              background: theme.bg.surface,
+              borderRadius: uiRadius.lg,
+              boxShadow: uiShadow.xl,
+              width: "90%",
+              maxWidth: 800,
+              maxHeight: "80vh",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden"
+            }}>
+            {/* Modal header */}
+            <div
+              style={{
+                padding: `${uiSpace[20]}px ${uiSpace[24]}px`,
+                borderBottom: `0.5px solid ${theme.border.hairline}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between"
+              }}>
+              <div>
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: uiTypography.fontSize.lg,
+                    fontWeight: uiTypography.fontWeight.semibold,
+                    letterSpacing: uiTypography.letterSpacing.tight
+                  }}>
+                  {t("options.connection.selectProvider")}
+                </h2>
+                <p
+                  style={{
+                    margin: `${uiSpace[4]}px 0 0`,
+                    color: theme.text.secondary,
+                    fontSize: uiTypography.fontSize.sm
+                  }}>
+                  {t("options.connection.selectProviderDesc")}
+                </p>
+              </div>
               <button
-                key={provider.id}
                 type="button"
-                onClick={() => selectProviderAndCreate(provider.id)}
+                onClick={() => {
+                  setShowProviderSelect(false)
+                  setProviderSearchQuery("")
+                }}
+                style={{
+                  ...secondaryBtnStyle,
+                  padding: `${uiSpace[6]}px ${uiSpace[12]}px`
+                }}>
+                {t("options.connection.cancel")}
+              </button>
+            </div>
+
+            {/* Search input */}
+            <div style={{ padding: `${uiSpace[16]}px ${uiSpace[24]}px 0` }}>
+              <input
+                type="text"
+                value={providerSearchQuery}
+                onChange={(e) => setProviderSearchQuery(e.target.value)}
+                placeholder={t("options.connection.searchProviders")}
+                autoFocus
+                style={{
+                  ...createInputStyle("provider-search"),
+                  width: "100%",
+                  boxSizing: "border-box"
+                }}
+              />
+            </div>
+
+            {/* Provider grid */}
+            <div
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                padding: uiSpace[24],
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+                gap: uiSpace[12],
+                alignContent: "start"
+              }}>
+              {/* Custom provider option */}
+              <button
+                type="button"
+                onClick={() => selectProviderAndCreate("openai-compatible")}
                 style={{
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
                   gap: uiSpace[8],
-                  padding: uiSpace[20],
+                  padding: uiSpace[16],
                   border: `1px solid ${theme.border.default}`,
                   borderRadius: uiRadius.md,
                   background: theme.bg.surface,
                   cursor: "pointer",
                   transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
-                  outline: "none"
+                  fontFamily: uiTypography.fontFamily
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.borderColor = theme.accent.primary
@@ -860,616 +1621,99 @@ export default function OptionsPage() {
                   e.currentTarget.style.borderColor = theme.border.default
                   e.currentTarget.style.background = theme.bg.surface
                 }}>
-                <div style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: uiRadius.sm,
-                  background: theme.bg.surfaceMuted,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: uiTypography.fontSize.lg,
-                  fontWeight: uiTypography.fontWeight.semibold,
-                  color: theme.accent.primary
-                }}>
-                  {provider.name.charAt(0)}
-                </div>
-                <span style={{ fontSize: uiTypography.fontSize.md, fontWeight: uiTypography.fontWeight.semibold, color: theme.text.primary }}>
-                  {provider.name}
-                </span>
-                <span style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary, textAlign: "center" }}>
-                  {modelsDevData
-                    ? `${getModelsForProvider(modelsDevData, provider.id).length} models`
-                    : provider.fallbackModels[0] ?? ""}
-                </span>
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => selectProviderAndCreate("openai-compatible")}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: uiSpace[8],
-                padding: uiSpace[20],
-                border: `1px dashed ${theme.border.default}`,
-                borderRadius: uiRadius.md,
-                background: theme.bg.surfaceMuted,
-                cursor: "pointer",
-                transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
-                outline: "none"
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = theme.accent.primary
-                e.currentTarget.style.background = `${theme.accent.primary}08`
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = theme.border.default
-                e.currentTarget.style.background = theme.bg.surfaceMuted
-              }}>
-              <div style={{
-                width: 40,
-                height: 40,
-                borderRadius: uiRadius.sm,
-                background: theme.bg.surface,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: uiTypography.fontSize.lg,
-                fontWeight: uiTypography.fontWeight.semibold,
-                color: theme.text.secondary
-              }}>
-                <PlusIcon size={18} color={theme.text.secondary} />
-              </div>
-              <span style={{ fontSize: uiTypography.fontSize.md, fontWeight: uiTypography.fontWeight.semibold, color: theme.text.primary }}>
-                {t("options.connection.customProvider")}
-              </span>
-              <span style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary, textAlign: "center" }}>
-                OpenAI Compatible
-              </span>
-            </button>
-          </div>
-        </>
-      ) : isEditingConnection ? (
-        <>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: uiSpace[16], marginBottom: uiSpace[20] }}>
-            <div>
-              <h2
-                style={{
-                  margin: `0 0 ${uiSpace[4]}px`,
-                  fontSize: uiTypography.fontSize.lg,
-                  fontWeight: uiTypography.fontWeight.semibold,
-                  letterSpacing: uiTypography.letterSpacing.tight
-                }}>
-                {connectionView === "create" ? t("options.connection.createTitle") : t("options.connection.editTitle")}
-              </h2>
-              <p
-                style={{
-                  margin: 0,
-                  color: theme.text.secondary,
-                  fontSize: uiTypography.fontSize.md
-                }}>
-                {t("options.connection.editorDesc")}
-              </p>
-            </div>
-            <button type="button" onClick={closeConnectionEditor} style={secondaryBtnStyle}>
-              {t("options.connection.backToList")}
-            </button>
-          </div>
-
-          {/* Provider badge */}
-          <div style={{ display: "flex", alignItems: "center", gap: uiSpace[10], marginBottom: uiSpace[16], padding: `${uiSpace[10]}px ${uiSpace[14]}px`, background: theme.bg.surfaceMuted, borderRadius: uiRadius.md, border: `1px solid ${theme.border.hairline}` }}>
-            <div style={{
-              width: 28,
-              height: 28,
-              borderRadius: uiRadius.sm,
-              background: theme.accent.primary,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: uiTypography.fontSize.sm,
-              fontWeight: uiTypography.fontWeight.semibold,
-              color: "#fff"
-            }}>
-              {PROVIDERS[serviceDraft.provider].name.charAt(0)}
-            </div>
-            <span style={{ fontSize: uiTypography.fontSize.md, fontWeight: uiTypography.fontWeight.semibold, color: theme.text.primary }}>
-              {PROVIDERS[serviceDraft.provider].name}
-            </span>
-            {serviceDraft.provider !== "openai-compatible" && serviceDraft.apiBaseUrl ? (
-              <span style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary, marginLeft: "auto" }}>
-                {serviceDraft.apiBaseUrl}
-              </span>
-            ) : null}
-          </div>
-
-          <div style={{ marginBottom: uiSpace[16] }}>
-            <label htmlFor="service-name" style={fieldLabelStyle}>{t("options.connection.serviceName")}</label>
-            <input
-              id="service-name"
-              value={serviceDraft.name}
-              onFocus={() => setFocusedField("service-name")}
-              onBlur={() => setFocusedField(null)}
-              onChange={(event) => {
-                setServiceDraft((current) => ({ ...current, name: event.target.value }))
-              }}
-              placeholder={t("options.connection.serviceNamePlaceholder")}
-              style={createInputStyle("service-name")}
-            />
-          </div>
-
-          {serviceDraft.provider === "openai-compatible" ? (
-            <div style={{ marginBottom: uiSpace[16] }}>
-              <label htmlFor="service-api-base-url" style={fieldLabelStyle}>{t("options.connection.apiBaseUrl")}</label>
-              <input
-                id="service-api-base-url"
-                value={serviceDraft.apiBaseUrl ?? ""}
-                onFocus={() => setFocusedField("apiBaseUrl")}
-                onBlur={() => setFocusedField(null)}
-                onChange={(event) => {
-                  setServiceDraft((current) => ({ ...current, apiBaseUrl: event.target.value }))
-                }}
-                placeholder="https://api.example.com/v1"
-                style={createInputStyle("apiBaseUrl")}
-              />
-            </div>
-          ) : null}
-
-          <div style={{ marginBottom: uiSpace[16] }}>
-            <label htmlFor="service-api-key" style={fieldLabelStyle}>{t("options.connection.apiKey")}</label>
-            <input
-              id="service-api-key"
-              type="password"
-              value={serviceDraft.apiKey}
-              onFocus={() => setFocusedField("apiKey")}
-              onBlur={() => setFocusedField(null)}
-              onChange={(event) => {
-                setServiceDraft((current) => ({ ...current, apiKey: event.target.value }))
-              }}
-              placeholder="sk-..."
-              style={createInputStyle("apiKey")}
-            />
-          </div>
-
-          <div style={{ marginBottom: uiSpace[16] }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: uiSpace[6] }}>
-              <label htmlFor="service-model" style={fieldLabelStyle}>{t("options.connection.model")}</label>
-              {serviceDraft.provider === "openai-compatible" ? (
-                <button
-                  type="button"
-                  onClick={handleFetchModels}
-                  disabled={fetchingModels}
+                <div
                   style={{
-                    ...secondaryBtnStyle,
+                    width: 48,
+                    height: 48,
+                    borderRadius: uiRadius.sm,
+                    background: theme.bg.surfaceMuted,
                     display: "flex",
                     alignItems: "center",
-                    gap: uiSpace[4],
-                    opacity: fetchingModels ? 0.5 : 1,
-                    cursor: fetchingModels ? "not-allowed" : "pointer"
+                    justifyContent: "center"
                   }}>
-                  <RefreshIcon size={14} color={theme.text.primary} />
-                  {fetchingModels ? t("options.connection.fetching") : t("options.connection.fetchModels")}
+                  <PlusIcon size={24} color={theme.text.secondary} />
+                </div>
+                <span
+                  style={{
+                    fontSize: uiTypography.fontSize.sm,
+                    fontWeight: uiTypography.fontWeight.semibold,
+                    color: theme.text.primary,
+                    textAlign: "center"
+                  }}>
+                  {t("options.connection.customProvider")}
+                </span>
+                <span
+                  style={{
+                    fontSize: uiTypography.fontSize.xs,
+                    color: theme.text.secondary
+                  }}>
+                  OpenAI Compatible
+                </span>
+              </button>
+
+              {/* Models.dev providers */}
+              {filteredProviders.map((provider) => (
+                <button
+                  key={provider.id}
+                  type="button"
+                  onClick={() => selectModelsDevProvider(provider)}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: uiSpace[8],
+                    padding: uiSpace[16],
+                    border: `1px solid ${theme.border.default}`,
+                    borderRadius: uiRadius.md,
+                    background: theme.bg.surface,
+                    cursor: "pointer",
+                    transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
+                    fontFamily: uiTypography.fontFamily
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = theme.accent.primary
+                    e.currentTarget.style.background = `${theme.accent.primary}08`
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = theme.border.default
+                    e.currentTarget.style.background = theme.bg.surface
+                  }}>
+                  <ProviderLogoById providerId={provider.id} name={provider.name} size={48} theme={theme} />
+                  <span
+                    style={{
+                      fontSize: uiTypography.fontSize.sm,
+                      fontWeight: uiTypography.fontWeight.semibold,
+                      color: theme.text.primary,
+                      textAlign: "center"
+                    }}>
+                    {provider.name}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: uiTypography.fontSize.xs,
+                      color: theme.text.secondary
+                    }}>
+                    {provider.modelCount} {t("options.connection.models")}
+                  </span>
                 </button>
+              ))}
+
+              {/* Empty state */}
+              {filteredProviders.length === 0 && providerSearchQuery.trim() ? (
+                <div
+                  style={{
+                    gridColumn: "1 / -1",
+                    textAlign: "center",
+                    padding: uiSpace[32],
+                    color: theme.text.secondary
+                  }}>
+                  {t("options.connection.noProvidersFound")}
+                </div>
               ) : null}
             </div>
-            {models.length > 0 ? (
-              <div style={{ display: "flex", gap: uiSpace[8] }}>
-                <select
-                  id="service-model"
-                  value={serviceDraft.model}
-                  onChange={(event) => {
-                    setServiceDraft((current) => ({ ...current, model: event.target.value }))
-                  }}
-                  style={{ ...createInputStyle("model"), flex: 1, cursor: "pointer" }}>
-                  {models.map((id) => (
-                    <option key={id} value={id}>
-                      {id}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => setModels([])}
-                  style={secondaryBtnStyle}>
-                  {t("options.connection.manualInput")}
-                </button>
-              </div>
-            ) : (
-              <>
-                <input
-                  id="service-model"
-                  value={serviceDraft.model}
-                  onFocus={() => setFocusedField("model")}
-                  onBlur={() => setFocusedField(null)}
-                  onChange={(event) => {
-                    setServiceDraft((current) => ({ ...current, model: event.target.value }))
-                  }}
-                  placeholder={PROVIDERS[serviceDraft.provider].fallbackModels[0] ?? "model-name"}
-                  style={createInputStyle("model")}
-                />
-                {/* Model suggestions from models.dev or fallback */}
-                {(() => {
-                  const devModels = modelsDevData
-                    ? getModelsForProvider(modelsDevData, serviceDraft.provider)
-                    : []
-                  const hasDevModels = devModels.length > 0
-                  const fallbackList = PROVIDERS[serviceDraft.provider].fallbackModels
-                  const showSearch = devModels.length > 12
-                  const query = modelSearchQuery.trim().toLowerCase()
-                  const filtered = query
-                    ? devModels.filter(
-                        (m) =>
-                          m.id.toLowerCase().includes(query) ||
-                          m.name.toLowerCase().includes(query)
-                      )
-                    : devModels
-
-                  if (!hasDevModels && fallbackList.length === 0) return null
-
-                  return (
-                    <div style={{ marginTop: uiSpace[8] }}>
-                      {showSearch ? (
-                        <input
-                          type="text"
-                          value={modelSearchQuery}
-                          onChange={(e) => setModelSearchQuery(e.target.value)}
-                          placeholder={t("options.connection.modelSearchPlaceholder")}
-                          style={{
-                            width: "100%",
-                            boxSizing: "border-box",
-                            padding: `${uiSpace[4]}px ${uiSpace[8]}px`,
-                            fontSize: uiTypography.fontSize.xs,
-                            border: `1px solid ${theme.border.hairline}`,
-                            borderRadius: uiRadius.sm,
-                            background: theme.bg.surface,
-                            color: theme.text.primary,
-                            outline: "none",
-                            marginBottom: uiSpace[6],
-                            fontFamily: uiTypography.fontFamily
-                          }}
-                        />
-                      ) : null}
-                      {hasDevModels ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: uiSpace[2], maxHeight: 240, overflowY: "auto" }}>
-                          {filtered.map((m) => {
-                            const isSelected = serviceDraft.model === m.id
-                            return (
-                              <button
-                                key={m.id}
-                                type="button"
-                                onClick={() => {
-                                  setServiceDraft((current) => ({ ...current, model: m.id }))
-                                }}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: uiSpace[8],
-                                  padding: `${uiSpace[4]}px ${uiSpace[10]}px`,
-                                  border: `1px solid ${isSelected ? theme.accent.primary : "transparent"}`,
-                                  borderRadius: uiRadius.sm,
-                                  background: isSelected ? `${theme.accent.primary}14` : "transparent",
-                                  color: isSelected ? theme.accent.primary : theme.text.primary,
-                                  fontSize: uiTypography.fontSize.xs,
-                                  cursor: "pointer",
-                                  outline: "none",
-                                  fontFamily: uiTypography.fontFamily,
-                                  textAlign: "left",
-                                  transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
-                                  lineHeight: 1.5
-                                }}>
-                                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                  {m.name}
-                                </span>
-                                {m.reasoning ? (
-                                  <span style={{
-                                    padding: `1px ${uiSpace[4]}px`,
-                                    borderRadius: uiRadius.pill,
-                                    background: `${theme.accent.primary}18`,
-                                    color: theme.accent.primary,
-                                    fontSize: 10,
-                                    fontWeight: uiTypography.fontWeight.medium,
-                                    flexShrink: 0
-                                  }}>
-                                    reasoning
-                                  </span>
-                                ) : null}
-                                {m.tool_call ? (
-                                  <span style={{
-                                    padding: `1px ${uiSpace[4]}px`,
-                                    borderRadius: uiRadius.pill,
-                                    background: `${theme.state.success ?? "#22c55e"}18`,
-                                    color: theme.state.success ?? "#22c55e",
-                                    fontSize: 10,
-                                    fontWeight: uiTypography.fontWeight.medium,
-                                    flexShrink: 0
-                                  }}>
-                                    tools
-                                  </span>
-                                ) : null}
-                                {m.attachment ? (
-                                  <span style={{
-                                    padding: `1px ${uiSpace[4]}px`,
-                                    borderRadius: uiRadius.pill,
-                                    background: `${theme.state.warning ?? "#f59e0b"}18`,
-                                    color: theme.state.warning ?? "#f59e0b",
-                                    fontSize: 10,
-                                    fontWeight: uiTypography.fontWeight.medium,
-                                    flexShrink: 0
-                                  }}>
-                                    attach
-                                  </span>
-                                ) : null}
-                              </button>
-                            )
-                          })}
-                          {filtered.length === 0 ? (
-                            <div style={{ textAlign: "center", padding: uiSpace[12], color: theme.text.secondary, fontSize: uiTypography.fontSize.xs }}>
-                              No models matching "{modelSearchQuery}"
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: uiSpace[6] }}>
-                          {fallbackList.map((modelId) => (
-                            <button
-                              key={modelId}
-                              type="button"
-                              onClick={() => {
-                                setServiceDraft((current) => ({ ...current, model: modelId }))
-                              }}
-                              style={{
-                                padding: `${uiSpace[4]}px ${uiSpace[10]}px`,
-                                border: `1px solid ${serviceDraft.model === modelId ? theme.accent.primary : theme.border.hairline}`,
-                                borderRadius: uiRadius.pill,
-                                background: serviceDraft.model === modelId ? `${theme.accent.primary}14` : "transparent",
-                                color: serviceDraft.model === modelId ? theme.accent.primary : theme.text.secondary,
-                                fontSize: uiTypography.fontSize.xs,
-                                cursor: "pointer",
-                                outline: "none",
-                                fontFamily: uiTypography.fontFamily,
-                                transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`
-                              }}>
-                              {modelId}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })()}
-              </>
-            )}
-            {fetchError ? (
-              <div
-                role="status"
-                aria-live="polite"
-                style={{ marginTop: uiSpace[8], ...createStatusMessageStyle(theme, "error") }}>
-                {fetchError}
-              </div>
-            ) : null}
           </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: uiSpace[10], marginBottom: uiSpace[16], flexWrap: "wrap" }}>
-            <button
-              disabled={testing}
-              onClick={handleTestConnection}
-              onMouseDown={() => setPressedBtn("test")}
-              onMouseUp={() => setPressedBtn(null)}
-              onMouseLeave={() => setPressedBtn(null)}
-              style={{
-                ...primaryBtnStyle,
-                display: "flex",
-                alignItems: "center",
-                gap: uiSpace[6],
-                opacity: testing ? 0.6 : 1,
-                cursor: testing ? "not-allowed" : "pointer",
-                background: testing ? theme.state.disabled : theme.accent.primary,
-                transform: pressedBtn === "test" ? "scale(0.96)" : "scale(1)"
-              }}>
-              {testing ? t("options.connection.testing") : t("options.connection.testConnection")}
-            </button>
-            {testResult ? (
-              <span
-                role="status"
-                aria-live="polite"
-                style={{
-                  ...createStatusMessageStyle(theme, testResult.success ? "success" : "error"),
-                  borderRadius: uiRadius.pill,
-                  fontWeight: uiTypography.fontWeight.medium,
-                  lineHeight: 1.5
-                }}>
-                {testResult.message}
-              </span>
-            ) : null}
-          </div>
-
-          <div style={{ borderTop: `0.5px solid ${theme.border.hairline}`, paddingTop: uiSpace[20], marginTop: uiSpace[4] }}>
-            <h3
-              style={{
-                margin: `0 0 ${uiSpace[4]}px`,
-                fontSize: uiTypography.fontSize.md,
-                fontWeight: uiTypography.fontWeight.semibold,
-                letterSpacing: uiTypography.letterSpacing.tight
-              }}>
-              {t("options.connection.modelParams")}
-            </h3>
-            <p
-              style={{
-                margin: `0 0 ${uiSpace[16]}px`,
-                color: theme.text.secondary,
-                fontSize: uiTypography.fontSize.sm
-              }}>
-              {t("options.connection.modelParamsDesc")}
-            </p>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: `${uiSpace[12]}px ${uiSpace[16]}px`
-              }}>
-              {(
-                [
-                  { key: "maxTokens" as const, label: "Max Tokens", placeholder: "1024", min: 1, max: 128000, step: 1, desc: t("options.connection.paramMaxTokens") },
-                  { key: "temperature" as const, label: "Temperature", placeholder: "0.3", min: 0, max: 2, step: 0.1, desc: t("options.connection.paramTemperature") },
-                  { key: "topP" as const, label: "Top P", placeholder: "0.9", min: 0, max: 1, step: 0.05, desc: t("options.connection.paramTopP") },
-                  { key: "presencePenalty" as const, label: "Presence Penalty", placeholder: "0", min: -2, max: 2, step: 0.1, desc: t("options.connection.paramPresencePenalty") },
-                  { key: "frequencyPenalty" as const, label: "Frequency Penalty", placeholder: "0", min: -2, max: 2, step: 0.1, desc: t("options.connection.paramFrequencyPenalty") }
-                ]
-              ).map((param) => (
-                <div key={param.key}>
-                  <label htmlFor={`model-param-${param.key}`} style={{ ...fieldLabelStyle, marginBottom: uiSpace[4] }}>{param.label}</label>
-                  <div style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary, marginBottom: uiSpace[6] }}>
-                    {param.desc}
-                  </div>
-                  <input
-                    id={`model-param-${param.key}`}
-                    type="number"
-                    value={serviceDraft.modelParams[param.key]}
-                    min={param.min}
-                    max={param.max}
-                    step={param.step}
-                    onFocus={() => setFocusedField(`modelParams-${param.key}`)}
-                    onBlur={() => setFocusedField(null)}
-                    onChange={(event) => {
-                      const raw = event.target.value
-                      const value = raw === "" ? DEFAULT_CUSTOM_MODEL_SERVICE.modelParams[param.key] : Number(raw)
-                      setServiceDraft((current) => ({
-                        ...current,
-                        modelParams: { ...current.modelParams, [param.key]: value }
-                      }))
-                    }}
-                    placeholder={param.placeholder}
-                    style={createInputStyle(`modelParams-${param.key}`)}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: uiSpace[12], marginTop: uiSpace[20], flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={saveServiceDraft}
-              disabled={!isServiceDraftValid}
-              style={{
-                ...primaryBtnStyle,
-                opacity: isServiceDraftValid ? 1 : 0.5,
-                cursor: isServiceDraftValid ? "pointer" : "not-allowed"
-              }}>
-              {t("options.connection.saveService")}
-            </button>
-            <button type="button" onClick={closeConnectionEditor} style={secondaryBtnStyle}>
-              {t("options.connection.cancel")}
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: uiSpace[16], marginBottom: uiSpace[20] }}>
-            <div>
-              <h2
-                style={{
-                  margin: `0 0 ${uiSpace[4]}px`,
-                  fontSize: uiTypography.fontSize.lg,
-                  fontWeight: uiTypography.fontWeight.semibold,
-                  letterSpacing: uiTypography.letterSpacing.tight
-                }}>
-                {t("options.connection.listTitle")}
-              </h2>
-              <p
-                style={{
-                  margin: 0,
-                  color: theme.text.secondary,
-                  fontSize: uiTypography.fontSize.md
-                }}>
-                {t("options.connection.listDesc")}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={openCreateService}
-              onMouseDown={() => setPressedBtn("add-service")}
-              onMouseUp={() => setPressedBtn(null)}
-              onMouseLeave={() => setPressedBtn(null)}
-              style={{
-                ...primaryBtnStyle,
-                display: "flex",
-                alignItems: "center",
-                gap: uiSpace[4],
-                transform: pressedBtn === "add-service" ? "scale(0.96)" : "scale(1)"
-              }}>
-              <PlusIcon size={14} color={theme.text.inverse} />
-              {t("options.connection.addService")}
-            </button>
-          </div>
-
-          {settings.modelServices.length === 0 ? (
-            <div
-              style={{ ...emptyStateStyle, padding: `${uiSpace[28]}px ${uiSpace[16]}px` }}>
-              {t("options.connection.emptyServiceList")}
-            </div>
-          ) : (
-            <div style={{ display: "grid", gap: uiSpace[12] }}>
-              {settings.modelServices.map((service) => {
-                const isActive = settings.activeModelServiceId === service.id
-                const providerMeta = PROVIDERS[service.provider]
-                const displayName = service.name || providerMeta.name
-
-                return (
-                  <div
-                    key={service.id}
-                    style={createSelectableCardStyle(isActive)}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: uiSpace[16] }}>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: uiSpace[8], marginBottom: uiSpace[6], flexWrap: "wrap" }}>
-                          <div style={{
-                            width: 28,
-                            height: 28,
-                            borderRadius: uiRadius.sm,
-                            background: getAvatarPalette(undefined, providerMeta.name, themeName === "dark").background,
-                            color: getAvatarPalette(undefined, providerMeta.name, themeName === "dark").color,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: 11,
-                            fontWeight: uiTypography.fontWeight.semibold,
-                            letterSpacing: uiTypography.letterSpacing.tight,
-                            flexShrink: 0
-                          }}>
-                            {providerMeta.name.charAt(0)}
-                          </div>
-                          <span style={{ fontSize: uiTypography.fontSize.md, fontWeight: uiTypography.fontWeight.semibold, color: theme.text.primary }}>
-                            {displayName}
-                          </span>
-                          <span style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary }}>{providerMeta.name}</span>
-                        </div>
-                        <div style={{ color: theme.text.secondary, fontSize: uiTypography.fontSize.sm, lineHeight: 1.6 }}>
-                          {service.model}
-                        </div>
-                      </div>
-
-                      <div style={{ display: "flex", alignItems: "center", gap: uiSpace[8], flexWrap: "wrap", justifyContent: "flex-end" }}>
-                        <ToggleSwitch checked={isActive} onChange={() => toggleServiceActive(service.id)} theme={theme} />
-                        <button type="button" onClick={() => openEditService(service.id)} style={secondaryBtnStyle}>
-                          {t("options.connection.edit")}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPendingDeleteServiceId(service.id)}
-                          style={{ ...secondaryBtnStyle, color: theme.state.error, borderColor: theme.state.error }}>
-                          {t("options.connection.delete")}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </>
-      )}
+        </div>
+      ) : null}
     </section>
   )
 

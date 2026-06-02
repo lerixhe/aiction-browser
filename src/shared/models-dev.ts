@@ -19,6 +19,7 @@ export interface ModelsDevModel {
 export interface ModelsDevProvider {
   id: string
   name: string
+  api?: string
   env?: string[]
   models: Record<string, ModelsDevModel>
 }
@@ -119,4 +120,30 @@ export function getProviderEnv(data: ModelsDevData, provider: ProviderType): str
   const providerId = PROVIDER_MAP[provider]
   if (!providerId) return []
   return data[providerId]?.env ?? []
+}
+
+export interface ModelsDevProviderInfo {
+  id: string
+  name: string
+  api: string
+  env: string[]
+  modelCount: number
+}
+
+export function getAllProviders(data: ModelsDevData): ModelsDevProviderInfo[] {
+  return Object.values(data)
+    .filter((p) => p.api && Object.keys(p.models).length > 0)
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      api: p.api!,
+      env: p.env ?? [],
+      modelCount: Object.values(p.models).filter((m) => m.status !== "deprecated").length,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+export function mapModelsDevProviderToType(providerId: string): ProviderType {
+  const match = Object.entries(PROVIDER_MAP).find(([, v]) => v === providerId)
+  return (match?.[0] as ProviderType) ?? "openai-compatible"
 }

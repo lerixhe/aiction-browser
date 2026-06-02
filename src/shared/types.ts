@@ -35,6 +35,7 @@ export interface ModelServiceConfig {
   apiBaseUrl?: string
   modelParams: ModelParams
   icon?: string
+  modelsDevId?: string
 }
 
 export interface ExtensionSettings {
