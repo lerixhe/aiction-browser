@@ -310,6 +310,36 @@ export default function OptionsPage() {
     })
   }
 
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingUpdatersRef = useRef<Array<(current: ExtensionSettings) => ExtensionSettings>>([])
+
+  const saveSettingsDebounced = (updater: (current: ExtensionSettings) => ExtensionSettings) => {
+    pendingUpdatersRef.current.push(updater)
+
+    setSettings((current) => updater(current))
+
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+    debounceTimerRef.current = setTimeout(() => {
+      const updaters = pendingUpdatersRef.current
+      pendingUpdatersRef.current = []
+      debounceTimerRef.current = null
+      setSettings((current) => {
+        const next = updaters.reduce((acc, fn) => fn(acc), current)
+        void saveSettings({
+          ...next,
+          providers: next.providers.map((provider) => ({
+            ...provider,
+            name: provider.name.trim(),
+            apiBaseUrl: provider.apiBaseUrl?.trim() || undefined,
+            apiKey: provider.apiKey.trim(),
+            model: provider.model.trim()
+          }))
+        })
+        return next
+      })
+    }, 400)
+  }
+
   const updateCustomAction = (index: number, patch: Partial<ActionTemplate>) => {
     saveSettingsNow((current) => ({
       ...current,
@@ -610,7 +640,7 @@ export default function OptionsPage() {
     
     setProviderDraft((current) => ({ ...current, [field]: value }))
     
-    saveSettingsNow((current) => ({
+    saveSettingsDebounced((current) => ({
       ...current,
       providers: current.providers.map((provider) =>
         provider.id === selectedProviderId ? { ...provider, [field]: value } : provider
@@ -626,7 +656,7 @@ export default function OptionsPage() {
       modelParams: { ...current.modelParams, [key]: value }
     }))
     
-    saveSettingsNow((current) => ({
+    saveSettingsDebounced((current) => ({
       ...current,
       providers: current.providers.map((provider) =>
         provider.id === selectedProviderId
