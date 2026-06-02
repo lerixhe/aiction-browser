@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { memo, useEffect, useRef, useState } from "react"
 
 import { useDraggable } from "@/entrypoints/content/hooks/useDraggable"
 import { MarkdownRenderer } from "@/shared/ui/markdown"
@@ -138,6 +138,57 @@ function ThinkingBlock({
     </div>
   )
 }
+
+interface MessageBubbleProps {
+  item: ChatMessage
+  isStreaming: boolean
+  theme: ReturnType<typeof useUiTheme>
+}
+
+const MessageBubble = memo(function MessageBubble({ item, isStreaming, theme }: MessageBubbleProps) {
+  return (
+    <div
+      style={{
+        display: "block",
+        marginLeft: item.role === "user" ? "auto" : undefined,
+        maxWidth: "85%",
+        marginBottom: uiSpace[8],
+        borderRadius: uiRadius.md,
+        lineHeight: 1.4,
+        fontSize: uiTypography.fontSize.sm,
+        whiteSpace: item.role === "user" ? "pre-wrap" : "normal",
+        wordBreak: "break-word",
+        background: item.role === "user" ? theme.accent.primary : theme.bg.surface,
+        color: item.role === "user" ? theme.text.inverse : theme.text.primary,
+        border: item.role === "user" ? "none" : `0.5px solid ${theme.border.hairline}`,
+        boxShadow: item.role === "user" ? uiShadow.sm : uiShadow.sm,
+        animation: `message-enter 300ms ${uiMotion.easingDecelerate} forwards`,
+        overflow: "hidden"
+      }}>
+      {item.role === "assistant" && item.reasoning_content ? (
+        <ThinkingBlock
+          reasoning={item.reasoning_content}
+          isStreaming={isStreaming && !item.content}
+          theme={theme}
+        />
+      ) : null}
+      {item.content ? (
+        <div
+          style={{
+            padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
+            overflowWrap: "break-word",
+            wordBreak: "break-word"
+          }}>
+          {item.role === "assistant" ? (
+            <MarkdownRenderer content={item.content} />
+          ) : (
+            item.content
+          )}
+        </div>
+      ) : null}
+    </div>
+  )
+})
 
 export default function ChatWindow({
   capturedText,
@@ -403,47 +454,12 @@ export default function ChatWindow({
         ) : null}
 
         {messages.map((item) => (
-          <div
+          <MessageBubble
             key={item.id}
-            style={{
-              display: "block",
-              marginLeft: item.role === "user" ? "auto" : undefined,
-              maxWidth: "85%",
-              marginBottom: uiSpace[8],
-              borderRadius: uiRadius.md,
-              lineHeight: 1.4,
-              fontSize: uiTypography.fontSize.sm,
-              whiteSpace: item.role === "user" ? "pre-wrap" : "normal",
-              wordBreak: "break-word",
-              background: item.role === "user" ? theme.accent.primary : theme.bg.surface,
-              color: item.role === "user" ? theme.text.inverse : theme.text.primary,
-              border: item.role === "user" ? "none" : `0.5px solid ${theme.border.hairline}`,
-              boxShadow: item.role === "user" ? uiShadow.sm : uiShadow.sm,
-              animation: `message-enter 300ms ${uiMotion.easingDecelerate} forwards`,
-              overflow: "hidden"
-            }}>
-            {item.role === "assistant" && item.reasoning_content ? (
-              <ThinkingBlock
-                reasoning={item.reasoning_content}
-                isStreaming={isStreaming && !item.content}
-                theme={theme}
-              />
-            ) : null}
-            {item.content ? (
-              <div
-                style={{
-                  padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
-                  overflowWrap: "break-word",
-                  wordBreak: "break-word"
-                }}>
-                {item.role === "assistant" ? (
-                  <MarkdownRenderer content={item.content} />
-                ) : (
-                  item.content
-                )}
-              </div>
-            ) : null}
-          </div>
+            item={item}
+            isStreaming={isStreaming}
+            theme={theme}
+          />
         ))}
 
         {isStreaming ? (

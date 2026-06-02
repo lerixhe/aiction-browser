@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { ERROR_MESSAGES, UI_MESSAGES } from "@/shared/constants"
 import { streamChat } from "@/shared/messaging"
@@ -58,11 +58,23 @@ export function useChatState() {
 
   const messagesRef = useRef<ChatMessage[]>([])
   const activeStreamAbortRef = useRef<AbortController | null>(null)
+  const lastUpdateTimeRef = useRef<number>(0)
+  const pendingChunkRef = useRef<{ id: string; content: string; reasoning?: string } | null>(null)
+  const throttleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Sync messages ref
   const syncMessages = useCallback((newMessages: ChatMessage[]) => {
     messagesRef.current = newMessages
     setMessages(newMessages)
+  }, [])
+
+  // Cleanup throttle timer on unmount
+  useEffect(() => {
+    return () => {
+      if (throttleTimerRef.current !== null) {
+        clearTimeout(throttleTimerRef.current)
+      }
+    }
   }, [])
 
   // Stop streaming
@@ -133,14 +145,39 @@ export function useChatState() {
                 streamedReasoning += event.reasoning_content
               }
 
-              const updatedMessages = updateMessageContent(
-                messagesRef.current,
-                assistantMessage.id,
-                streamedContent,
-                streamedReasoning || undefined
-              )
-              messagesRef.current = updatedMessages
-              setMessages(updatedMessages)
+              const now = performance.now()
+              const timeSinceLastUpdate = now - lastUpdateTimeRef.current
+              const THROTTLE_MS = 32 // ~30fps
+
+              const updateMessages = () => {
+                const updatedMessages = updateMessageContent(
+                  messagesRef.current,
+                  assistantMessage.id,
+                  streamedContent,
+                  streamedReasoning || undefined
+                )
+                messagesRef.current = updatedMessages
+                setMessages(updatedMessages)
+                lastUpdateTimeRef.current = performance.now()
+                pendingChunkRef.current = null
+                throttleTimerRef.current = null
+              }
+
+              if (timeSinceLastUpdate >= THROTTLE_MS) {
+                updateMessages()
+              } else {
+                pendingChunkRef.current = {
+                  id: assistantMessage.id,
+                  content: streamedContent,
+                  reasoning: streamedReasoning || undefined
+                }
+
+                if (throttleTimerRef.current === null) {
+                  const delay = THROTTLE_MS - timeSinceLastUpdate
+                  throttleTimerRef.current = setTimeout(updateMessages, delay)
+                }
+              }
+
               return
             }
 
@@ -173,6 +210,23 @@ export function useChatState() {
           const afterEmpty = updateMessageContent(messagesRef.current, assistantMessage.id, UI_MESSAGES.EMPTY_CHAT)
           messagesRef.current = afterEmpty
           setMessages(afterEmpty)
+        }
+
+        if (throttleTimerRef.current !== null) {
+          clearTimeout(throttleTimerRef.current)
+          throttleTimerRef.current = null
+        }
+        const finalPending = pendingChunkRef.current
+        if (finalPending && finalPending.id === assistantMessage.id) {
+          const finalMessages = updateMessageContent(
+            messagesRef.current,
+            finalPending.id,
+            finalPending.content,
+            finalPending.reasoning
+          )
+          messagesRef.current = finalMessages
+          setMessages(finalMessages)
+          pendingChunkRef.current = null
         }
 
         const durationMs = Math.round(performance.now() - streamStartTime)
@@ -218,6 +272,10 @@ export function useChatState() {
   // Clear chat
   const clearChat = useCallback(() => {
     activeStreamAbortRef.current?.abort()
+    if (throttleTimerRef.current !== null) {
+      clearTimeout(throttleTimerRef.current)
+      throttleTimerRef.current = null
+    }
     syncMessages([])
     setRequestState({ status: "idle" })
     setPanelOpen(false)
@@ -227,6 +285,10 @@ export function useChatState() {
   // Reset messages only (keep panel open)
   const resetMessages = useCallback(() => {
     activeStreamAbortRef.current?.abort()
+    if (throttleTimerRef.current !== null) {
+      clearTimeout(throttleTimerRef.current)
+      throttleTimerRef.current = null
+    }
     syncMessages([])
     setRequestState({ status: "idle" })
   }, [syncMessages])
