@@ -7,6 +7,7 @@ import { BrandIcon } from "@/shared/ui/icons"
 import { trackEvent } from "@/shared/analytics"
 import { DEFAULT_CUSTOM_MODEL_SERVICE, DEFAULT_SETTINGS } from "@/shared/defaults"
 import { getSettings, normalizeSettings, saveSettings, saveUserIcon, getUserIcons } from "@/shared/storage"
+import { PROVIDERS, PROVIDER_LIST } from "@/shared/providers"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { createButtonStyle, createCardStyle, createFieldLabelStyle, createFocusRing, createInputStyle as createSharedInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
@@ -14,7 +15,7 @@ import { getAvatarPalette, getAvatarDisplayText } from "@/shared/ui/avatar"
 import { ACTION_ICON_LIBRARY, type IconEntry } from "@/shared/ui/icon-library"
 import { BUNDLED_TABLER_ICONS } from "@/shared/ui/bundled-icons"
 import { useI18n } from "@/shared/i18n/context"
-import type { ActionTemplate, ExtensionSettings, LanguagePreference, ThemePreference, ApiTestResponse, FetchModelsResponse, ModelServiceConfig, UserIconData } from "@/shared/types"
+import type { ActionTemplate, ExtensionSettings, LanguagePreference, ThemePreference, ApiTestResponse, FetchModelsResponse, ModelServiceConfig, UserIconData, ProviderType } from "@/shared/types"
 import { MESSAGE_TYPES } from "@/shared/constants"
 import { ConfirmDialog } from "@/entrypoints/options/ConfirmDialog"
 
@@ -85,10 +86,16 @@ function RefreshIcon({ size, color }: { size: number; color: string }) {
   )
 }
 
-function createCustomServiceDraft(): ModelServiceConfig {
+function createServiceDraft(provider: ProviderType): ModelServiceConfig {
+  const meta = PROVIDERS[provider]
   return {
-    ...DEFAULT_CUSTOM_MODEL_SERVICE,
-    id: `service-${Date.now()}`
+    id: `service-${Date.now()}`,
+    provider,
+    name: meta.name,
+    apiKey: "",
+    model: meta.fallbackModels[0] ?? "",
+    apiBaseUrl: meta.defaultBaseUrl || undefined,
+    modelParams: DEFAULT_CUSTOM_MODEL_SERVICE.modelParams
   }
 }
 
@@ -159,9 +166,9 @@ export default function OptionsPage() {
   const [backupStatus, setBackupStatus] = useState<{ success: boolean; message: string } | null>(null)
   const [pendingImportSettings, setPendingImportSettings] = useState<ExtensionSettings | null>(null)
   const [pendingImportUserIcons, setPendingImportUserIcons] = useState<Record<string, UserIconData> | null>(null)
-  const [connectionView, setConnectionView] = useState<"list" | "create" | "edit">("list")
+  const [connectionView, setConnectionView] = useState<"list" | "providerSelect" | "create" | "edit">("list")
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null)
-  const [serviceDraft, setServiceDraft] = useState<ModelServiceConfig>(createCustomServiceDraft())
+  const [serviceDraft, setServiceDraft] = useState<ModelServiceConfig>(createServiceDraft("openai"))
   const [pendingDeleteServiceId, setPendingDeleteServiceId] = useState<string | null>(null)
   const [editingIconServiceId, setEditingIconServiceId] = useState<string | null>(null)
   const [iconEditText, setIconEditText] = useState("")
@@ -255,12 +262,13 @@ export default function OptionsPage() {
     return settings.actions.some((item) => !hasTextPlaceholder(item.template))
   }, [settings.actions])
 
-  const isEditingConnection = connectionView !== "list"
+  const isEditingConnection = connectionView === "create" || connectionView === "edit"
+  const isProviderSelection = connectionView === "providerSelect"
   const isServiceDraftValid =
     Boolean(serviceDraft.name.trim()) &&
-    Boolean(serviceDraft.apiBaseUrl.trim()) &&
     Boolean(serviceDraft.apiKey.trim()) &&
-    Boolean(serviceDraft.model.trim())
+    Boolean(serviceDraft.model.trim()) &&
+    (serviceDraft.provider !== "openai-compatible" || Boolean(serviceDraft.apiBaseUrl?.trim()))
 
   const saveSettingsNow = (updater: (current: ExtensionSettings) => ExtensionSettings) => {
     setSettings((current) => {
@@ -271,7 +279,7 @@ export default function OptionsPage() {
         modelServices: next.modelServices.map((service) => ({
           ...service,
           name: service.name.trim(),
-          apiBaseUrl: service.apiBaseUrl.trim(),
+          apiBaseUrl: service.apiBaseUrl?.trim() || undefined,
           apiKey: service.apiKey.trim(),
           model: service.model.trim()
         }))
@@ -320,11 +328,15 @@ export default function OptionsPage() {
   }
 
   const handleTestConnection = () => {
-    const trimmedUrl = serviceDraft.apiBaseUrl.trim()
     const trimmedKey = serviceDraft.apiKey.trim()
     const trimmedModel = serviceDraft.model.trim()
+    const trimmedUrl = serviceDraft.apiBaseUrl?.trim()
 
-    if (!trimmedUrl || !trimmedKey || !trimmedModel) {
+    if (!trimmedKey || !trimmedModel) {
+      setTestResult({ success: false, message: t("options.connection.missingUrlKeyModel") })
+      return
+    }
+    if (serviceDraft.provider === "openai-compatible" && !trimmedUrl) {
       setTestResult({ success: false, message: t("options.connection.missingUrlKeyModel") })
       return
     }
@@ -336,7 +348,7 @@ export default function OptionsPage() {
       {
         type: MESSAGE_TYPES.API_TEST_REQUEST,
         payload: {
-          apiBaseUrl: trimmedUrl,
+          apiBaseUrl: trimmedUrl || "",
           apiKey: trimmedKey,
           model: trimmedModel
         }
@@ -362,7 +374,7 @@ export default function OptionsPage() {
   }
 
   const handleFetchModels = () => {
-    const trimmedUrl = serviceDraft.apiBaseUrl.trim()
+    const trimmedUrl = serviceDraft.apiBaseUrl?.trim()
     if (!trimmedUrl) {
       setFetchError(t("options.connection.missingApiBaseUrl"))
       return
@@ -461,7 +473,7 @@ export default function OptionsPage() {
     setSettings(pendingImportSettings)
     setConnectionView("list")
     setEditingServiceId(null)
-    setServiceDraft(createCustomServiceDraft())
+    setServiceDraft(createServiceDraft("openai"))
     setSaving(true)
     setBackupStatus(null)
 
@@ -480,7 +492,7 @@ export default function OptionsPage() {
         modelServices: pendingImportSettings.modelServices.map((service) => ({
           ...service,
           name: service.name.trim(),
-          apiBaseUrl: service.apiBaseUrl.trim(),
+          apiBaseUrl: service.apiBaseUrl?.trim() || undefined,
           apiKey: service.apiKey.trim(),
           model: service.model.trim()
         }))
@@ -501,9 +513,17 @@ export default function OptionsPage() {
   }
 
   const openCreateService = () => {
+    setConnectionView("providerSelect")
+    setEditingServiceId(null)
+    setModels([])
+    setFetchError(null)
+    setTestResult(null)
+  }
+
+  const selectProviderAndCreate = (provider: ProviderType) => {
     setConnectionView("create")
     setEditingServiceId(null)
-    setServiceDraft(createCustomServiceDraft())
+    setServiceDraft(createServiceDraft(provider))
     setModels([])
     setFetchError(null)
     setTestResult(null)
@@ -526,7 +546,7 @@ export default function OptionsPage() {
   const closeConnectionEditor = () => {
     setConnectionView("list")
     setEditingServiceId(null)
-    setServiceDraft(createCustomServiceDraft())
+    setServiceDraft(createServiceDraft("openai"))
     setModels([])
     setFetchError(null)
     setTestResult(null)
@@ -540,7 +560,7 @@ export default function OptionsPage() {
     const normalizedDraft: ModelServiceConfig = {
       ...serviceDraft,
       name: serviceDraft.name.trim(),
-      apiBaseUrl: serviceDraft.apiBaseUrl.trim(),
+      apiBaseUrl: serviceDraft.apiBaseUrl?.trim() || undefined,
       apiKey: serviceDraft.apiKey.trim(),
       model: serviceDraft.model.trim()
     }
@@ -779,7 +799,130 @@ export default function OptionsPage() {
 
   const renderConnection = () => (
     <section style={{ ...cardStyle, marginBottom: uiSpace[16] }}>
-      {isEditingConnection ? (
+      {isProviderSelection ? (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: uiSpace[16], marginBottom: uiSpace[20] }}>
+            <div>
+              <h2
+                style={{
+                  margin: `0 0 ${uiSpace[4]}px`,
+                  fontSize: uiTypography.fontSize.lg,
+                  fontWeight: uiTypography.fontWeight.semibold,
+                  letterSpacing: uiTypography.letterSpacing.tight
+                }}>
+                {t("options.connection.selectProvider")}
+              </h2>
+              <p
+                style={{
+                  margin: 0,
+                  color: theme.text.secondary,
+                  fontSize: uiTypography.fontSize.md
+                }}>
+                {t("options.connection.selectProviderDesc")}
+              </p>
+            </div>
+            <button type="button" onClick={closeConnectionEditor} style={secondaryBtnStyle}>
+              {t("options.connection.backToList")}
+            </button>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: uiSpace[12] }}>
+            {PROVIDER_LIST.filter((p) => p.id !== "openai-compatible").map((provider) => (
+              <button
+                key={provider.id}
+                type="button"
+                onClick={() => selectProviderAndCreate(provider.id)}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: uiSpace[8],
+                  padding: uiSpace[20],
+                  border: `1px solid ${theme.border.default}`,
+                  borderRadius: uiRadius.md,
+                  background: theme.bg.surface,
+                  cursor: "pointer",
+                  transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
+                  outline: "none"
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = theme.accent.primary
+                  e.currentTarget.style.background = `${theme.accent.primary}08`
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = theme.border.default
+                  e.currentTarget.style.background = theme.bg.surface
+                }}>
+                <div style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: uiRadius.sm,
+                  background: theme.bg.surfaceMuted,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: uiTypography.fontSize.lg,
+                  fontWeight: uiTypography.fontWeight.semibold,
+                  color: theme.accent.primary
+                }}>
+                  {provider.name.charAt(0)}
+                </div>
+                <span style={{ fontSize: uiTypography.fontSize.md, fontWeight: uiTypography.fontWeight.semibold, color: theme.text.primary }}>
+                  {provider.name}
+                </span>
+                <span style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary, textAlign: "center" }}>
+                  {provider.fallbackModels[0] ?? ""}
+                </span>
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => selectProviderAndCreate("openai-compatible")}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: uiSpace[8],
+                padding: uiSpace[20],
+                border: `1px dashed ${theme.border.default}`,
+                borderRadius: uiRadius.md,
+                background: theme.bg.surfaceMuted,
+                cursor: "pointer",
+                transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
+                outline: "none"
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = theme.accent.primary
+                e.currentTarget.style.background = `${theme.accent.primary}08`
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = theme.border.default
+                e.currentTarget.style.background = theme.bg.surfaceMuted
+              }}>
+              <div style={{
+                width: 40,
+                height: 40,
+                borderRadius: uiRadius.sm,
+                background: theme.bg.surface,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: uiTypography.fontSize.lg,
+                fontWeight: uiTypography.fontWeight.semibold,
+                color: theme.text.secondary
+              }}>
+                <PlusIcon size={18} color={theme.text.secondary} />
+              </div>
+              <span style={{ fontSize: uiTypography.fontSize.md, fontWeight: uiTypography.fontWeight.semibold, color: theme.text.primary }}>
+                {t("options.connection.customProvider")}
+              </span>
+              <span style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary, textAlign: "center" }}>
+                OpenAI Compatible
+              </span>
+            </button>
+          </div>
+        </>
+      ) : isEditingConnection ? (
         <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: uiSpace[16], marginBottom: uiSpace[20] }}>
             <div>
@@ -806,6 +949,32 @@ export default function OptionsPage() {
             </button>
           </div>
 
+          {/* Provider badge */}
+          <div style={{ display: "flex", alignItems: "center", gap: uiSpace[10], marginBottom: uiSpace[16], padding: `${uiSpace[10]}px ${uiSpace[14]}px`, background: theme.bg.surfaceMuted, borderRadius: uiRadius.md, border: `1px solid ${theme.border.hairline}` }}>
+            <div style={{
+              width: 28,
+              height: 28,
+              borderRadius: uiRadius.sm,
+              background: theme.accent.primary,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: uiTypography.fontSize.sm,
+              fontWeight: uiTypography.fontWeight.semibold,
+              color: "#fff"
+            }}>
+              {PROVIDERS[serviceDraft.provider].name.charAt(0)}
+            </div>
+            <span style={{ fontSize: uiTypography.fontSize.md, fontWeight: uiTypography.fontWeight.semibold, color: theme.text.primary }}>
+              {PROVIDERS[serviceDraft.provider].name}
+            </span>
+            {serviceDraft.provider !== "openai-compatible" && serviceDraft.apiBaseUrl ? (
+              <span style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary, marginLeft: "auto" }}>
+                {serviceDraft.apiBaseUrl}
+              </span>
+            ) : null}
+          </div>
+
           <div style={{ marginBottom: uiSpace[16] }}>
             <label htmlFor="service-name" style={fieldLabelStyle}>{t("options.connection.serviceName")}</label>
             <input
@@ -821,20 +990,22 @@ export default function OptionsPage() {
             />
           </div>
 
-          <div style={{ marginBottom: uiSpace[16] }}>
-            <label htmlFor="service-api-base-url" style={fieldLabelStyle}>{t("options.connection.apiBaseUrl")}</label>
-            <input
-              id="service-api-base-url"
-              value={serviceDraft.apiBaseUrl}
-              onFocus={() => setFocusedField("apiBaseUrl")}
-              onBlur={() => setFocusedField(null)}
-              onChange={(event) => {
-                setServiceDraft((current) => ({ ...current, apiBaseUrl: event.target.value }))
-              }}
-              placeholder="https://api.openai.com/v1"
-              style={createInputStyle("apiBaseUrl")}
-            />
-          </div>
+          {serviceDraft.provider === "openai-compatible" ? (
+            <div style={{ marginBottom: uiSpace[16] }}>
+              <label htmlFor="service-api-base-url" style={fieldLabelStyle}>{t("options.connection.apiBaseUrl")}</label>
+              <input
+                id="service-api-base-url"
+                value={serviceDraft.apiBaseUrl ?? ""}
+                onFocus={() => setFocusedField("apiBaseUrl")}
+                onBlur={() => setFocusedField(null)}
+                onChange={(event) => {
+                  setServiceDraft((current) => ({ ...current, apiBaseUrl: event.target.value }))
+                }}
+                placeholder="https://api.example.com/v1"
+                style={createInputStyle("apiBaseUrl")}
+              />
+            </div>
+          ) : null}
 
           <div style={{ marginBottom: uiSpace[16] }}>
             <label htmlFor="service-api-key" style={fieldLabelStyle}>{t("options.connection.apiKey")}</label>
@@ -855,21 +1026,23 @@ export default function OptionsPage() {
           <div style={{ marginBottom: uiSpace[16] }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: uiSpace[6] }}>
               <label htmlFor="service-model" style={fieldLabelStyle}>{t("options.connection.model")}</label>
-              <button
-                type="button"
-                onClick={handleFetchModels}
-                disabled={fetchingModels}
-                style={{
-                  ...secondaryBtnStyle,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: uiSpace[4],
-                  opacity: fetchingModels ? 0.5 : 1,
-                  cursor: fetchingModels ? "not-allowed" : "pointer"
-                }}>
-                <RefreshIcon size={14} color={theme.text.primary} />
-                {fetchingModels ? t("options.connection.fetching") : t("options.connection.fetchModels")}
-              </button>
+              {serviceDraft.provider === "openai-compatible" ? (
+                <button
+                  type="button"
+                  onClick={handleFetchModels}
+                  disabled={fetchingModels}
+                  style={{
+                    ...secondaryBtnStyle,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: uiSpace[4],
+                    opacity: fetchingModels ? 0.5 : 1,
+                    cursor: fetchingModels ? "not-allowed" : "pointer"
+                  }}>
+                  <RefreshIcon size={14} color={theme.text.primary} />
+                  {fetchingModels ? t("options.connection.fetching") : t("options.connection.fetchModels")}
+                </button>
+              ) : null}
             </div>
             {models.length > 0 ? (
               <div style={{ display: "flex", gap: uiSpace[8] }}>
@@ -894,17 +1067,46 @@ export default function OptionsPage() {
                 </button>
               </div>
             ) : (
-              <input
-                id="service-model"
-                value={serviceDraft.model}
-                onFocus={() => setFocusedField("model")}
-                onBlur={() => setFocusedField(null)}
-                onChange={(event) => {
-                  setServiceDraft((current) => ({ ...current, model: event.target.value }))
-                }}
-                placeholder="gpt-4o-mini"
-                style={createInputStyle("model")}
-              />
+              <>
+                <input
+                  id="service-model"
+                  value={serviceDraft.model}
+                  onFocus={() => setFocusedField("model")}
+                  onBlur={() => setFocusedField(null)}
+                  onChange={(event) => {
+                    setServiceDraft((current) => ({ ...current, model: event.target.value }))
+                  }}
+                  placeholder={PROVIDERS[serviceDraft.provider].fallbackModels[0] ?? "model-name"}
+                  style={createInputStyle("model")}
+                />
+                {/* Fallback model suggestions */}
+                {PROVIDERS[serviceDraft.provider].fallbackModels.length > 0 ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: uiSpace[6], marginTop: uiSpace[8] }}>
+                    {PROVIDERS[serviceDraft.provider].fallbackModels.map((modelId) => (
+                      <button
+                        key={modelId}
+                        type="button"
+                        onClick={() => {
+                          setServiceDraft((current) => ({ ...current, model: modelId }))
+                        }}
+                        style={{
+                          padding: `${uiSpace[4]}px ${uiSpace[10]}px`,
+                          border: `1px solid ${serviceDraft.model === modelId ? theme.accent.primary : theme.border.hairline}`,
+                          borderRadius: uiRadius.pill,
+                          background: serviceDraft.model === modelId ? `${theme.accent.primary}14` : "transparent",
+                          color: serviceDraft.model === modelId ? theme.accent.primary : theme.text.secondary,
+                          fontSize: uiTypography.fontSize.xs,
+                          cursor: "pointer",
+                          outline: "none",
+                          fontFamily: uiTypography.fontFamily,
+                          transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+                        }}>
+                        {modelId}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </>
             )}
             {fetchError ? (
               <div
@@ -1080,9 +1282,8 @@ export default function OptionsPage() {
             <div style={{ display: "grid", gap: uiSpace[12] }}>
               {settings.modelServices.map((service) => {
                 const isActive = settings.activeModelServiceId === service.id
-
-                const displayText = getAvatarDisplayText(service.iconText, service.name)
-                const isEditingIcon = editingIconServiceId === service.id
+                const providerMeta = PROVIDERS[service.provider]
+                const displayName = service.name || providerMeta.name
 
                 return (
                   <div
@@ -1091,88 +1292,29 @@ export default function OptionsPage() {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: uiSpace[16] }}>
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: uiSpace[8], marginBottom: uiSpace[6], flexWrap: "wrap" }}>
-                          <span style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingIconServiceId(service.id)
-                                setIconEditText(service.iconText ?? "")
-                              }}
-                              title={t("options.connection.iconTooltip")}
-                              style={{
-                                width: 30,
-                                height: 30,
-                                borderRadius: uiRadius.sm,
-                                border: "none",
-                                background: getAvatarPalette(service.iconText, service.name, themeName === "dark").background,
-                                color: getAvatarPalette(service.iconText, service.name, themeName === "dark").color,
-                                display: "inline-flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                fontSize: displayText.length >= 4 ? 8 : displayText.length > 1 ? 9 : 11,
-                                fontWeight: uiTypography.fontWeight.semibold,
-                                letterSpacing: uiTypography.letterSpacing.tight,
-                                flexShrink: 0,
-                                cursor: "pointer",
-                                padding: 0,
-                                outline: "none"
-                              }}>
-                              {isEditingIcon ? "" : displayText}
-                            </button>
-                            {isEditingIcon ? (
-                              <input
-                                autoFocus
-                                maxLength={4}
-                                value={iconEditText}
-                                onChange={(e) => setIconEditText(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    saveSettingsNow((current) => ({
-                                      ...current,
-                                      modelServices: current.modelServices.map((s) =>
-                                        s.id === service.id ? { ...s, iconText: iconEditText.trim() } : s
-                                      )
-                                    }))
-                                    setEditingIconServiceId(null)
-                                  } else if (e.key === "Escape") {
-                                    setEditingIconServiceId(null)
-                                  }
-                                }}
-                                onBlur={() => {
-                                  saveSettingsNow((current) => ({
-                                    ...current,
-                                    modelServices: current.modelServices.map((s) =>
-                                      s.id === service.id ? { ...s, iconText: iconEditText.trim() } : s
-                                    )
-                                  }))
-                                  setEditingIconServiceId(null)
-                                }}
-                                placeholder={t("options.connection.iconPlaceholder")}
-                                style={{
-                                  position: "absolute",
-                                  top: 0,
-                                  left: 0,
-                                  width: 48,
-                                  height: 30,
-                                  fontSize: uiTypography.fontSize.md,
-                                  border: `1px solid ${theme.border.default}`,
-                                  borderRadius: uiRadius.sm,
-                                  padding: `0 ${uiSpace[4]}px`,
-                                  outline: "none",
-                                  background: theme.bg.surface,
-                                  color: theme.text.primary,
-                                  zIndex: 10,
-                                  boxShadow: uiShadow.md
-                                }}
-                              />
-                            ) : null}
-                          </span>
+                          <div style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: uiRadius.sm,
+                            background: getAvatarPalette(undefined, providerMeta.name, themeName === "dark").background,
+                            color: getAvatarPalette(undefined, providerMeta.name, themeName === "dark").color,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 11,
+                            fontWeight: uiTypography.fontWeight.semibold,
+                            letterSpacing: uiTypography.letterSpacing.tight,
+                            flexShrink: 0
+                          }}>
+                            {providerMeta.name.charAt(0)}
+                          </div>
                           <span style={{ fontSize: uiTypography.fontSize.md, fontWeight: uiTypography.fontWeight.semibold, color: theme.text.primary }}>
-                            {service.name}
+                            {displayName}
                           </span>
-                          <span style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary }}>{t("options.connection.customServiceBadge")}</span>
+                          <span style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary }}>{providerMeta.name}</span>
                         </div>
-                        <div style={{ color: theme.text.secondary, fontSize: uiTypography.fontSize.sm, lineHeight: 1.6, wordBreak: "break-all" }}>
+                        <div style={{ color: theme.text.secondary, fontSize: uiTypography.fontSize.sm, lineHeight: 1.6 }}>
+                          {service.model}
                         </div>
                       </div>
 

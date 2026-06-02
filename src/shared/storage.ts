@@ -1,5 +1,6 @@
 import { DEFAULT_CUSTOM_MODEL_SERVICE, DEFAULT_SETTINGS } from "@/shared/defaults"
-import type { ExtensionSettings, LanguagePreference, ModelParams, ModelServiceConfig, ModelServiceType, ThemePreference, UserIconData } from "@/shared/types"
+import { PROVIDERS } from "@/shared/providers"
+import type { ExtensionSettings, LanguagePreference, ModelParams, ModelServiceConfig, ProviderType, ThemePreference, UserIconData } from "@/shared/types"
 
 export { DEFAULT_SETTINGS }
 
@@ -39,8 +40,16 @@ function validateModelParams(value: unknown): ModelParams {
   }
 }
 
-function validateModelServiceType(value: unknown): ModelServiceType {
-  return value === "official-premium" || value === "official-free" || value === "custom" ? value : "custom"
+const VALID_PROVIDERS: ProviderType[] = ["openai", "anthropic", "google", "deepseek", "openrouter", "openai-compatible"]
+
+function validateProvider(value: unknown, oldValue?: unknown): ProviderType {
+  if (typeof value === "string" && VALID_PROVIDERS.includes(value as ProviderType)) {
+    return value as ProviderType
+  }
+  // Migration: old type → new provider
+  if (oldValue === "official-premium" || oldValue === "official-free") return "openai"
+  if (oldValue === "custom") return "openai-compatible"
+  return "openai-compatible"
 }
 
 function validateModelServices(items: unknown[]): ModelServiceConfig[] {
@@ -49,16 +58,20 @@ function validateModelServices(items: unknown[]): ModelServiceConfig[] {
     .map((item, index) => {
       const record = item as Record<string, unknown>
       const id = typeof record.id === "string" && record.id.trim() ? record.id.trim() : `service-${Date.now()}-${index}`
+      const provider = validateProvider(record.provider, record.type)
+      const meta = PROVIDERS[provider]
 
       return {
         id,
-        type: validateModelServiceType(record.type),
+        provider,
         name: typeof record.name === "string" ? record.name : DEFAULT_CUSTOM_MODEL_SERVICE.name,
-        apiBaseUrl: typeof record.apiBaseUrl === "string" ? record.apiBaseUrl : DEFAULT_CUSTOM_MODEL_SERVICE.apiBaseUrl,
         apiKey: typeof record.apiKey === "string" ? record.apiKey : DEFAULT_CUSTOM_MODEL_SERVICE.apiKey,
         model: typeof record.model === "string" ? record.model : DEFAULT_CUSTOM_MODEL_SERVICE.model,
+        apiBaseUrl: typeof record.apiBaseUrl === "string"
+          ? record.apiBaseUrl
+          : meta.defaultBaseUrl || undefined,
         modelParams: validateModelParams(record.modelParams),
-        iconText: typeof record.iconText === "string" ? record.iconText : undefined
+        icon: typeof record.icon === "string" ? record.icon : undefined
       }
     })
 }

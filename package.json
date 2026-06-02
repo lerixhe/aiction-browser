@@ -17,7 +17,14 @@
     "postinstall": "wxt prepare"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.81",
+    "@ai-sdk/deepseek": "^2.0.35",
+    "@ai-sdk/google": "^3.0.80",
+    "@ai-sdk/openai": "^3.0.67",
+    "@ai-sdk/openai-compatible": "^2.0.48",
     "@iconify/react": "^6.0.2",
+    "@openrouter/ai-sdk-provider": "^2.9.0",
+    "ai": "^6.0.193",
     "marked": "^18.0.4",
     "pdfjs-dist": "^5.7.284",
     "posthog-js": "^1.376.3",

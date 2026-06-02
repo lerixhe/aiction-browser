@@ -27,9 +27,8 @@ export const DEFAULT_MODEL_PARAMS: ModelParams = {
 
 export const DEFAULT_CUSTOM_MODEL_SERVICE: ModelServiceConfig = {
   id: "",
-  type: "custom",
+  provider: "openai",
   name: "",
-  apiBaseUrl: "https://api.openai.com/v1",
   apiKey: "",
   model: "gpt-4o-mini",
   modelParams: DEFAULT_MODEL_PARAMS

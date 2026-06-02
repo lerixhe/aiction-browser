@@ -2,8 +2,6 @@ import type {
   ChatStreamCancelRequest,
   ChatStreamEvent,
   ChatStreamRequest,
-  ChatStreamStartRequest,
-  ChatMessage,
   ApiTestRequest,
   ApiTestResponse
 } from "@/shared/types"
@@ -11,234 +9,71 @@ import { MESSAGE_TYPES, ERROR_MESSAGES } from "@/shared/constants"
 import { i18nStore } from "@/shared/i18n/index"
 import { formatApiError, getErrorMessage, isAbortError } from "@/shared/errors"
 import { getActiveModelService, getSettings } from "@/shared/storage"
+import { resolveLanguageModel } from "@/shared/model-provider"
 import {
   trackBackgroundEvent,
   startBackgroundBatching,
   stopBackgroundBatching
 } from "@/shared/analytics"
 
-function normalizeBaseUrl(url: string): string {
-  return url.replace(/\/$/, "")
-}
-
-function normalizeAssistantContent(content: unknown): string {
-  if (typeof content === "string") {
-    return content
-  }
-
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => {
-        if (typeof part === "string") {
-          return part
-        }
-
-        if (part && typeof part === "object" && "text" in part && typeof part.text === "string") {
-          return part.text
-        }
-
-        return ""
-      })
-      .join("")
-      .trim()
-  }
-
-  return ""
-}
-
-interface StreamChunkFields {
-  content: string
-  reasoning_content: string
-}
-
-function getStreamChunkContent(chunk: unknown): StreamChunkFields {
-  const empty: StreamChunkFields = { content: "", reasoning_content: "" }
-
-  if (!chunk || typeof chunk !== "object") {
-    return empty
-  }
-
-  const choices = "choices" in chunk ? chunk.choices : undefined
-  if (!Array.isArray(choices) || choices.length === 0) {
-    return empty
-  }
-
-  const choice = choices[0]
-  if (!choice || typeof choice !== "object") {
-    return empty
-  }
-
-  const delta = "delta" in choice ? choice.delta : undefined
-
-  if (!delta || typeof delta !== "object") {
-    return empty
-  }
-
-  const content = "content" in delta ? delta.content : undefined
-  // OpenAI o1/o3 uses "reasoning_content", Ollama compatible mode uses "reasoning"
-  const reasoning_content =
-    ("reasoning_content" in delta ? delta.reasoning_content : undefined) ??
-    ("reasoning" in delta ? delta.reasoning : undefined)
-
-  return {
-    content: normalizeAssistantContent(content),
-    reasoning_content: normalizeAssistantContent(reasoning_content)
-  }
-}
-
-async function streamOpenAiCompatible(
-  messages: ChatMessage[],
+async function streamChat(
+  messages: { role: "user" | "assistant" | "system"; content: string }[],
   signal: AbortSignal,
   onEvent: (event: ChatStreamEvent) => void
 ): Promise<void> {
+  const { streamText } = await import("ai")
+
   const settings = await getSettings()
   const activeService = getActiveModelService(settings)
 
   if (!activeService?.apiKey.trim()) {
-    onEvent({
-      type: "failed",
-      error: ERROR_MESSAGES.NO_API_KEY
-    })
+    onEvent({ type: "failed", error: ERROR_MESSAGES.NO_API_KEY })
     return
   }
 
   onEvent({ type: "started" })
 
-  if (!activeService.apiBaseUrl.trim() || !activeService.model.trim()) {
-    onEvent({
-      type: "failed",
-      error: ERROR_MESSAGES.API_TEST_MISSING_FIELDS
-    })
+  if (activeService.provider === "openai-compatible" && !activeService.apiBaseUrl?.trim()) {
+    onEvent({ type: "failed", error: ERROR_MESSAGES.API_TEST_MISSING_FIELDS })
     return
   }
 
-  const endpoint = `${normalizeBaseUrl(activeService.apiBaseUrl)}/chat/completions`
-  const response = await fetch(endpoint, {
-    signal,
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${activeService.apiKey}`
-    },
-    body: JSON.stringify({
-      model: activeService.model,
-      stream: true,
-      max_tokens: activeService.modelParams.maxTokens,
-      temperature: activeService.modelParams.temperature,
-      top_p: activeService.modelParams.topP,
-      presence_penalty: activeService.modelParams.presencePenalty,
-      frequency_penalty: activeService.modelParams.frequencyPenalty,
-      messages: messages.map((item) => ({
-        role: item.role,
-        content: item.content
-      }))
-    })
+  const model = resolveLanguageModel(activeService)
+
+  const result = streamText({
+    model,
+    messages,
+    maxOutputTokens: activeService.modelParams.maxTokens,
+    temperature: activeService.modelParams.temperature,
+    topP: activeService.modelParams.topP,
+    presencePenalty: activeService.modelParams.presencePenalty,
+    frequencyPenalty: activeService.modelParams.frequencyPenalty,
+    abortSignal: signal,
   })
 
-  if (!response.ok) {
-    const rawError = await response.text()
-    onEvent({
-      type: "failed",
-      error: formatApiError(response.status, rawError)
-    })
-    return
-  }
-
-  if (!response.body) {
-    onEvent({
-      type: "failed",
-      error: ERROR_MESSAGES.NO_READABLE_STREAM
-    })
-    return
-  }
-
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ""
   let hasContent = false
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
-
-      const events = buffer.split("\n\n")
-      buffer = events.pop() || ""
-
-      for (const event of events) {
-        const lines = event
-          .split("\n")
-          .map((line) => line.trim())
-          .filter((line) => line.startsWith("data:"))
-
-        for (const line of lines) {
-          const data = line.slice(5).trim()
-
-          if (!data) {
-            continue
-          }
-
-          if (data === "[DONE]") {
-            if (!hasContent) {
-              onEvent({
-                type: "failed",
-                error: ERROR_MESSAGES.NO_VALID_CONTENT
-              })
-              return
-            }
-
-            onEvent({ type: "completed" })
-            return
-          }
-
-          let parsed: unknown
-
-          try {
-            parsed = JSON.parse(data)
-          } catch {
-            continue
-          }
-
-          const { content, reasoning_content } = getStreamChunkContent(parsed)
-          if (!content && !reasoning_content) {
-            continue
-          }
-
-          hasContent = true
-          onEvent({
-            type: "chunk",
-            content,
-            ...(reasoning_content ? { reasoning_content } : {})
-          })
-        }
-      }
-
-      if (done) {
-        break
-      }
-    }
-  } catch (streamError: unknown) {
+  for await (const part of result.fullStream) {
     if (signal.aborted) {
-      throw streamError
+      throw new DOMException("aborted", "AbortError")
     }
 
-    if (!hasContent) {
-      onEvent({
-        type: "failed",
-        error: `${ERROR_MESSAGES.REQUEST_FAILED}: ${getErrorMessage(streamError)}`
-      })
-      return
+    switch (part.type) {
+      case "text-delta":
+        hasContent = true
+        onEvent({ type: "chunk", content: part.text })
+        break
+      case "reasoning-delta":
+        hasContent = true
+        onEvent({ type: "chunk", content: "", reasoning_content: part.text })
+        break
+      case "error":
+        throw part.error
     }
-
-    onEvent({ type: "completed" })
-    return
   }
 
   if (!hasContent) {
-    onEvent({
-      type: "failed",
-      error: ERROR_MESSAGES.NO_VALID_CONTENT
-    })
+    onEvent({ type: "failed", error: ERROR_MESSAGES.NO_VALID_CONTENT })
     return
   }
 
@@ -270,7 +105,7 @@ export default defineBackground(() => {
       abortController?.abort()
       abortController = new AbortController()
 
-      void streamOpenAiCompatible(request.payload.messages, abortController.signal, (event) => {
+      void streamChat(request.payload.messages, abortController.signal, (event) => {
         try {
           port.postMessage(event)
         } catch {
@@ -283,12 +118,10 @@ export default defineBackground(() => {
           } catch {
             return
           }
-
           return
         }
 
         const message = getErrorMessage(error)
-
         try {
           port.postMessage({
             type: "failed",
@@ -314,7 +147,6 @@ export default defineBackground(() => {
       })
     }
 
-    // Create context menu for PDF files
     chrome.contextMenus.create({
       id: "open-pdf-with-aiction",
       title: i18nStore.t("background.openPdfWithAIction"),
@@ -328,7 +160,6 @@ export default defineBackground(() => {
     })
   })
 
-  // Handle context menu clicks
   chrome.contextMenus.onClicked.addListener((info, tab) => {
     if (info.menuItemId === "open-pdf-with-aiction") {
       const pdfUrl = info.pageUrl || info.frameUrl || tab?.url
@@ -352,72 +183,57 @@ export default defineBackground(() => {
 
     const { apiBaseUrl, apiKey, model } = request.payload
 
-    if (!apiBaseUrl?.trim() || !apiKey?.trim() || !model?.trim()) {
+    if (!apiKey?.trim() || !model?.trim()) {
       sendResponse({ success: false, error: ERROR_MESSAGES.API_TEST_MISSING_FIELDS } satisfies ApiTestResponse)
       return false
     }
 
-    const baseUrl = normalizeBaseUrl(apiBaseUrl.trim())
-
-    const doActualTest = () => {
+    const doActualTest = async () => {
+      const { generateText } = await import("ai")
       const startTime = performance.now()
 
-      fetch(`${baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey.trim()}`
-        },
-        body: JSON.stringify({
+      try {
+        const service = {
+          id: "test",
+          provider: "openai" as const,
+          name: "test",
+          apiKey: apiKey.trim(),
           model: model.trim(),
-          stream: false,
-          max_tokens: 5,
-          messages: [{ role: "user", content: "Hi" }]
+          apiBaseUrl: apiBaseUrl?.trim() || undefined,
+          modelParams: { maxTokens: 5, temperature: 0, topP: 1, presencePenalty: 0, frequencyPenalty: 0 },
+        }
+        const resolvedModel = resolveLanguageModel(service)
+        const result = await generateText({
+          model: resolvedModel,
+          messages: [{ role: "user", content: "Hi" }],
+          maxOutputTokens: 5,
         })
-      })
-        .then(async (response) => {
-          const latencyMs = Math.round(performance.now() - startTime)
-          if (!response.ok) {
-            const rawError = await response.text()
-            void trackBackgroundEvent("api_test_completed", { success: false, latency_ms: latencyMs })
-            sendResponse({
-              success: false,
-              error: formatApiError(response.status, rawError),
-              latencyMs
-            } satisfies ApiTestResponse)
-            return
-          }
-          const body = await response.json()
-          if (!body.choices || !Array.isArray(body.choices) || body.choices.length === 0) {
-            void trackBackgroundEvent("api_test_completed", { success: false, latency_ms: latencyMs })
-            sendResponse({
-              success: false,
-              error: ERROR_MESSAGES.NO_VALID_CONTENT,
-              latencyMs
-            } satisfies ApiTestResponse)
-            return
-          }
-          void trackBackgroundEvent("api_test_completed", { success: true, latency_ms: latencyMs })
-          sendResponse({ success: true, latencyMs } satisfies ApiTestResponse)
-        })
-        .catch((error: unknown) => {
-          const latencyMs = Math.round(performance.now() - startTime)
+        const latencyMs = Math.round(performance.now() - startTime)
+
+        if (!result.text) {
           void trackBackgroundEvent("api_test_completed", { success: false, latency_ms: latencyMs })
           sendResponse({
             success: false,
-            error: `${ERROR_MESSAGES.REQUEST_FAILED}: ${getErrorMessage(error)}`,
+            error: ERROR_MESSAGES.NO_VALID_CONTENT,
             latencyMs
           } satisfies ApiTestResponse)
-        })
+          return
+        }
+
+        void trackBackgroundEvent("api_test_completed", { success: true, latency_ms: latencyMs })
+        sendResponse({ success: true, latencyMs } satisfies ApiTestResponse)
+      } catch (error: unknown) {
+        const latencyMs = Math.round(performance.now() - startTime)
+        void trackBackgroundEvent("api_test_completed", { success: false, latency_ms: latencyMs })
+        sendResponse({
+          success: false,
+          error: `${ERROR_MESSAGES.REQUEST_FAILED}: ${getErrorMessage(error)}`,
+          latencyMs
+        } satisfies ApiTestResponse)
+      }
     }
 
-    fetch(`${baseUrl}/models`, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${apiKey.trim()}` }
-    })
-      .then(() => doActualTest())
-      .catch(() => doActualTest())
-
+    void doActualTest()
     return true
   })
 
@@ -438,7 +254,7 @@ export default defineBackground(() => {
       headers.Authorization = `Bearer ${apiKey.trim()}`
     }
 
-    fetch(`${normalizeBaseUrl(apiBaseUrl.trim())}/models`, { headers })
+    fetch(`${apiBaseUrl.trim().replace(/\/$/, "")}/models`, { headers })
       .then(async (response) => {
         if (!response.ok) {
           const rawError = await response.text()

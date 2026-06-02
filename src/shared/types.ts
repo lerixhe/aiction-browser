@@ -18,17 +18,23 @@ export interface ModelParams {
   frequencyPenalty: number
 }
 
-export type ModelServiceType = "custom" | "official-premium" | "official-free"
+export type ProviderType =
+  | "openai"
+  | "anthropic"
+  | "google"
+  | "deepseek"
+  | "openrouter"
+  | "openai-compatible"
 
 export interface ModelServiceConfig {
   id: string
-  type: ModelServiceType
+  provider: ProviderType
   name: string
-  apiBaseUrl: string
   apiKey: string
   model: string
+  apiBaseUrl?: string
   modelParams: ModelParams
-  iconText?: string
+  icon?: string
 }
 
 export interface ExtensionSettings {
