@@ -1,35 +1,13 @@
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react"
 
 import { getSettings, saveSettings } from "@/shared/storage"
-import { BrandIcon } from "@/shared/ui/icons"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
-import { createCardStyle, createFocusRing } from "@/shared/ui/styles"
+import { createFieldLabelStyle, createInputStyle } from "@/shared/ui/styles"
 import { getAvatarPalette, getAvatarDisplayText } from "@/shared/ui/avatar"
 import { ActionIcon } from "@/shared/ui/iconify"
 import { useI18n } from "@/shared/i18n/context"
 import type { ActionTemplate, ExtensionSettings } from "@/shared/types"
-
-function SettingsIcon({ color }: { color: string }) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
 
 function ChevronIcon({ color, expanded }: { color: string; expanded: boolean }) {
   return (
@@ -69,9 +47,9 @@ function ToggleSwitch({ checked, onChange, theme }: { checked: boolean; onChange
       }}
       style={{
         position: "relative",
-        width: 36,
-        height: 20,
-        borderRadius: 10,
+        width: 28,
+        height: 16,
+        borderRadius: 8,
         border: "none",
         background: checked ? theme.accent.primary : theme.border.default,
         cursor: "pointer",
@@ -83,9 +61,9 @@ function ToggleSwitch({ checked, onChange, theme }: { checked: boolean; onChange
         style={{
           position: "absolute",
           top: 2,
-          left: checked ? 18 : 2,
-          width: 16,
-          height: 16,
+          left: checked ? 14 : 2,
+          width: 12,
+          height: 12,
           borderRadius: "50%",
           background: "#fff",
           boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
@@ -96,7 +74,7 @@ function ToggleSwitch({ checked, onChange, theme }: { checked: boolean; onChange
   )
 }
 
-const AVATAR_SIZE = 30
+const AVATAR_SIZE = 26
 const AVATAR_GAP = 2
 const MAX_VISIBLE_AVATARS = 4
 
@@ -275,80 +253,27 @@ export default function Popup() {
   const shellStyle: CSSProperties = {
     width: 336,
     boxSizing: "border-box",
-    padding: uiSpace[12],
-    background: theme.bg.page,
+    padding: uiSpace[16],
+    background: theme.bg.surface,
     fontFamily: uiTypography.fontFamily,
     display: "flex",
-    flexDirection: "column"
-  }
-
-  const headerStyle: CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingBottom: uiSpace[12],
-    borderBottom: `1px solid ${theme.border.hairline}`,
-    marginBottom: uiSpace[12]
-  }
-
-  const titleContainerStyle: CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: uiSpace[8],
-    margin: 0
-  }
-
-  const titleStyle: CSSProperties = {
-    fontSize: uiTypography.fontSize.lg,
-    fontWeight: uiTypography.fontWeight.semibold,
-    color: theme.text.primary,
-    letterSpacing: uiTypography.letterSpacing.tight,
-    margin: 0
-  }
-
-  const settingsBtnStyle: CSSProperties = {
-    width: 36,
-    height: 36,
-    border: `1px solid ${theme.border.subtle}`,
-    borderRadius: uiRadius.md,
-    background: theme.bg.surfaceMuted,
-    color: theme.text.secondary,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    cursor: "pointer",
-    outline: "none",
-    boxShadow: "none",
-    transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}, border-color ${uiMotion.durationFast} ${uiMotion.easingStandard}, box-shadow ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
-    flexShrink: 0
+    flexDirection: "column",
+    borderRadius: uiRadius.lg
   }
 
   const fieldLabelStyle: CSSProperties = {
-    fontSize: uiTypography.fontSize.sm,
-    fontWeight: uiTypography.fontWeight.medium,
-    color: theme.text.secondary,
-    marginBottom: uiSpace[6],
-    letterSpacing: uiTypography.letterSpacing.normal
+    ...createFieldLabelStyle(theme)
   }
 
   // Trigger 按钮左侧 icon 占位宽度: icon-left(10) + icon-size(30) + gap-to-text(8) = 48
   const TRIGGER_LEFT_PAD = uiSpace[10] + AVATAR_SIZE + 8
 
   const triggerStyle = (isOpen: boolean): CSSProperties => ({
-    width: "100%",
-    border: `1px solid ${isOpen ? theme.accent.primary : theme.border.subtle}`,
-    borderRadius: uiRadius.md,
-    height: 44,
+    ...createInputStyle(theme, isOpen),
+    height: 40,
     padding: `0 ${uiSpace[12]}px 0 ${TRIGGER_LEFT_PAD}px`,
-    background: theme.bg.surfaceMuted,
-    color: theme.text.primary,
-    fontSize: uiTypography.fontSize.md,
-    fontWeight: uiTypography.fontWeight.medium,
-    fontFamily: uiTypography.fontFamily,
-    outline: "none",
-    boxShadow: isOpen ? createFocusRing(theme.accent.primary) : "none",
+    fontSize: uiTypography.fontSize.sm,
     cursor: settings?.modelServices.length ? "pointer" : "default",
-    transition: `border-color ${uiMotion.durationFast} ${uiMotion.easingStandard}, box-shadow ${uiMotion.durationFast} ${uiMotion.easingStandard}, background ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
     display: "flex",
     alignItems: "center",
     textAlign: "left",
@@ -380,12 +305,12 @@ export default function Popup() {
     left: 0,
     right: 0,
     padding: uiSpace[4],
-    maxHeight: 42 * 2 + 20 + 8,
+    maxHeight: 36 * 2 + 16 + 8,
     overflowY: "auto",
-    borderRadius: uiRadius.md,
+    borderRadius: uiRadius.lg,
     background: theme.bg.surface,
     border: `1px solid ${theme.border.default}`,
-    boxShadow: uiShadow.lg,
+    boxShadow: uiShadow.xl,
     display: "grid",
     gap: 2,
     zIndex: 100,
@@ -400,8 +325,8 @@ export default function Popup() {
       alignItems: "center",
       gap: uiSpace[8],
       width: "100%",
-      minHeight: 40,
-      padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
+      minHeight: 36,
+      padding: `${uiSpace[6]}px ${uiSpace[10]}px`,
       border: "none",
       borderRadius: uiRadius.sm,
       background: selected ? theme.bg.surfaceMuted : isHovered ? theme.bg.surfaceAlt : "transparent",
@@ -409,7 +334,7 @@ export default function Popup() {
       cursor: "pointer",
       textAlign: "left" as const,
       fontFamily: uiTypography.fontFamily,
-      fontSize: uiTypography.fontSize.md,
+      fontSize: uiTypography.fontSize.sm,
       fontWeight: selected ? uiTypography.fontWeight.semibold : uiTypography.fontWeight.regular,
       transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
     }
@@ -443,31 +368,8 @@ export default function Popup() {
 
   return (
     <div style={shellStyle}>
-      {/* Header */}
-      <div style={headerStyle}>
-        <div style={titleContainerStyle}>
-          <BrandIcon size={24} />
-          <h1 style={titleStyle}>AIction</h1>
-        </div>
-        <button
-          type="button"
-          onClick={openOptionsPage}
-          aria-label={t("popup.settingsLabel")}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = theme.bg.surface
-            e.currentTarget.style.borderColor = theme.border.default
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = theme.bg.surfaceMuted
-            e.currentTarget.style.borderColor = theme.border.subtle
-          }}
-          style={settingsBtnStyle}>
-          <SettingsIcon color={theme.text.primary} />
-        </button>
-      </div>
-
       {/* Service Selector */}
-      <div style={{ marginBottom: uiSpace[12] }}>
+      <div style={{ marginBottom: uiSpace[16] }}>
         <div style={fieldLabelStyle}>{t("popup.selectService")}</div>
 
         <div ref={serviceMenuRef} style={{ position: "relative" }}>
@@ -548,7 +450,7 @@ export default function Popup() {
       </div>
 
       {/* Actions Selector */}
-      <div style={{ marginBottom: uiSpace[12] }}>
+      <div style={{ marginBottom: uiSpace[16] }}>
         <div style={fieldLabelStyle}>{t("popup.selectAction")}</div>
 
         <div ref={actionsMenuRef} style={{ position: "relative" }}>
