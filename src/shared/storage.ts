@@ -1,4 +1,4 @@
-import { DEFAULT_CUSTOM_MODEL_SERVICE, DEFAULT_SETTINGS } from "@/shared/defaults"
+import { DEFAULT_CUSTOM_MODEL_PROVIDER, DEFAULT_SETTINGS } from "@/shared/defaults"
 import type { ExtensionSettings, LanguagePreference, ModelParams, ProviderConfig, ThemePreference, UserIconData } from "@/shared/types"
 
 export { DEFAULT_SETTINGS }
@@ -25,17 +25,17 @@ function validateModelParams(value: unknown): ModelParams {
   const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {}
 
   return {
-    maxTokens: typeof record.maxTokens === "number" && Number.isFinite(record.maxTokens) ? record.maxTokens : DEFAULT_CUSTOM_MODEL_SERVICE.modelParams.maxTokens,
-    temperature: typeof record.temperature === "number" && Number.isFinite(record.temperature) ? record.temperature : DEFAULT_CUSTOM_MODEL_SERVICE.modelParams.temperature,
-    topP: typeof record.topP === "number" && Number.isFinite(record.topP) ? record.topP : DEFAULT_CUSTOM_MODEL_SERVICE.modelParams.topP,
+    maxTokens: typeof record.maxTokens === "number" && Number.isFinite(record.maxTokens) ? record.maxTokens : DEFAULT_CUSTOM_MODEL_PROVIDER.modelParams.maxTokens,
+    temperature: typeof record.temperature === "number" && Number.isFinite(record.temperature) ? record.temperature : DEFAULT_CUSTOM_MODEL_PROVIDER.modelParams.temperature,
+    topP: typeof record.topP === "number" && Number.isFinite(record.topP) ? record.topP : DEFAULT_CUSTOM_MODEL_PROVIDER.modelParams.topP,
     presencePenalty:
       typeof record.presencePenalty === "number" && Number.isFinite(record.presencePenalty)
         ? record.presencePenalty
-        : DEFAULT_CUSTOM_MODEL_SERVICE.modelParams.presencePenalty,
+        : DEFAULT_CUSTOM_MODEL_PROVIDER.modelParams.presencePenalty,
     frequencyPenalty:
       typeof record.frequencyPenalty === "number" && Number.isFinite(record.frequencyPenalty)
         ? record.frequencyPenalty
-        : DEFAULT_CUSTOM_MODEL_SERVICE.modelParams.frequencyPenalty
+        : DEFAULT_CUSTOM_MODEL_PROVIDER.modelParams.frequencyPenalty
   }
 }
 
@@ -48,9 +48,9 @@ function validateProviders(items: unknown[]): ProviderConfig[] {
 
       return {
         id,
-        name: typeof record.name === "string" ? record.name : DEFAULT_CUSTOM_MODEL_SERVICE.name,
-        apiKey: typeof record.apiKey === "string" ? record.apiKey : DEFAULT_CUSTOM_MODEL_SERVICE.apiKey,
-        model: typeof record.model === "string" ? record.model : DEFAULT_CUSTOM_MODEL_SERVICE.model,
+        name: typeof record.name === "string" ? record.name : DEFAULT_CUSTOM_MODEL_PROVIDER.name,
+        apiKey: typeof record.apiKey === "string" ? record.apiKey : DEFAULT_CUSTOM_MODEL_PROVIDER.apiKey,
+        model: typeof record.model === "string" ? record.model : DEFAULT_CUSTOM_MODEL_PROVIDER.model,
         apiBaseUrl: typeof record.apiBaseUrl === "string" ? record.apiBaseUrl : undefined,
         modelParams: validateModelParams(record.modelParams),
         modelsDevId: typeof record.modelsDevId === "string" ? record.modelsDevId : undefined

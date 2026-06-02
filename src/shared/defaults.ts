@@ -25,7 +25,7 @@ export const DEFAULT_MODEL_PARAMS: ModelParams = {
   frequencyPenalty: 0
 }
 
-export const DEFAULT_CUSTOM_MODEL_SERVICE: ProviderConfig = {
+export const DEFAULT_CUSTOM_MODEL_PROVIDER: ProviderConfig = {
   id: "",
   name: "",
   apiKey: "",

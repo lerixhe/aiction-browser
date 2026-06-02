@@ -6,7 +6,7 @@ import { ToggleSwitch } from "@/shared/ui/toggle-switch"
 import { hasTextPlaceholder } from "@/shared/prompt"
 import { BrandIcon } from "@/shared/ui/icons"
 import { trackEvent } from "@/shared/analytics"
-import { DEFAULT_CUSTOM_MODEL_SERVICE, DEFAULT_SETTINGS } from "@/shared/defaults"
+import { DEFAULT_CUSTOM_MODEL_PROVIDER, DEFAULT_SETTINGS } from "@/shared/defaults"
 import { getSettings, normalizeSettings, saveSettings, saveUserIcon, getUserIcons } from "@/shared/storage"
 import { requestModelsDev, getModelsForProvider, getAllProviders, getModelParamSupport, type ModelsDevData, type ModelsDevModel, type ModelsDevProviderInfo, type ModelParamSupport } from "@/shared/models-dev"
 import { useUiThemeName } from "@/shared/ui/theme"
@@ -88,13 +88,13 @@ function ProviderLogoById({ providerId, name, size = 24, theme }: { providerId: 
   )
 }
 
-function createServiceDraft(): ProviderConfig {
+function createProviderDraft(): ProviderConfig {
   return {
-    id: `service-${Date.now()}`,
+    id: `provider-${Date.now()}`,
     name: "",
     apiKey: "",
     model: "",
-    modelParams: DEFAULT_CUSTOM_MODEL_SERVICE.modelParams
+    modelParams: DEFAULT_CUSTOM_MODEL_PROVIDER.modelParams
   }
 }
 
@@ -165,14 +165,14 @@ export default function OptionsPage() {
   const [backupStatus, setBackupStatus] = useState<{ success: boolean; message: string } | null>(null)
   const [pendingImportSettings, setPendingImportSettings] = useState<ExtensionSettings | null>(null)
   const [pendingImportUserIcons, setPendingImportUserIcons] = useState<Record<string, UserIconData> | null>(null)
-  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
   const [showProviderSelect, setShowProviderSelect] = useState(false)
-  const [serviceDraft, setServiceDraft] = useState<ProviderConfig>(createServiceDraft())
-  const [pendingDeleteServiceId, setPendingDeleteServiceId] = useState<string | null>(null)
+  const [providerDraft, setProviderDraft] = useState<ProviderConfig>(createProviderDraft())
+  const [pendingDeleteProviderId, setPendingDeleteProviderId] = useState<string | null>(null)
   const [modelsDevData, setModelsDevData] = useState<ModelsDevData | null>(null)
   const [modelSearchQuery, setModelSearchQuery] = useState("")
   const [providerSearchQuery, setProviderSearchQuery] = useState("")
-  const [editingIconServiceId, setEditingIconServiceId] = useState<string | null>(null)
+  const [editingIconProviderId, setEditingIconProviderId] = useState<string | null>(null)
   const [iconEditText, setIconEditText] = useState("")
   const [showIconPicker, setShowIconPicker] = useState(false)
   const [iconSearchQuery, setIconSearchQuery] = useState("")
@@ -194,8 +194,8 @@ export default function OptionsPage() {
       }
       if (loaded.providers.length > 0) {
         const first = loaded.providers[0]
-        setSelectedServiceId(first.id)
-        setServiceDraft({ ...first, modelParams: { ...first.modelParams } })
+        setSelectedProviderId(first.id)
+        setProviderDraft({ ...first, modelParams: { ...first.modelParams } })
       }
     })
     void chrome.storage.local.get("optionsActiveSection").then((result) => {
@@ -270,8 +270,8 @@ export default function OptionsPage() {
     return settings.actions.some((item) => !hasTextPlaceholder(item.template))
   }, [settings.actions])
 
-  const selectedService = selectedServiceId
-    ? settings.providers.find((s) => s.id === selectedServiceId)
+  const selectedProvider = selectedProviderId
+    ? settings.providers.find((s) => s.id === selectedProviderId)
     : null
 
   const allProviders = useMemo(() => {
@@ -285,11 +285,11 @@ export default function OptionsPage() {
     return allProviders.filter((p) => p.name.toLowerCase().includes(query) || p.id.toLowerCase().includes(query))
   }, [allProviders, providerSearchQuery])
 
-  const isServiceDraftValid =
-    Boolean(serviceDraft.name.trim()) &&
-    Boolean(serviceDraft.apiKey.trim()) &&
-    Boolean(serviceDraft.model.trim()) &&
-    (Boolean(serviceDraft.modelsDevId) || Boolean(serviceDraft.apiBaseUrl?.trim()))
+  const isProviderDraftValid =
+    Boolean(providerDraft.name.trim()) &&
+    Boolean(providerDraft.apiKey.trim()) &&
+    Boolean(providerDraft.model.trim()) &&
+    (Boolean(providerDraft.modelsDevId) || Boolean(providerDraft.apiBaseUrl?.trim()))
 
   const saveSettingsNow = (updater: (current: ExtensionSettings) => ExtensionSettings) => {
     setSettings((current) => {
@@ -297,12 +297,12 @@ export default function OptionsPage() {
 
       void saveSettings({
         ...next,
-        providers: next.providers.map((service) => ({
-          ...service,
-          name: service.name.trim(),
-          apiBaseUrl: service.apiBaseUrl?.trim() || undefined,
-          apiKey: service.apiKey.trim(),
-          model: service.model.trim()
+        providers: next.providers.map((provider) => ({
+          ...provider,
+          name: provider.name.trim(),
+          apiBaseUrl: provider.apiBaseUrl?.trim() || undefined,
+          apiKey: provider.apiKey.trim(),
+          model: provider.model.trim()
         }))
       })
 
@@ -349,15 +349,15 @@ export default function OptionsPage() {
   }
 
   const handleTestConnection = () => {
-    const trimmedKey = serviceDraft.apiKey.trim()
-    const trimmedModel = serviceDraft.model.trim()
-    const trimmedUrl = serviceDraft.apiBaseUrl?.trim()
+    const trimmedKey = providerDraft.apiKey.trim()
+    const trimmedModel = providerDraft.model.trim()
+    const trimmedUrl = providerDraft.apiBaseUrl?.trim()
 
     if (!trimmedKey || !trimmedModel) {
       setTestResult({ success: false, message: t("options.connection.missingUrlKeyModel") })
       return
     }
-    if (!serviceDraft.modelsDevId && !trimmedUrl) {
+    if (!providerDraft.modelsDevId && !trimmedUrl) {
       setTestResult({ success: false, message: t("options.connection.missingUrlKeyModel") })
       return
     }
@@ -372,7 +372,7 @@ export default function OptionsPage() {
           apiBaseUrl: trimmedUrl || "",
           apiKey: trimmedKey,
           model: trimmedModel,
-          modelsDevId: serviceDraft.modelsDevId
+          modelsDevId: providerDraft.modelsDevId
         }
       },
       (response: ApiTestResponse | undefined) => {
@@ -396,7 +396,7 @@ export default function OptionsPage() {
   }
 
   const handleFetchModels = () => {
-    const trimmedUrl = serviceDraft.apiBaseUrl?.trim()
+    const trimmedUrl = providerDraft.apiBaseUrl?.trim()
     if (!trimmedUrl) {
       setFetchError(t("options.connection.missingApiBaseUrl"))
       return
@@ -411,7 +411,7 @@ export default function OptionsPage() {
         type: MESSAGE_TYPES.FETCH_MODELS_REQUEST,
         payload: {
           apiBaseUrl: trimmedUrl,
-          apiKey: serviceDraft.apiKey.trim()
+          apiKey: providerDraft.apiKey.trim()
         }
       },
       (response: FetchModelsResponse | undefined) => {
@@ -427,8 +427,8 @@ export default function OptionsPage() {
         if (response.success && response.models && response.models.length > 0) {
           setModels(response.models)
           setFetchError(null)
-          if (!serviceDraft.model.trim() || !response.models.includes(serviceDraft.model.trim())) {
-            setServiceDraft((current) => ({ ...current, model: response.models![0] }))
+          if (!providerDraft.model.trim() || !response.models.includes(providerDraft.model.trim())) {
+            setProviderDraft((current) => ({ ...current, model: response.models![0] }))
           }
         } else {
           setFetchError(response.error ?? t("options.connection.fetchModelsError"))
@@ -493,8 +493,8 @@ export default function OptionsPage() {
     }
 
     setSettings(pendingImportSettings)
-    setSelectedServiceId(null)
-    setServiceDraft(createServiceDraft())
+    setSelectedProviderId(null)
+    setProviderDraft(createProviderDraft())
     setSaving(true)
     setBackupStatus(null)
 
@@ -510,12 +510,12 @@ export default function OptionsPage() {
     void saveUserIconsPromise.then(() =>
       saveSettings({
         ...pendingImportSettings,
-        providers: pendingImportSettings.providers.map((service) => ({
-          ...service,
-          name: service.name.trim(),
-          apiBaseUrl: service.apiBaseUrl?.trim() || undefined,
-          apiKey: service.apiKey.trim(),
-          model: service.model.trim()
+        providers: pendingImportSettings.providers.map((provider) => ({
+          ...provider,
+          name: provider.name.trim(),
+          apiBaseUrl: provider.apiBaseUrl?.trim() || undefined,
+          apiKey: provider.apiKey.trim(),
+          model: provider.model.trim()
         }))
       })
     )
@@ -533,20 +533,20 @@ export default function OptionsPage() {
       })
   }
 
-  const openCreateService = () => {
+  const openCreateProvider = () => {
     setShowProviderSelect(true)
     setProviderSearchQuery("")
   }
 
   const selectProviderAndCreate = () => {
-    const newService = createServiceDraft()
+    const newProvider = createProviderDraft()
     saveSettingsNow((current) => ({
       ...current,
-      providers: [...current.providers, newService],
-      activeProviderId: current.activeProviderId || newService.id
+      providers: [...current.providers, newProvider],
+      activeProviderId: current.activeProviderId || newProvider.id
     }))
-    setSelectedServiceId(newService.id)
-    setServiceDraft(newService)
+    setSelectedProviderId(newProvider.id)
+    setProviderDraft(newProvider)
     setShowProviderSelect(false)
     setModels([])
     setFetchError(null)
@@ -556,19 +556,19 @@ export default function OptionsPage() {
   }
 
   const selectModelsDevProvider = (providerInfo: ModelsDevProviderInfo) => {
-    const newService = createServiceDraft()
-    newService.name = providerInfo.name
-    newService.modelsDevId = providerInfo.id
+    const newProvider = createProviderDraft()
+    newProvider.name = providerInfo.name
+    newProvider.modelsDevId = providerInfo.id
     if (providerInfo.api) {
-      newService.apiBaseUrl = providerInfo.api
+      newProvider.apiBaseUrl = providerInfo.api
     }
     saveSettingsNow((current) => ({
       ...current,
-      providers: [...current.providers, newService],
-      activeProviderId: current.activeProviderId || newService.id
+      providers: [...current.providers, newProvider],
+      activeProviderId: current.activeProviderId || newProvider.id
     }))
-    setSelectedServiceId(newService.id)
-    setServiceDraft(newService)
+    setSelectedProviderId(newProvider.id)
+    setProviderDraft(newProvider)
     setShowProviderSelect(false)
     setModels([])
     setFetchError(null)
@@ -578,99 +578,99 @@ export default function OptionsPage() {
   }
 
   const closeConnectionEditor = () => {
-    setSelectedServiceId(null)
-    setServiceDraft(createServiceDraft())
+    setSelectedProviderId(null)
+    setProviderDraft(createProviderDraft())
     setModels([])
     setFetchError(null)
     setTestResult(null)
     setModelSearchQuery("")
   }
 
-  const saveServiceDraft = () => {
-    if (!isServiceDraftValid || !selectedServiceId) {
+  const saveProviderDraft = () => {
+    if (!isProviderDraftValid || !selectedProviderId) {
       return
     }
 
     const normalizedDraft: ProviderConfig = {
-      ...serviceDraft,
-      name: serviceDraft.name.trim(),
-      apiBaseUrl: serviceDraft.apiBaseUrl?.trim() || undefined,
-      apiKey: serviceDraft.apiKey.trim(),
-      model: serviceDraft.model.trim()
+      ...providerDraft,
+      name: providerDraft.name.trim(),
+      apiBaseUrl: providerDraft.apiBaseUrl?.trim() || undefined,
+      apiKey: providerDraft.apiKey.trim(),
+      model: providerDraft.model.trim()
     }
 
     saveSettingsNow((current) => ({
       ...current,
-      providers: current.providers.map((provider) => (provider.id === selectedServiceId ? normalizedDraft : provider))
+      providers: current.providers.map((provider) => (provider.id === selectedProviderId ? normalizedDraft : provider))
     }))
   }
 
-  const updateServiceField = (field: string, value: string) => {
-    if (!selectedServiceId) return
+  const updateProviderField = (field: string, value: string) => {
+    if (!selectedProviderId) return
     
-    setServiceDraft((current) => ({ ...current, [field]: value }))
+    setProviderDraft((current) => ({ ...current, [field]: value }))
     
     saveSettingsNow((current) => ({
       ...current,
-      providers: current.providers.map((service) =>
-        service.id === selectedServiceId ? { ...service, [field]: value } : service
+      providers: current.providers.map((provider) =>
+        provider.id === selectedProviderId ? { ...provider, [field]: value } : provider
       )
     }))
   }
 
-  const updateServiceModelParam = (key: keyof ModelParams, value: number) => {
-    if (!selectedServiceId) return
+  const updateProviderModelParam = (key: keyof ModelParams, value: number) => {
+    if (!selectedProviderId) return
     
-    setServiceDraft((current) => ({
+    setProviderDraft((current) => ({
       ...current,
       modelParams: { ...current.modelParams, [key]: value }
     }))
     
     saveSettingsNow((current) => ({
       ...current,
-      providers: current.providers.map((service) =>
-        service.id === selectedServiceId
-          ? { ...service, modelParams: { ...service.modelParams, [key]: value } }
-          : service
+      providers: current.providers.map((provider) =>
+        provider.id === selectedProviderId
+          ? { ...provider, modelParams: { ...provider.modelParams, [key]: value } }
+          : provider
       )
     }))
   }
 
-  const toggleServiceActive = (serviceId: string) => {
+  const toggleProviderActive = (providerId: string) => {
     saveSettingsNow((current) => {
       // 单选模式：如果点击的是已启用的，不允许禁用
-      if (current.activeProviderId === serviceId) {
+      if (current.activeProviderId === providerId) {
         return current
       }
       // 启用新的，自动禁用旧的
-      return { ...current, activeProviderId: serviceId }
+      return { ...current, activeProviderId: providerId }
     })
   }
 
-  const deleteService = (serviceId: string) => {
+  const deleteProvider = (providerId: string) => {
     saveSettingsNow((current) => {
-      const remainingServices = current.providers.filter((service) => service.id !== serviceId)
+      const remainingProviders = current.providers.filter((p) => p.id !== providerId)
       const activeProviderId =
-        current.activeProviderId === serviceId ? (remainingServices[0]?.id ?? "") : current.activeProviderId
+        current.activeProviderId === providerId ? (remainingProviders[0]?.id ?? "") : current.activeProviderId
 
       return {
         ...current,
-        providers: remainingServices,
+        providers: remainingProviders,
         activeProviderId
       }
     })
     
     // 自动选中下一个provider
-    const remaining = settings.providers.filter((s) => s.id !== serviceId)
+    const remaining = settings.providers.filter((p) => p.id !== providerId)
     if (remaining.length > 0) {
-      setSelectedServiceId(remaining[0].id)
-      setServiceDraft({ ...remaining[0], modelParams: { ...remaining[0].modelParams } })
+      setSelectedProviderId(remaining[0].id)
+      setProviderDraft({ ...remaining[0], modelParams: { ...remaining[0].modelParams } })
     } else {
-      setSelectedServiceId(null)
-    setServiceDraft(createServiceDraft())
+      setSelectedProviderId(null)
+    setProviderDraft(createProviderDraft())
     }
     
-    setPendingDeleteServiceId(null)
+    setPendingDeleteProviderId(null)
   }
 
   // --- Shared styles ---
@@ -876,8 +876,8 @@ export default function OptionsPage() {
         </h2>
         <button
           type="button"
-          onClick={openCreateService}
-          onMouseDown={() => setPressedBtn("add-service")}
+          onClick={openCreateProvider}
+          onMouseDown={() => setPressedBtn("add-provider")}
           onMouseUp={() => setPressedBtn(null)}
           onMouseLeave={() => setPressedBtn(null)}
           style={{
@@ -894,7 +894,7 @@ export default function OptionsPage() {
             fontSize: uiTypography.fontSize.sm,
             fontWeight: uiTypography.fontWeight.medium,
             color: "#fff",
-            transform: pressedBtn === "add-service" ? "scale(0.96)" : "scale(1)"
+            transform: pressedBtn === "add-provider" ? "scale(0.96)" : "scale(1)"
           }}>
           <PlusIcon size={14} color="#fff" />
           <span>{t("options.connection.addProvider")}</span>
@@ -919,17 +919,17 @@ export default function OptionsPage() {
                 {t("options.connection.emptyServiceList")}
               </div>
             ) : (
-              settings.providers.map((service) => {
-                const isSelected = selectedServiceId === service.id
-                const isActive = settings.activeProviderId === service.id
-                const displayName = service.name || "Custom"
+              settings.providers.map((provider) => {
+                const isSelected = selectedProviderId === provider.id
+                const isActive = settings.activeProviderId === provider.id
+                const displayName = provider.name || "Custom"
 
                 return (
                   <div
-                    key={service.id}
+                    key={provider.id}
                     onClick={() => {
-                      setSelectedServiceId(service.id)
-                      setServiceDraft({ ...service, modelParams: { ...service.modelParams } })
+                      setSelectedProviderId(provider.id)
+                      setProviderDraft({ ...provider, modelParams: { ...provider.modelParams } })
                       setModels([])
                       setFetchError(null)
                       setTestResult(null)
@@ -947,8 +947,8 @@ export default function OptionsPage() {
                       transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
                     }}>
                     {/* Provider Logo */}
-                    {service.modelsDevId ? (
-                      <ProviderLogoById providerId={service.modelsDevId} name={displayName} size={28} theme={theme} />
+                    {provider.modelsDevId ? (
+                      <ProviderLogoById providerId={provider.modelsDevId} name={displayName} size={28} theme={theme} />
                     ) : (
                       <div style={{
                         width: 28,
@@ -985,7 +985,7 @@ export default function OptionsPage() {
                     <div onClick={(e) => e.stopPropagation()}>
                       <ToggleSwitch
                         checked={isActive}
-                        onChange={() => toggleServiceActive(service.id)}
+                        onChange={() => toggleProviderActive(provider.id)}
                         theme={theme}
                       />
                     </div>
@@ -998,7 +998,7 @@ export default function OptionsPage() {
 
         {/* Right: Detail panel */}
         <div style={{ flex: 1, padding: uiSpace[24], overflowY: "auto" }}>
-          {!selectedService ? (
+          {!selectedProvider ? (
             <div
               style={{
                 display: "flex",
@@ -1014,8 +1014,8 @@ export default function OptionsPage() {
             <div>
               {/* Provider badge */}
               <div style={{ display: "flex", alignItems: "center", gap: uiSpace[10], marginBottom: uiSpace[16], padding: `${uiSpace[10]}px ${uiSpace[14]}px`, background: theme.bg.surfaceMuted, borderRadius: uiRadius.md, border: `1px solid ${theme.border.hairline}` }}>
-                {serviceDraft.modelsDevId ? (
-                  <ProviderLogoById providerId={serviceDraft.modelsDevId} name={serviceDraft.name || "Custom"} size={28} theme={theme} />
+                {providerDraft.modelsDevId ? (
+                  <ProviderLogoById providerId={providerDraft.modelsDevId} name={providerDraft.name || "Custom"} size={28} theme={theme} />
                 ) : (
                   <div style={{
                     width: 28,
@@ -1030,46 +1030,46 @@ export default function OptionsPage() {
                     color: theme.accent.primary,
                     flexShrink: 0
                   }}>
-                    {(serviceDraft.name || "C").charAt(0)}
+                    {(providerDraft.name || "C").charAt(0)}
                   </div>
                 )}
                 <span style={{ fontSize: uiTypography.fontSize.md, fontWeight: uiTypography.fontWeight.semibold, color: theme.text.primary }}>
-                  {serviceDraft.name || "Custom"}
+                  {providerDraft.name || "Custom"}
                 </span>
-                {serviceDraft.modelsDevId && serviceDraft.apiBaseUrl ? (
+                {providerDraft.modelsDevId && providerDraft.apiBaseUrl ? (
                   <span style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary, marginLeft: "auto" }}>
-                    {serviceDraft.apiBaseUrl}
+                    {providerDraft.apiBaseUrl}
                   </span>
                 ) : null}
               </div>
 
               {/* Name */}
               <div style={{ marginBottom: uiSpace[16] }}>
-                <label htmlFor="service-name" style={fieldLabelStyle}>{t("options.connection.serviceName")}</label>
+                <label htmlFor="provider-name" style={fieldLabelStyle}>{t("options.connection.serviceName")}</label>
                 <input
-                  id="service-name"
-                  value={serviceDraft.name}
-                  onFocus={() => setFocusedField("service-name")}
+                  id="provider-name"
+                  value={providerDraft.name}
+                  onFocus={() => setFocusedField("provider-name")}
                   onBlur={() => setFocusedField(null)}
                   onChange={(event) => {
-                    updateServiceField("name", event.target.value)
+                    updateProviderField("name", event.target.value)
                   }}
                   placeholder={t("options.connection.serviceNamePlaceholder")}
-                  style={createInputStyle("service-name")}
+                  style={createInputStyle("provider-name")}
                 />
               </div>
 
               {/* API Base URL (for custom provider) */}
-              {!serviceDraft.modelsDevId ? (
+              {!providerDraft.modelsDevId ? (
                 <div style={{ marginBottom: uiSpace[16] }}>
-                  <label htmlFor="service-api-base-url" style={fieldLabelStyle}>{t("options.connection.apiBaseUrl")}</label>
+                  <label htmlFor="provider-api-base-url" style={fieldLabelStyle}>{t("options.connection.apiBaseUrl")}</label>
                   <input
-                    id="service-api-base-url"
-                    value={serviceDraft.apiBaseUrl ?? ""}
+                    id="provider-api-base-url"
+                    value={providerDraft.apiBaseUrl ?? ""}
                     onFocus={() => setFocusedField("apiBaseUrl")}
                     onBlur={() => setFocusedField(null)}
                     onChange={(event) => {
-                      updateServiceField("apiBaseUrl", event.target.value)
+                      updateProviderField("apiBaseUrl", event.target.value)
                     }}
                     placeholder="https://api.example.com/v1"
                     style={createInputStyle("apiBaseUrl")}
@@ -1079,15 +1079,15 @@ export default function OptionsPage() {
 
               {/* API Key */}
               <div style={{ marginBottom: uiSpace[16] }}>
-                <label htmlFor="service-api-key" style={fieldLabelStyle}>{t("options.connection.apiKey")}</label>
+                <label htmlFor="provider-api-key" style={fieldLabelStyle}>{t("options.connection.apiKey")}</label>
                 <input
-                  id="service-api-key"
+                  id="provider-api-key"
                   type="password"
-                  value={serviceDraft.apiKey}
+                  value={providerDraft.apiKey}
                   onFocus={() => setFocusedField("apiKey")}
                   onBlur={() => setFocusedField(null)}
                   onChange={(event) => {
-                    updateServiceField("apiKey", event.target.value)
+                    updateProviderField("apiKey", event.target.value)
                   }}
                   placeholder="sk-..."
                   style={createInputStyle("apiKey")}
@@ -1097,8 +1097,8 @@ export default function OptionsPage() {
               {/* Model */}
               <div style={{ marginBottom: uiSpace[16] }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: uiSpace[6] }}>
-                  <label htmlFor="service-model" style={fieldLabelStyle}>{t("options.connection.model")}</label>
-                  {!serviceDraft.modelsDevId ? (
+                  <label htmlFor="provider-model" style={fieldLabelStyle}>{t("options.connection.model")}</label>
+                  {!providerDraft.modelsDevId ? (
                     <button
                       type="button"
                       onClick={handleFetchModels}
@@ -1116,13 +1116,13 @@ export default function OptionsPage() {
                     </button>
                   ) : null}
                 </div>
-                {!serviceDraft.modelsDevId && models.length > 0 ? (
+                {!providerDraft.modelsDevId && models.length > 0 ? (
                   <div style={{ display: "flex", gap: uiSpace[8] }}>
                     <select
-                      id="service-model"
-                      value={serviceDraft.model}
+                      id="provider-model"
+                      value={providerDraft.model}
                       onChange={(event) => {
-                        updateServiceField("model", event.target.value)
+                        updateProviderField("model", event.target.value)
                       }}
                       style={{ ...createInputStyle("model"), flex: 1, cursor: "pointer" }}>
                       {models.map((id) => (
@@ -1141,20 +1141,20 @@ export default function OptionsPage() {
                 ) : (
                   <>
                     <input
-                      id="service-model"
-                      value={serviceDraft.model}
+                      id="provider-model"
+                      value={providerDraft.model}
                       onFocus={() => setFocusedField("model")}
                       onBlur={() => setFocusedField(null)}
                       onChange={(event) => {
-                        updateServiceField("model", event.target.value)
+                        updateProviderField("model", event.target.value)
                       }}
                       placeholder="model-name"
                       style={createInputStyle("model")}
                     />
                     {/* Model suggestions from models.dev or fallback */}
                     {(() => {
-                      const devModels = modelsDevData && serviceDraft.modelsDevId
-                        ? getModelsForProvider(modelsDevData, serviceDraft.modelsDevId)
+                      const devModels = modelsDevData && providerDraft.modelsDevId
+                        ? getModelsForProvider(modelsDevData, providerDraft.modelsDevId)
                         : []
                       const hasDevModels = devModels.length > 0
                       const query = modelSearchQuery.trim().toLowerCase()
@@ -1192,13 +1192,13 @@ export default function OptionsPage() {
                           {hasDevModels ? (
                             <div style={{ display: "flex", flexDirection: "column", gap: uiSpace[2], maxHeight: 240, overflowY: "auto" }}>
                               {filtered.map((m) => {
-                                const isSelected = serviceDraft.model === m.id
+                                const isSelected = providerDraft.model === m.id
                                 return (
                                   <button
                                     key={m.id}
                                     type="button"
                                     onClick={() => {
-                                      updateServiceField("model", m.id)
+                                      updateProviderField("model", m.id)
                                     }}
                                     style={{
                                       display: "flex",
@@ -1340,8 +1340,8 @@ export default function OptionsPage() {
                 </p>
 
                 {(() => {
-                  const paramSupport = modelsDevData && serviceDraft.modelsDevId
-                    ? getModelParamSupport(modelsDevData, serviceDraft.modelsDevId, serviceDraft.model)
+                  const paramSupport = modelsDevData && providerDraft.modelsDevId
+                    ? getModelParamSupport(modelsDevData, providerDraft.modelsDevId, providerDraft.model)
                     : { maxTokens: true, temperature: true, topP: true, presencePenalty: true, frequencyPenalty: true }
 
                   const allParams = [
@@ -1378,7 +1378,7 @@ export default function OptionsPage() {
                           <input
                             id={`model-param-${param.key}`}
                             type="number"
-                            value={serviceDraft.modelParams[param.key]}
+                            value={providerDraft.modelParams[param.key]}
                             min={param.min}
                             max={param.max}
                             step={param.step}
@@ -1386,8 +1386,8 @@ export default function OptionsPage() {
                             onBlur={() => setFocusedField(null)}
                             onChange={(event) => {
                               const raw = event.target.value
-                              const value = raw === "" ? DEFAULT_CUSTOM_MODEL_SERVICE.modelParams[param.key] : Number(raw)
-                              updateServiceModelParam(param.key, value)
+                              const value = raw === "" ? DEFAULT_CUSTOM_MODEL_PROVIDER.modelParams[param.key] : Number(raw)
+                              updateProviderModelParam(param.key, value)
                             }}
                             placeholder={param.placeholder}
                             style={createInputStyle(`modelParams-${param.key}`)}
@@ -1403,7 +1403,7 @@ export default function OptionsPage() {
               <div style={{ marginTop: uiSpace[20], borderTop: `0.5px solid ${theme.border.hairline}`, paddingTop: uiSpace[20] }}>
                 <button
                   type="button"
-                  onClick={() => setPendingDeleteServiceId(selectedServiceId)}
+                  onClick={() => setPendingDeleteProviderId(selectedProviderId)}
                   style={{
                     ...secondaryBtnStyle,
                     color: theme.state.error,
@@ -2557,14 +2557,14 @@ export default function OptionsPage() {
             />
           ) : null}
 
-          {pendingDeleteServiceId ? (
+          {pendingDeleteProviderId ? (
             <ConfirmDialog
-              title={t("options.backup.deleteServiceTitle")}
-              message={t("options.backup.deleteServiceMessage")}
-              confirmLabel={t("options.backup.deleteServiceButton")}
+              title={t("options.backup.deleteProviderTitle")}
+              message={t("options.backup.deleteProviderMessage")}
+              confirmLabel={t("options.backup.deleteProviderButton")}
               cancelLabel={t("options.connection.cancel")}
-              onConfirm={() => deleteService(pendingDeleteServiceId)}
-              onCancel={() => setPendingDeleteServiceId(null)}
+              onConfirm={() => deleteProvider(pendingDeleteProviderId)}
+              onCancel={() => setPendingDeleteProviderId(null)}
               themeName={themeName}
             />
           ) : null}
