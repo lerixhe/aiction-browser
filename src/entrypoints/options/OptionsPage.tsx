@@ -6,9 +6,8 @@ import { ToggleSwitch } from "@/shared/ui/toggle-switch"
 import { hasTextPlaceholder } from "@/shared/prompt"
 import { BrandIcon } from "@/shared/ui/icons"
 import { trackEvent } from "@/shared/analytics"
-import { DEFAULT_CUSTOM_MODEL_PROVIDER, DEFAULT_SETTINGS } from "@/shared/defaults"
+import { DEFAULT_SETTINGS } from "@/shared/defaults"
 import { getSettings, normalizeSettings, saveSettings, saveUserIcon, getUserIcons } from "@/shared/storage"
-import { requestModelsDev, getModelsForProvider, getAllProviders, getModelParamSupport, type ModelsDevData, type ModelsDevModel, type ModelsDevProviderInfo, type ModelParamSupport } from "@/shared/models-dev"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { createButtonStyle, createCardStyle, createFieldLabelStyle, createFocusRing, createInputStyle as createSharedInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
@@ -16,9 +15,12 @@ import { getAvatarPalette, getAvatarDisplayText } from "@/shared/ui/avatar"
 import { ACTION_ICON_LIBRARY, type IconEntry } from "@/shared/ui/icon-library"
 import { BUNDLED_TABLER_ICONS } from "@/shared/ui/bundled-icons"
 import { useI18n } from "@/shared/i18n/context"
-import type { ActionTemplate, ExtensionSettings, LanguagePreference, ThemePreference, ApiTestResponse, FetchModelsResponse, ProviderConfig, UserIconData, ModelParams } from "@/shared/types"
-import { MESSAGE_TYPES } from "@/shared/constants"
+import type { ActionTemplate, ExtensionSettings, LanguagePreference, ThemePreference, UserIconData } from "@/shared/types"
 import { ConfirmDialog } from "@/entrypoints/options/ConfirmDialog"
+import { useProviderManager, createProviderDraft } from "./useProviderManager"
+import { ProviderList } from "./ProviderList"
+import { ProviderEditor } from "./ProviderEditor"
+import { ProviderSelectModal } from "./ProviderSelectModal"
 
 type Section = "appearance" | "connection" | "actions" | "backup" | "about"
 
@@ -41,61 +43,6 @@ function DragHandleIcon({ size, color }: { size: number; color: string }) {
       <circle cx="11" cy="12" r="1.5" fill={color} />
     </svg>
   )
-}
-
-function RefreshIcon({ size, color }: { size: number; color: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M13.5 8A5.5 5.5 0 1 1 8 2.5M13.5 2.5V6.5H9.5" stroke={color} strokeWidth={1.2} strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function ProviderLogoById({ providerId, name, size = 24, theme }: { providerId: string; name: string; size?: number; theme: any }) {
-  const [error, setError] = useState(false)
-
-  if (error) {
-    return (
-      <div style={{
-        width: size,
-        height: size,
-        borderRadius: uiRadius.sm,
-        background: theme.bg.surfaceMuted,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: size * 0.5,
-        fontWeight: uiTypography.fontWeight.semibold,
-        color: theme.accent.primary,
-        flexShrink: 0
-      }}>
-        {name.charAt(0)}
-      </div>
-    )
-  }
-
-  return (
-    <img
-      src={`https://models.dev/logos/${providerId}.svg`}
-      width={size}
-      height={size}
-      onError={() => setError(true)}
-      style={{
-        borderRadius: uiRadius.sm,
-        flexShrink: 0
-      }}
-    />
-  )
-}
-
-function createProviderDraft(): ProviderConfig {
-  return {
-    id: `provider-${Date.now()}`,
-    name: "",
-    apiKey: "",
-    model: "",
-    modelParams: DEFAULT_CUSTOM_MODEL_PROVIDER.modelParams
-  }
 }
 
 export default function OptionsPage() {
@@ -152,11 +99,6 @@ export default function OptionsPage() {
   const [settings, setSettings] = useState<ExtensionSettings>(DEFAULT_SETTINGS)
   const [saving, setSaving] = useState(false)
   const [focusedField, setFocusedField] = useState<string | null>(null)
-  const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
-  const [models, setModels] = useState<string[]>([])
-  const [fetchingModels, setFetchingModels] = useState(false)
-  const [fetchError, setFetchError] = useState<string | null>(null)
   const [pressedBtn, setPressedBtn] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<Section>("appearance")
   const [loaded, setLoaded] = useState(false)
@@ -165,15 +107,6 @@ export default function OptionsPage() {
   const [backupStatus, setBackupStatus] = useState<{ success: boolean; message: string } | null>(null)
   const [pendingImportSettings, setPendingImportSettings] = useState<ExtensionSettings | null>(null)
   const [pendingImportUserIcons, setPendingImportUserIcons] = useState<Record<string, UserIconData> | null>(null)
-  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
-  const [showProviderSelect, setShowProviderSelect] = useState(false)
-  const [providerDraft, setProviderDraft] = useState<ProviderConfig>(createProviderDraft())
-  const [pendingDeleteProviderId, setPendingDeleteProviderId] = useState<string | null>(null)
-  const [modelsDevData, setModelsDevData] = useState<ModelsDevData | null>(null)
-  const [modelSearchQuery, setModelSearchQuery] = useState("")
-  const [providerSearchQuery, setProviderSearchQuery] = useState("")
-  const [editingIconProviderId, setEditingIconProviderId] = useState<string | null>(null)
-  const [iconEditText, setIconEditText] = useState("")
   const [showIconPicker, setShowIconPicker] = useState(false)
   const [iconSearchQuery, setIconSearchQuery] = useState("")
   const [iconSearchResults, setIconSearchResults] = useState<string[]>([])
@@ -185,6 +118,9 @@ export default function OptionsPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const iconPickerRef = useRef<HTMLDivElement | null>(null)
 
+  // Provider manager hook
+  const providerManager = useProviderManager(settings, setSettings)
+
   useEffect(() => {
     void getSettings().then((loaded) => {
       setSettings(loaded)
@@ -194,8 +130,8 @@ export default function OptionsPage() {
       }
       if (loaded.providers.length > 0) {
         const first = loaded.providers[0]
-        setSelectedProviderId(first.id)
-        setProviderDraft({ ...first, modelParams: { ...first.modelParams } })
+        providerManager.setSelectedProviderId(first.id)
+        providerManager.setProviderDraft({ ...first, modelParams: { ...first.modelParams } })
       }
     })
     void chrome.storage.local.get("optionsActiveSection").then((result) => {
@@ -205,7 +141,6 @@ export default function OptionsPage() {
       }
       setLoaded(true)
     })
-    void requestModelsDev().then(setModelsDevData)
   }, [])
 
   useEffect(() => {
@@ -270,31 +205,10 @@ export default function OptionsPage() {
     return settings.actions.some((item) => !hasTextPlaceholder(item.template))
   }, [settings.actions])
 
-  const selectedProvider = selectedProviderId
-    ? settings.providers.find((s) => s.id === selectedProviderId)
-    : null
-
-  const allProviders = useMemo(() => {
-    if (!modelsDevData) return []
-    return getAllProviders(modelsDevData)
-  }, [modelsDevData])
-
-  const filteredProviders = useMemo(() => {
-    if (!providerSearchQuery.trim()) return allProviders
-    const query = providerSearchQuery.trim().toLowerCase()
-    return allProviders.filter((p) => p.name.toLowerCase().includes(query) || p.id.toLowerCase().includes(query))
-  }, [allProviders, providerSearchQuery])
-
-  const isProviderDraftValid =
-    Boolean(providerDraft.name.trim()) &&
-    Boolean(providerDraft.apiKey.trim()) &&
-    Boolean(providerDraft.model.trim()) &&
-    (Boolean(providerDraft.modelsDevId) || Boolean(providerDraft.apiBaseUrl?.trim()))
-
+  // --- Save helpers for non-provider settings ---
   const saveSettingsNow = (updater: (current: ExtensionSettings) => ExtensionSettings) => {
     setSettings((current) => {
       const next = updater(current)
-
       void saveSettings({
         ...next,
         providers: next.providers.map((provider) => ({
@@ -305,39 +219,8 @@ export default function OptionsPage() {
           model: provider.model.trim()
         }))
       })
-
       return next
     })
-  }
-
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pendingUpdatersRef = useRef<Array<(current: ExtensionSettings) => ExtensionSettings>>([])
-
-  const saveSettingsDebounced = (updater: (current: ExtensionSettings) => ExtensionSettings) => {
-    pendingUpdatersRef.current.push(updater)
-
-    setSettings((current) => updater(current))
-
-    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
-    debounceTimerRef.current = setTimeout(() => {
-      const updaters = pendingUpdatersRef.current
-      pendingUpdatersRef.current = []
-      debounceTimerRef.current = null
-      setSettings((current) => {
-        const next = updaters.reduce((acc, fn) => fn(acc), current)
-        void saveSettings({
-          ...next,
-          providers: next.providers.map((provider) => ({
-            ...provider,
-            name: provider.name.trim(),
-            apiBaseUrl: provider.apiBaseUrl?.trim() || undefined,
-            apiKey: provider.apiKey.trim(),
-            model: provider.model.trim()
-          }))
-        })
-        return next
-      })
-    }, 400)
   }
 
   const updateCustomAction = (index: number, patch: Partial<ActionTemplate>) => {
@@ -376,95 +259,6 @@ export default function OptionsPage() {
     }
     setDraggedActionIndex(null)
     setDragOverActionIndex(null)
-  }
-
-  const handleTestConnection = () => {
-    const trimmedKey = providerDraft.apiKey.trim()
-    const trimmedModel = providerDraft.model.trim()
-    const trimmedUrl = providerDraft.apiBaseUrl?.trim()
-
-    if (!trimmedKey || !trimmedModel) {
-      setTestResult({ success: false, message: t("options.connection.missingUrlKeyModel") })
-      return
-    }
-    if (!providerDraft.modelsDevId && !trimmedUrl) {
-      setTestResult({ success: false, message: t("options.connection.missingUrlKeyModel") })
-      return
-    }
-
-    setTesting(true)
-    setTestResult(null)
-
-    chrome.runtime.sendMessage(
-      {
-        type: MESSAGE_TYPES.API_TEST_REQUEST,
-        payload: {
-          apiBaseUrl: trimmedUrl || "",
-          apiKey: trimmedKey,
-          model: trimmedModel,
-          modelsDevId: providerDraft.modelsDevId
-        }
-      },
-      (response: ApiTestResponse | undefined) => {
-        setTesting(false)
-        if (chrome.runtime.lastError) {
-          setTestResult({ success: false, message: t("options.connection.commError", [chrome.runtime.lastError.message ?? ""]) })
-          return
-        }
-        if (!response) {
-          setTestResult({ success: false, message: t("options.connection.noResponse") })
-          return
-        }
-        const latencyInfo = response.latencyMs != null ? ` (${response.latencyMs}ms)` : ""
-        if (response.success) {
-          setTestResult({ success: true, message: t("options.connection.connectionSuccess", [latencyInfo]) })
-        } else {
-          setTestResult({ success: false, message: response.error ?? t("options.connection.testFailed") })
-        }
-      }
-    )
-  }
-
-  const handleFetchModels = () => {
-    const trimmedUrl = providerDraft.apiBaseUrl?.trim()
-    if (!trimmedUrl) {
-      setFetchError(t("options.connection.missingApiBaseUrl"))
-      return
-    }
-
-    setFetchingModels(true)
-    setFetchError(null)
-    setModels([])
-
-    chrome.runtime.sendMessage(
-      {
-        type: MESSAGE_TYPES.FETCH_MODELS_REQUEST,
-        payload: {
-          apiBaseUrl: trimmedUrl,
-          apiKey: providerDraft.apiKey.trim()
-        }
-      },
-      (response: FetchModelsResponse | undefined) => {
-        setFetchingModels(false)
-        if (chrome.runtime.lastError) {
-          setFetchError(t("options.connection.commError", [chrome.runtime.lastError.message ?? ""]))
-          return
-        }
-        if (!response) {
-          setFetchError(t("options.connection.noResponse"))
-          return
-        }
-        if (response.success && response.models && response.models.length > 0) {
-          setModels(response.models)
-          setFetchError(null)
-          if (!providerDraft.model.trim() || !response.models.includes(providerDraft.model.trim())) {
-            setProviderDraft((current) => ({ ...current, model: response.models![0] }))
-          }
-        } else {
-          setFetchError(response.error ?? t("options.connection.fetchModelsError"))
-        }
-      }
-    )
   }
 
   const handleExportSettings = async () => {
@@ -523,8 +317,8 @@ export default function OptionsPage() {
     }
 
     setSettings(pendingImportSettings)
-    setSelectedProviderId(null)
-    setProviderDraft(createProviderDraft())
+    providerManager.setSelectedProviderId(null)
+    providerManager.setProviderDraft(createProviderDraft())
     setSaving(true)
     setBackupStatus(null)
 
@@ -561,146 +355,6 @@ export default function OptionsPage() {
         setPendingImportSettings(null)
         setPendingImportUserIcons(null)
       })
-  }
-
-  const openCreateProvider = () => {
-    setShowProviderSelect(true)
-    setProviderSearchQuery("")
-  }
-
-  const selectProviderAndCreate = () => {
-    const newProvider = createProviderDraft()
-    saveSettingsNow((current) => ({
-      ...current,
-      providers: [...current.providers, newProvider],
-      activeProviderId: current.activeProviderId || newProvider.id
-    }))
-    setSelectedProviderId(newProvider.id)
-    setProviderDraft(newProvider)
-    setShowProviderSelect(false)
-    setModels([])
-    setFetchError(null)
-    setTestResult(null)
-    setModelSearchQuery("")
-    setProviderSearchQuery("")
-  }
-
-  const selectModelsDevProvider = (providerInfo: ModelsDevProviderInfo) => {
-    const newProvider = createProviderDraft()
-    newProvider.name = providerInfo.name
-    newProvider.modelsDevId = providerInfo.id
-    if (providerInfo.api) {
-      newProvider.apiBaseUrl = providerInfo.api
-    }
-    saveSettingsNow((current) => ({
-      ...current,
-      providers: [...current.providers, newProvider],
-      activeProviderId: current.activeProviderId || newProvider.id
-    }))
-    setSelectedProviderId(newProvider.id)
-    setProviderDraft(newProvider)
-    setShowProviderSelect(false)
-    setModels([])
-    setFetchError(null)
-    setTestResult(null)
-    setModelSearchQuery("")
-    setProviderSearchQuery("")
-  }
-
-  const closeConnectionEditor = () => {
-    setSelectedProviderId(null)
-    setProviderDraft(createProviderDraft())
-    setModels([])
-    setFetchError(null)
-    setTestResult(null)
-    setModelSearchQuery("")
-  }
-
-  const saveProviderDraft = () => {
-    if (!isProviderDraftValid || !selectedProviderId) {
-      return
-    }
-
-    const normalizedDraft: ProviderConfig = {
-      ...providerDraft,
-      name: providerDraft.name.trim(),
-      apiBaseUrl: providerDraft.apiBaseUrl?.trim() || undefined,
-      apiKey: providerDraft.apiKey.trim(),
-      model: providerDraft.model.trim()
-    }
-
-    saveSettingsNow((current) => ({
-      ...current,
-      providers: current.providers.map((provider) => (provider.id === selectedProviderId ? normalizedDraft : provider))
-    }))
-  }
-
-  const updateProviderField = (field: string, value: string) => {
-    if (!selectedProviderId) return
-    
-    setProviderDraft((current) => ({ ...current, [field]: value }))
-    
-    saveSettingsDebounced((current) => ({
-      ...current,
-      providers: current.providers.map((provider) =>
-        provider.id === selectedProviderId ? { ...provider, [field]: value } : provider
-      )
-    }))
-  }
-
-  const updateProviderModelParam = (key: keyof ModelParams, value: number) => {
-    if (!selectedProviderId) return
-    
-    setProviderDraft((current) => ({
-      ...current,
-      modelParams: { ...current.modelParams, [key]: value }
-    }))
-    
-    saveSettingsDebounced((current) => ({
-      ...current,
-      providers: current.providers.map((provider) =>
-        provider.id === selectedProviderId
-          ? { ...provider, modelParams: { ...provider.modelParams, [key]: value } }
-          : provider
-      )
-    }))
-  }
-
-  const toggleProviderActive = (providerId: string) => {
-    saveSettingsNow((current) => {
-      // 单选模式：如果点击的是已启用的，不允许禁用
-      if (current.activeProviderId === providerId) {
-        return current
-      }
-      // 启用新的，自动禁用旧的
-      return { ...current, activeProviderId: providerId }
-    })
-  }
-
-  const deleteProvider = (providerId: string) => {
-    saveSettingsNow((current) => {
-      const remainingProviders = current.providers.filter((p) => p.id !== providerId)
-      const activeProviderId =
-        current.activeProviderId === providerId ? (remainingProviders[0]?.id ?? "") : current.activeProviderId
-
-      return {
-        ...current,
-        providers: remainingProviders,
-        activeProviderId
-      }
-    })
-    
-    // 自动选中下一个provider
-    const remaining = settings.providers.filter((p) => p.id !== providerId)
-    if (remaining.length > 0) {
-      setSelectedProviderId(remaining[0].id)
-      setProviderDraft({ ...remaining[0], modelParams: { ...remaining[0].modelParams } })
-    } else {
-      setSelectedProviderId(null)
-    setProviderDraft(createProviderDraft())
-    }
-    
-    setPendingDeleteProviderId(null)
   }
 
   // --- Shared styles ---
@@ -906,7 +560,7 @@ export default function OptionsPage() {
         </h2>
         <button
           type="button"
-          onClick={openCreateProvider}
+          onClick={providerManager.openCreateProvider}
           onMouseDown={() => setPressedBtn("add-provider")}
           onMouseUp={() => setPressedBtn(null)}
           onMouseLeave={() => setPressedBtn(null)}
@@ -934,739 +588,72 @@ export default function OptionsPage() {
       {/* Main content: left list + right detail */}
       <div style={{ display: "flex", minHeight: 420 }}>
         {/* Left: Provider list */}
-        <div
-          style={{
-            width: 280,
-            minWidth: 280,
-            borderRight: `0.5px solid ${theme.border.hairline}`,
-            display: "flex",
-            flexDirection: "column"
-          }}>
-          {/* List items */}
-          <div style={{ flex: 1, overflowY: "auto", padding: uiSpace[8] }}>
-            {settings.providers.length === 0 ? (
-              <div style={{ ...emptyStateStyle, margin: uiSpace[8], fontSize: uiTypography.fontSize.sm }}>
-                {t("options.connection.emptyServiceList")}
-              </div>
-            ) : (
-              settings.providers.map((provider) => {
-                const isSelected = selectedProviderId === provider.id
-                const isActive = settings.activeProviderId === provider.id
-                const displayName = provider.name || "Custom"
-
-                return (
-                  <div
-                    key={provider.id}
-                    onClick={() => {
-                      setSelectedProviderId(provider.id)
-                      setProviderDraft({ ...provider, modelParams: { ...provider.modelParams } })
-                      setModels([])
-                      setFetchError(null)
-                      setTestResult(null)
-                      setModelSearchQuery("")
-                    }}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: uiSpace[8],
-                      padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
-                      marginBottom: 2,
-                      borderRadius: uiRadius.sm,
-                      cursor: "pointer",
-                      background: isSelected ? `${theme.accent.primary}14` : "transparent",
-                      transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
-                    }}>
-                    {/* Provider Logo */}
-                    {provider.modelsDevId ? (
-                      <ProviderLogoById providerId={provider.modelsDevId} name={displayName} size={28} theme={theme} />
-                    ) : (
-                      <div style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: uiRadius.sm,
-                        background: theme.bg.surfaceMuted,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 14,
-                        fontWeight: uiTypography.fontWeight.semibold,
-                        color: theme.accent.primary,
-                        flexShrink: 0
-                      }}>
-                        {displayName.charAt(0)}
-                      </div>
-                    )}
-
-                    {/* Name */}
-                    <span
-                      style={{
-                        flex: 1,
-                        fontSize: uiTypography.fontSize.sm,
-                        fontWeight: isSelected ? uiTypography.fontWeight.semibold : uiTypography.fontWeight.regular,
-                        color: theme.text.primary,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap"
-                      }}>
-                      {displayName}
-                    </span>
-
-                    {/* Toggle */}
-                    <div onClick={(e) => e.stopPropagation()}>
-                      <ToggleSwitch
-                        checked={isActive}
-                        onChange={() => toggleProviderActive(provider.id)}
-                        theme={theme}
-                      />
-                    </div>
-                  </div>
-                )
-              })
-            )}
-          </div>
-        </div>
+        <ProviderList
+          providers={settings.providers}
+          selectedProviderId={providerManager.selectedProviderId}
+          activeProviderId={settings.activeProviderId}
+          theme={theme}
+          onSelect={providerManager.selectProvider}
+          onToggleActive={providerManager.toggleProviderActive}
+        />
 
         {/* Right: Detail panel */}
-        <div style={{ flex: 1, padding: uiSpace[24], overflowY: "auto" }}>
-          {!selectedProvider ? (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                height: "100%",
-                color: theme.text.secondary,
-                fontSize: uiTypography.fontSize.md
-              }}>
-              {t("options.connection.selectProvider")}
-            </div>
-          ) : (
-            <div>
-              {/* Provider badge */}
-              <div style={{ display: "flex", alignItems: "center", gap: uiSpace[10], marginBottom: uiSpace[16], padding: `${uiSpace[10]}px ${uiSpace[14]}px`, background: theme.bg.surfaceMuted, borderRadius: uiRadius.md, border: `1px solid ${theme.border.hairline}` }}>
-                {providerDraft.modelsDevId ? (
-                  <ProviderLogoById providerId={providerDraft.modelsDevId} name={providerDraft.name || "Custom"} size={28} theme={theme} />
-                ) : (
-                  <div style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: uiRadius.sm,
-                    background: theme.bg.surfaceMuted,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 14,
-                    fontWeight: uiTypography.fontWeight.semibold,
-                    color: theme.accent.primary,
-                    flexShrink: 0
-                  }}>
-                    {(providerDraft.name || "C").charAt(0)}
-                  </div>
-                )}
-                <span style={{ fontSize: uiTypography.fontSize.md, fontWeight: uiTypography.fontWeight.semibold, color: theme.text.primary }}>
-                  {providerDraft.name || "Custom"}
-                </span>
-                {providerDraft.modelsDevId && providerDraft.apiBaseUrl ? (
-                  <span style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary, marginLeft: "auto" }}>
-                    {providerDraft.apiBaseUrl}
-                  </span>
-                ) : null}
-              </div>
-
-              {/* Name */}
-              <div style={{ marginBottom: uiSpace[16] }}>
-                <label htmlFor="provider-name" style={fieldLabelStyle}>{t("options.connection.serviceName")}</label>
-                <input
-                  id="provider-name"
-                  value={providerDraft.name}
-                  onFocus={() => setFocusedField("provider-name")}
-                  onBlur={() => setFocusedField(null)}
-                  onChange={(event) => {
-                    updateProviderField("name", event.target.value)
-                  }}
-                  placeholder={t("options.connection.serviceNamePlaceholder")}
-                  style={createInputStyle("provider-name")}
-                />
-              </div>
-
-              {/* API Base URL (for custom provider) */}
-              {!providerDraft.modelsDevId ? (
-                <div style={{ marginBottom: uiSpace[16] }}>
-                  <label htmlFor="provider-api-base-url" style={fieldLabelStyle}>{t("options.connection.apiBaseUrl")}</label>
-                  <input
-                    id="provider-api-base-url"
-                    value={providerDraft.apiBaseUrl ?? ""}
-                    onFocus={() => setFocusedField("apiBaseUrl")}
-                    onBlur={() => setFocusedField(null)}
-                    onChange={(event) => {
-                      updateProviderField("apiBaseUrl", event.target.value)
-                    }}
-                    placeholder="https://api.example.com/v1"
-                    style={createInputStyle("apiBaseUrl")}
-                  />
-                </div>
-              ) : null}
-
-              {/* API Key */}
-              <div style={{ marginBottom: uiSpace[16] }}>
-                <label htmlFor="provider-api-key" style={fieldLabelStyle}>{t("options.connection.apiKey")}</label>
-                <input
-                  id="provider-api-key"
-                  type="password"
-                  value={providerDraft.apiKey}
-                  onFocus={() => setFocusedField("apiKey")}
-                  onBlur={() => setFocusedField(null)}
-                  onChange={(event) => {
-                    updateProviderField("apiKey", event.target.value)
-                  }}
-                  placeholder="sk-..."
-                  style={createInputStyle("apiKey")}
-                />
-              </div>
-
-              {/* Model */}
-              <div style={{ marginBottom: uiSpace[16] }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: uiSpace[6] }}>
-                  <label htmlFor="provider-model" style={fieldLabelStyle}>{t("options.connection.model")}</label>
-                  {!providerDraft.modelsDevId ? (
-                    <button
-                      type="button"
-                      onClick={handleFetchModels}
-                      disabled={fetchingModels}
-                      style={{
-                        ...secondaryBtnStyle,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: uiSpace[4],
-                        opacity: fetchingModels ? 0.5 : 1,
-                        cursor: fetchingModels ? "not-allowed" : "pointer"
-                      }}>
-                      <RefreshIcon size={14} color={theme.text.primary} />
-                      {fetchingModels ? t("options.connection.fetching") : t("options.connection.fetchModels")}
-                    </button>
-                  ) : null}
-                </div>
-                {!providerDraft.modelsDevId && models.length > 0 ? (
-                  <div style={{ display: "flex", gap: uiSpace[8] }}>
-                    <select
-                      id="provider-model"
-                      value={providerDraft.model}
-                      onChange={(event) => {
-                        updateProviderField("model", event.target.value)
-                      }}
-                      style={{ ...createInputStyle("model"), flex: 1, cursor: "pointer" }}>
-                      {models.map((id) => (
-                        <option key={id} value={id}>
-                          {id}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => setModels([])}
-                      style={secondaryBtnStyle}>
-                      {t("options.connection.manualInput")}
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <input
-                      id="provider-model"
-                      value={providerDraft.model}
-                      onFocus={() => setFocusedField("model")}
-                      onBlur={() => setFocusedField(null)}
-                      onChange={(event) => {
-                        updateProviderField("model", event.target.value)
-                      }}
-                      placeholder="model-name"
-                      style={createInputStyle("model")}
-                    />
-                    {/* Model suggestions from models.dev or fallback */}
-                    {(() => {
-                      const devModels = modelsDevData && providerDraft.modelsDevId
-                        ? getModelsForProvider(modelsDevData, providerDraft.modelsDevId)
-                        : []
-                      const hasDevModels = devModels.length > 0
-                      const query = modelSearchQuery.trim().toLowerCase()
-                      const filtered = query
-                        ? devModels.filter(
-                            (m) =>
-                              m.id.toLowerCase().includes(query) ||
-                              m.name.toLowerCase().includes(query)
-                          )
-                        : devModels
-
-                      if (!hasDevModels) return null
-
-                      return (
-                        <div style={{ marginTop: uiSpace[8] }}>
-                          <input
-                            type="text"
-                            value={modelSearchQuery}
-                            onChange={(e) => setModelSearchQuery(e.target.value)}
-                            placeholder={t("options.connection.modelSearchPlaceholder")}
-                            style={{
-                              width: "100%",
-                              boxSizing: "border-box",
-                              padding: `${uiSpace[4]}px ${uiSpace[8]}px`,
-                              fontSize: uiTypography.fontSize.xs,
-                              border: `1px solid ${theme.border.hairline}`,
-                              borderRadius: uiRadius.sm,
-                              background: theme.bg.surface,
-                              color: theme.text.primary,
-                              outline: "none",
-                              marginBottom: uiSpace[6],
-                              fontFamily: uiTypography.fontFamily
-                            }}
-                          />
-                          {hasDevModels ? (
-                            <div style={{ display: "flex", flexDirection: "column", gap: uiSpace[2], maxHeight: 240, overflowY: "auto" }}>
-                              {filtered.map((m) => {
-                                const isSelected = providerDraft.model === m.id
-                                return (
-                                  <button
-                                    key={m.id}
-                                    type="button"
-                                    onClick={() => {
-                                      updateProviderField("model", m.id)
-                                    }}
-                                    style={{
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: uiSpace[8],
-                                      padding: `${uiSpace[4]}px ${uiSpace[10]}px`,
-                                      border: `1px solid ${isSelected ? theme.accent.primary : "transparent"}`,
-                                      borderRadius: uiRadius.sm,
-                                      background: isSelected ? `${theme.accent.primary}14` : "transparent",
-                                      color: isSelected ? theme.accent.primary : theme.text.primary,
-                                      fontSize: uiTypography.fontSize.xs,
-                                      cursor: "pointer",
-                                      outline: "none",
-                                      fontFamily: uiTypography.fontFamily,
-                                      textAlign: "left",
-                                      transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
-                                      lineHeight: 1.5
-                                    }}>
-                                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                      {m.name}
-                                    </span>
-                                    {m.reasoning ? (
-                                      <span style={{
-                                        padding: `1px ${uiSpace[4]}px`,
-                                        borderRadius: uiRadius.pill,
-                                        background: `${theme.accent.primary}18`,
-                                        color: theme.accent.primary,
-                                        fontSize: 10,
-                                        fontWeight: uiTypography.fontWeight.medium,
-                                        flexShrink: 0
-                                      }}>
-                                        reasoning
-                                      </span>
-                                    ) : null}
-                                    {m.tool_call ? (
-                                      <span style={{
-                                        padding: `1px ${uiSpace[4]}px`,
-                                        borderRadius: uiRadius.pill,
-                                        background: `${theme.state.success ?? "#22c55e"}18`,
-                                        color: theme.state.success ?? "#22c55e",
-                                        fontSize: 10,
-                                        fontWeight: uiTypography.fontWeight.medium,
-                                        flexShrink: 0
-                                      }}>
-                                        tools
-                                      </span>
-                                    ) : null}
-                                    {m.attachment ? (
-                                      <span style={{
-                                        padding: `1px ${uiSpace[4]}px`,
-                                        borderRadius: uiRadius.pill,
-                                        background: `${theme.state.warning ?? "#f59e0b"}18`,
-                                        color: theme.state.warning ?? "#f59e0b",
-                                        fontSize: 10,
-                                        fontWeight: uiTypography.fontWeight.medium,
-                                        flexShrink: 0
-                                      }}>
-                                        attach
-                                      </span>
-                                    ) : null}
-                                  </button>
-                                )
-                              })}
-                              {filtered.length === 0 ? (
-                                <div style={{ textAlign: "center", padding: uiSpace[12], color: theme.text.secondary, fontSize: uiTypography.fontSize.xs }}>
-                                  No models matching "{modelSearchQuery}"
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
-                      )
-                    })()}
-                  </>
-                )}
-                {fetchError ? (
-                  <div
-                    role="status"
-                    aria-live="polite"
-                    style={{ marginTop: uiSpace[8], ...createStatusMessageStyle(theme, "error") }}>
-                    {fetchError}
-                  </div>
-                ) : null}
-              </div>
-
-              {/* Test connection */}
-              <div style={{ display: "flex", alignItems: "center", gap: uiSpace[10], marginBottom: uiSpace[16], flexWrap: "wrap" }}>
-                <button
-                  disabled={testing}
-                  onClick={handleTestConnection}
-                  onMouseDown={() => setPressedBtn("test")}
-                  onMouseUp={() => setPressedBtn(null)}
-                  onMouseLeave={() => setPressedBtn(null)}
-                  style={{
-                    ...primaryBtnStyle,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: uiSpace[6],
-                    opacity: testing ? 0.6 : 1,
-                    cursor: testing ? "not-allowed" : "pointer",
-                    background: testing ? theme.state.disabled : theme.accent.primary,
-                    transform: pressedBtn === "test" ? "scale(0.96)" : "scale(1)"
-                  }}>
-                  {testing ? t("options.connection.testing") : t("options.connection.testConnection")}
-                </button>
-                {testResult ? (
-                  <span
-                    role="status"
-                    aria-live="polite"
-                    style={{
-                      ...createStatusMessageStyle(theme, testResult.success ? "success" : "error"),
-                      borderRadius: uiRadius.pill,
-                      fontWeight: uiTypography.fontWeight.medium,
-                      lineHeight: 1.5
-                    }}>
-                    {testResult.message}
-                  </span>
-                ) : null}
-              </div>
-
-              {/* Model params */}
-              <div style={{ borderTop: `0.5px solid ${theme.border.hairline}`, paddingTop: uiSpace[20], marginTop: uiSpace[4] }}>
-                <h3
-                  style={{
-                    margin: `0 0 ${uiSpace[4]}px`,
-                    fontSize: uiTypography.fontSize.md,
-                    fontWeight: uiTypography.fontWeight.semibold,
-                    letterSpacing: uiTypography.letterSpacing.tight
-                  }}>
-                  {t("options.connection.modelParams")}
-                </h3>
-                <p
-                  style={{
-                    margin: `0 0 ${uiSpace[16]}px`,
-                    color: theme.text.secondary,
-                    fontSize: uiTypography.fontSize.sm
-                  }}>
-                  {t("options.connection.modelParamsDesc")}
-                </p>
-
-                {(() => {
-                  const paramSupport = modelsDevData && providerDraft.modelsDevId
-                    ? getModelParamSupport(modelsDevData, providerDraft.modelsDevId, providerDraft.model)
-                    : { maxTokens: true, temperature: true, topP: true, presencePenalty: true, frequencyPenalty: true }
-
-                  const allParams = [
-                    { key: "maxTokens" as const, label: "Max Tokens", placeholder: "1024", min: 1, max: 128000, step: 1, desc: t("options.connection.paramMaxTokens") },
-                    { key: "temperature" as const, label: "Temperature", placeholder: "0.3", min: 0, max: 2, step: 0.1, desc: t("options.connection.paramTemperature") },
-                    { key: "topP" as const, label: "Top P", placeholder: "0.9", min: 0, max: 1, step: 0.05, desc: t("options.connection.paramTopP") },
-                    { key: "presencePenalty" as const, label: "Presence Penalty", placeholder: "0", min: -2, max: 2, step: 0.1, desc: t("options.connection.paramPresencePenalty") },
-                    { key: "frequencyPenalty" as const, label: "Frequency Penalty", placeholder: "0", min: -2, max: 2, step: 0.1, desc: t("options.connection.paramFrequencyPenalty") }
-                  ]
-
-                  const supportedParams = allParams.filter((p) => paramSupport[p.key])
-
-                  if (supportedParams.length === 0) {
-                    return (
-                      <div style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary, fontStyle: "italic" }}>
-                        {t("options.connection.noSupportedParams")}
-                      </div>
-                    )
-                  }
-
-                  return (
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 1fr",
-                        gap: `${uiSpace[12]}px ${uiSpace[16]}px`
-                      }}>
-                      {supportedParams.map((param) => (
-                        <div key={param.key}>
-                          <label htmlFor={`model-param-${param.key}`} style={{ ...fieldLabelStyle, marginBottom: uiSpace[4] }}>{param.label}</label>
-                          <div style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary, marginBottom: uiSpace[6] }}>
-                            {param.desc}
-                          </div>
-                          <input
-                            id={`model-param-${param.key}`}
-                            type="number"
-                            value={providerDraft.modelParams[param.key]}
-                            min={param.min}
-                            max={param.max}
-                            step={param.step}
-                            onFocus={() => setFocusedField(`modelParams-${param.key}`)}
-                            onBlur={() => setFocusedField(null)}
-                            onChange={(event) => {
-                              const raw = event.target.value
-                              const value = raw === "" ? DEFAULT_CUSTOM_MODEL_PROVIDER.modelParams[param.key] : Number(raw)
-                              updateProviderModelParam(param.key, value)
-                            }}
-                            placeholder={param.placeholder}
-                            style={createInputStyle(`modelParams-${param.key}`)}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )
-                })()}
-              </div>
-
-              {/* Delete button */}
-              <div style={{ marginTop: uiSpace[20], borderTop: `0.5px solid ${theme.border.hairline}`, paddingTop: uiSpace[20] }}>
-                <button
-                  type="button"
-                  onClick={() => setPendingDeleteProviderId(selectedProviderId)}
-                  style={{
-                    ...secondaryBtnStyle,
-                    color: theme.state.error,
-                    borderColor: theme.state.error
-                  }}>
-                  {t("options.connection.delete")}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        {!providerManager.selectedProvider ? (
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: theme.text.secondary,
+              fontSize: uiTypography.fontSize.md
+            }}>
+            {t("options.connection.selectProvider")}
+          </div>
+        ) : (
+          <ProviderEditor
+            theme={theme}
+            providerDraft={providerManager.providerDraft}
+            focusedField={focusedField}
+            testing={providerManager.testing}
+            testResult={providerManager.testResult}
+            devModels={providerManager.devModels}
+            fetchedModels={providerManager.models}
+            fetchingModels={providerManager.fetchingModels}
+            fetchError={providerManager.fetchError}
+            modelSearchQuery={providerManager.modelSearchQuery}
+            paramSupport={providerManager.paramSupport}
+            onFieldChange={providerManager.updateProviderField}
+            onModelChange={(model) => providerManager.updateProviderField("model", model)}
+            onFetchModels={providerManager.handleFetchModels}
+            onClearFetchedModels={() => providerManager.setModels([])}
+            onSearchQueryChange={providerManager.setModelSearchQuery}
+            onParamChange={providerManager.updateProviderModelParam}
+            onTestConnection={providerManager.handleTestConnection}
+            onDelete={() => providerManager.setPendingDeleteProviderId(providerManager.selectedProviderId)}
+            onFocusField={setFocusedField}
+            onBlurField={() => setFocusedField(null)}
+          />
+        )}
       </div>
 
       {/* Provider selection modal */}
-      {showProviderSelect ? (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0, 0, 0, 0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            backdropFilter: "blur(4px)"
+      {providerManager.showProviderSelect ? (
+        <ProviderSelectModal
+          theme={theme}
+          filteredProviders={providerManager.filteredProviders}
+          providerSearchQuery={providerManager.providerSearchQuery}
+          focusedField={focusedField}
+          onClose={() => {
+            providerManager.setShowProviderSelect(false)
+            providerManager.setProviderSearchQuery("")
           }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowProviderSelect(false)
-              setProviderSearchQuery("")
-            }
-          }}>
-          <div
-            style={{
-              background: theme.bg.surface,
-              borderRadius: uiRadius.lg,
-              boxShadow: uiShadow.xl,
-              width: "90%",
-              maxWidth: 800,
-              maxHeight: "80vh",
-              display: "flex",
-              flexDirection: "column",
-              overflow: "hidden"
-            }}>
-            {/* Modal header */}
-            <div
-              style={{
-                padding: `${uiSpace[20]}px ${uiSpace[24]}px`,
-                borderBottom: `0.5px solid ${theme.border.hairline}`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between"
-              }}>
-              <div>
-                <h2
-                  style={{
-                    margin: 0,
-                    fontSize: uiTypography.fontSize.lg,
-                    fontWeight: uiTypography.fontWeight.semibold,
-                    letterSpacing: uiTypography.letterSpacing.tight
-                  }}>
-                  {t("options.connection.selectProvider")}
-                </h2>
-                <p
-                  style={{
-                    margin: `${uiSpace[4]}px 0 0`,
-                    color: theme.text.secondary,
-                    fontSize: uiTypography.fontSize.sm
-                  }}>
-                  {t("options.connection.selectProviderDesc")}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowProviderSelect(false)
-                  setProviderSearchQuery("")
-                }}
-                style={{
-                  ...secondaryBtnStyle,
-                  padding: `${uiSpace[6]}px ${uiSpace[12]}px`
-                }}>
-                {t("options.connection.cancel")}
-              </button>
-            </div>
-
-            {/* Search input */}
-            <div style={{ padding: `${uiSpace[16]}px ${uiSpace[24]}px 0` }}>
-              <input
-                type="text"
-                value={providerSearchQuery}
-                onChange={(e) => setProviderSearchQuery(e.target.value)}
-                placeholder={t("options.connection.searchProviders")}
-                autoFocus
-                style={{
-                  ...createInputStyle("provider-search"),
-                  width: "100%",
-                  boxSizing: "border-box"
-                }}
-              />
-            </div>
-
-            {/* Provider grid */}
-            <div
-              style={{
-                flex: 1,
-                overflowY: "auto",
-                padding: uiSpace[24],
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-                gap: uiSpace[12],
-                alignContent: "start"
-              }}>
-              {/* Custom provider option */}
-              <button
-                type="button"
-                onClick={() => selectProviderAndCreate()}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: uiSpace[8],
-                  padding: uiSpace[16],
-                  border: `1px solid ${theme.border.default}`,
-                  borderRadius: uiRadius.md,
-                  background: theme.bg.surface,
-                  cursor: "pointer",
-                  transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
-                  fontFamily: uiTypography.fontFamily
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = theme.accent.primary
-                  e.currentTarget.style.background = `${theme.accent.primary}08`
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = theme.border.default
-                  e.currentTarget.style.background = theme.bg.surface
-                }}>
-                <div
-                  style={{
-                    width: 48,
-                    height: 48,
-                    borderRadius: uiRadius.sm,
-                    background: theme.bg.surfaceMuted,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center"
-                  }}>
-                  <PlusIcon size={24} color={theme.text.secondary} />
-                </div>
-                <span
-                  style={{
-                    fontSize: uiTypography.fontSize.sm,
-                    fontWeight: uiTypography.fontWeight.semibold,
-                    color: theme.text.primary,
-                    textAlign: "center"
-                  }}>
-                  {t("options.connection.customProvider")}
-                </span>
-                <span
-                  style={{
-                    fontSize: uiTypography.fontSize.xs,
-                    color: theme.text.secondary
-                  }}>
-                  OpenAI Compatible
-                </span>
-              </button>
-
-              {/* Models.dev providers */}
-              {filteredProviders.map((provider) => (
-                <button
-                  key={provider.id}
-                  type="button"
-                  onClick={() => selectModelsDevProvider(provider)}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: uiSpace[8],
-                    padding: uiSpace[16],
-                    border: `1px solid ${theme.border.default}`,
-                    borderRadius: uiRadius.md,
-                    background: theme.bg.surface,
-                    cursor: "pointer",
-                    transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
-                    fontFamily: uiTypography.fontFamily
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = theme.accent.primary
-                    e.currentTarget.style.background = `${theme.accent.primary}08`
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = theme.border.default
-                    e.currentTarget.style.background = theme.bg.surface
-                  }}>
-                  <ProviderLogoById providerId={provider.id} name={provider.name} size={48} theme={theme} />
-                  <span
-                    style={{
-                      fontSize: uiTypography.fontSize.sm,
-                      fontWeight: uiTypography.fontWeight.semibold,
-                      color: theme.text.primary,
-                      textAlign: "center"
-                    }}>
-                    {provider.name}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: uiTypography.fontSize.xs,
-                      color: theme.text.secondary
-                    }}>
-                    {provider.modelCount} {t("options.connection.models")}
-                  </span>
-                </button>
-              ))}
-
-              {/* Empty state */}
-              {filteredProviders.length === 0 && providerSearchQuery.trim() ? (
-                <div
-                  style={{
-                    gridColumn: "1 / -1",
-                    textAlign: "center",
-                    padding: uiSpace[32],
-                    color: theme.text.secondary
-                  }}>
-                  {t("options.connection.noProvidersFound")}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
+          onSearchQueryChange={providerManager.setProviderSearchQuery}
+          onSelectCustom={providerManager.selectProviderAndCreate}
+          onSelectModelsDev={providerManager.selectModelsDevProvider}
+          onFocusField={setFocusedField}
+          onBlurField={() => setFocusedField(null)}
+        />
       ) : null}
     </section>
   )
@@ -2587,14 +1574,14 @@ export default function OptionsPage() {
             />
           ) : null}
 
-          {pendingDeleteProviderId ? (
+          {providerManager.pendingDeleteProviderId ? (
             <ConfirmDialog
               title={t("options.backup.deleteProviderTitle")}
               message={t("options.backup.deleteProviderMessage")}
               confirmLabel={t("options.backup.deleteProviderButton")}
               cancelLabel={t("options.connection.cancel")}
-              onConfirm={() => deleteProvider(pendingDeleteProviderId)}
-              onCancel={() => setPendingDeleteProviderId(null)}
+              onConfirm={() => providerManager.deleteProvider(providerManager.pendingDeleteProviderId!)}
+              onCancel={() => providerManager.setPendingDeleteProviderId(null)}
               themeName={themeName}
             />
           ) : null}
