@@ -13,6 +13,7 @@ import type { SelectionAnchor, SelectionContext } from "@/shared/types"
 
 export default function App() {
   const extensionRootRef = useRef<HTMLDivElement | null>(null)
+  const panelOpenRef = useRef(false)
   const [selectionStart, setSelectionStart] = useState<SelectionStart | null>(null)
 
   useEffect(() => {
@@ -44,10 +45,15 @@ export default function App() {
     resetMessages
   } = useChatState()
 
+  // Keep ref in sync with state for stable callback dependency
+  useEffect(() => {
+    panelOpenRef.current = panelOpen
+  }, [panelOpen])
+
   // Handle selection change — suppress while panel is open
   const handleSelectionChange = useCallback(
     (context: SelectionContext | null, anchor: SelectionAnchor | null, start: SelectionStart | null) => {
-      if (panelOpen) {
+      if (panelOpenRef.current) {
         return
       }
 
@@ -60,7 +66,7 @@ export default function App() {
         closeToolbar()
       }
     },
-    [openToolbar, closeToolbar, panelOpen]
+    [openToolbar, closeToolbar]
   )
 
   // Use selection detection hook
