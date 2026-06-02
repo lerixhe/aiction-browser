@@ -1,4 +1,4 @@
-import type { ActionTemplate, ExtensionSettings, ModelParams, ModelServiceConfig } from "@/shared/types"
+import type { ActionTemplate, ExtensionSettings, ModelParams, ProviderConfig } from "@/shared/types"
 
 export const DEFAULT_ACTIONS: ActionTemplate[] = [
   {
@@ -25,7 +25,7 @@ export const DEFAULT_MODEL_PARAMS: ModelParams = {
   frequencyPenalty: 0
 }
 
-export const DEFAULT_CUSTOM_MODEL_SERVICE: ModelServiceConfig = {
+export const DEFAULT_CUSTOM_MODEL_SERVICE: ProviderConfig = {
   id: "",
   provider: "openai",
   name: "",
@@ -35,8 +35,8 @@ export const DEFAULT_CUSTOM_MODEL_SERVICE: ModelServiceConfig = {
 }
 
 export const DEFAULT_SETTINGS: ExtensionSettings = {
-  modelServices: [],
-  activeModelServiceId: "",
+  providers: [],
+  activeProviderId: "",
   theme: "auto",
   language: "system",
   actions: DEFAULT_ACTIONS,

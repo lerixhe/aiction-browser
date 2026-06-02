@@ -26,7 +26,7 @@ export type ProviderType =
   | "openrouter"
   | "openai-compatible"
 
-export interface ModelServiceConfig {
+export interface ProviderConfig {
   id: string
   provider: ProviderType
   name: string
@@ -39,8 +39,8 @@ export interface ModelServiceConfig {
 }
 
 export interface ExtensionSettings {
-  modelServices: ModelServiceConfig[]
-  activeModelServiceId: string
+  providers: ProviderConfig[]
+  activeProviderId: string
   theme: ThemePreference
   language: LanguagePreference
   actions: ActionTemplate[]

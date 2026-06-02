@@ -8,7 +8,7 @@ import type {
 import { MESSAGE_TYPES, ERROR_MESSAGES } from "@/shared/constants"
 import { i18nStore } from "@/shared/i18n/index"
 import { formatApiError, getErrorMessage, isAbortError } from "@/shared/errors"
-import { getActiveModelService, getSettings } from "@/shared/storage"
+import { getActiveProvider, getSettings } from "@/shared/storage"
 import { resolveLanguageModel } from "@/shared/model-provider"
 import {
   trackBackgroundEvent,
@@ -24,7 +24,7 @@ async function streamChat(
   const { streamText } = await import("ai")
 
   const settings = await getSettings()
-  const activeService = getActiveModelService(settings)
+  const activeService = getActiveProvider(settings)
 
   if (!activeService?.apiKey.trim()) {
     onEvent({ type: "failed", error: ERROR_MESSAGES.NO_API_KEY })

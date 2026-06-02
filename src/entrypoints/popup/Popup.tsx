@@ -158,7 +158,7 @@ export default function Popup() {
   const serviceMenuRef = useRef<HTMLDivElement | null>(null)
   const actionsMenuRef = useRef<HTMLDivElement | null>(null)
   const activeService =
-    settings?.modelServices.find((service) => service.id === settings.activeModelServiceId) ?? null
+    settings?.providers.find((provider) => provider.id === settings.activeProviderId) ?? null
   const avatarPalette = getAvatarPalette(activeService ? PROVIDERS[activeService.provider]?.name : undefined, activeService?.name, themeName === "dark")
   const enabledActionsCount = settings?.actions.filter((a) => a.enabled !== false).length ?? 0
 
@@ -220,10 +220,10 @@ export default function Popup() {
   }, [])
 
   const handleServiceChange = async (serviceId: string) => {
-    if (!settings || serviceId === settings.activeModelServiceId) {
+    if (!settings || serviceId === settings.activeProviderId) {
       return
     }
-    const nextSettings = { ...settings, activeModelServiceId: serviceId }
+    const nextSettings = { ...settings, activeProviderId: serviceId }
     setSettings(nextSettings)
     setChanging(true)
     setServiceMenuOpen(false)
@@ -274,7 +274,7 @@ export default function Popup() {
     height: 40,
     padding: `0 ${uiSpace[12]}px 0 ${TRIGGER_LEFT_PAD}px`,
     fontSize: uiTypography.fontSize.sm,
-    cursor: settings?.modelServices.length ? "pointer" : "default",
+    cursor: settings?.providers.length ? "pointer" : "default",
     display: "flex",
     alignItems: "center",
     textAlign: "left",
@@ -377,13 +377,13 @@ export default function Popup() {
           <button
             type="button"
             onClick={() => {
-              if (!settings || settings.modelServices.length === 0 || changing) {
+              if (!settings || settings.providers.length === 0 || changing) {
                 return
               }
               setServiceMenuOpen((open) => !open)
               setActionsMenuOpen(false)
             }}
-            disabled={!settings || settings.modelServices.length === 0 || changing}
+            disabled={!settings || settings.providers.length === 0 || changing}
             aria-haspopup="listbox"
             aria-expanded={serviceMenuOpen}
             style={{
@@ -407,11 +407,11 @@ export default function Popup() {
           </button>
 
           {/* Dropdown Menu */}
-          {serviceMenuOpen && settings?.modelServices.length ? (
+          {serviceMenuOpen && settings?.providers.length ? (
             <div role="listbox" style={menuStyle}>
-              {settings.modelServices.map((service) => {
+              {settings.providers.map((service) => {
                 const palette = getAvatarPalette(PROVIDERS[service.provider]?.name, service.name, themeName === "dark")
-                const selected = service.id === settings.activeModelServiceId
+                const selected = service.id === settings.activeProviderId
                 const displayText = getAvatarDisplayText(PROVIDERS[service.provider]?.name, service.name)
 
                 return (

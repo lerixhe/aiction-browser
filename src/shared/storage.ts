@@ -1,6 +1,6 @@
 import { DEFAULT_CUSTOM_MODEL_SERVICE, DEFAULT_SETTINGS } from "@/shared/defaults"
 import { PROVIDERS } from "@/shared/providers"
-import type { ExtensionSettings, LanguagePreference, ModelParams, ModelServiceConfig, ProviderType, ThemePreference, UserIconData } from "@/shared/types"
+import type { ExtensionSettings, LanguagePreference, ModelParams, ProviderConfig, ProviderType, ThemePreference, UserIconData } from "@/shared/types"
 
 export { DEFAULT_SETTINGS }
 
@@ -52,7 +52,7 @@ function validateProvider(value: unknown, oldValue?: unknown): ProviderType {
   return "openai-compatible"
 }
 
-function validateModelServices(items: unknown[]): ModelServiceConfig[] {
+function validateProviders(items: unknown[]): ProviderConfig[] {
   return items
     .filter((item) => item && typeof item === "object")
     .map((item, index) => {
@@ -93,11 +93,11 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
       ? validateActions(saved.customActions)
       : DEFAULT_SETTINGS.actions
 
-  const modelServices = Array.isArray(saved.modelServices) ? validateModelServices(saved.modelServices) : DEFAULT_SETTINGS.modelServices
-  const activeModelServiceId =
-    typeof saved.activeModelServiceId === "string" && modelServices.some((service) => service.id === saved.activeModelServiceId)
-      ? saved.activeModelServiceId
-      : modelServices[0]?.id ?? DEFAULT_SETTINGS.activeModelServiceId
+  const providers = Array.isArray(saved.providers) ? validateProviders(saved.providers) : DEFAULT_SETTINGS.providers
+  const activeProviderId =
+    typeof saved.activeProviderId === "string" && providers.some((provider) => provider.id === saved.activeProviderId)
+      ? saved.activeProviderId
+      : providers[0]?.id ?? DEFAULT_SETTINGS.activeProviderId
 
   const telemetryEnabled = typeof saved.telemetryEnabled === "boolean" ? saved.telemetryEnabled : DEFAULT_SETTINGS.telemetryEnabled
 
@@ -105,8 +105,8 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
   const language = validLanguages.includes(saved.language as LanguagePreference) ? (saved.language as LanguagePreference) : DEFAULT_SETTINGS.language
 
   return {
-    modelServices,
-    activeModelServiceId,
+    providers,
+    activeProviderId,
     theme,
     language,
     actions,
@@ -150,8 +150,8 @@ export function getThemeFromCache(): "auto" | "light" | "dark" {
   return "auto"
 }
 
-export function getActiveModelService(settings: ExtensionSettings): ModelServiceConfig | null {
-  return settings.modelServices.find((service) => service.id === settings.activeModelServiceId) ?? null
+export function getActiveProvider(settings: ExtensionSettings): ProviderConfig | null {
+  return settings.providers.find((provider) => provider.id === settings.activeProviderId) ?? null
 }
 
 // User icon functions

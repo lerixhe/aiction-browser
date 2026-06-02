@@ -16,7 +16,7 @@ import { getAvatarPalette, getAvatarDisplayText } from "@/shared/ui/avatar"
 import { ACTION_ICON_LIBRARY, type IconEntry } from "@/shared/ui/icon-library"
 import { BUNDLED_TABLER_ICONS } from "@/shared/ui/bundled-icons"
 import { useI18n } from "@/shared/i18n/context"
-import type { ActionTemplate, ExtensionSettings, LanguagePreference, ThemePreference, ApiTestResponse, FetchModelsResponse, ModelServiceConfig, UserIconData, ProviderType, ModelParams } from "@/shared/types"
+import type { ActionTemplate, ExtensionSettings, LanguagePreference, ThemePreference, ApiTestResponse, FetchModelsResponse, ProviderConfig, UserIconData, ProviderType, ModelParams } from "@/shared/types"
 import { MESSAGE_TYPES } from "@/shared/constants"
 import { ConfirmDialog } from "@/entrypoints/options/ConfirmDialog"
 
@@ -163,7 +163,7 @@ function ProviderLogoById({ providerId, name, size = 24, theme }: { providerId: 
   )
 }
 
-function createServiceDraft(provider: ProviderType): ModelServiceConfig {
+function createServiceDraft(provider: ProviderType): ProviderConfig {
   const meta = PROVIDERS[provider]
   return {
     id: `service-${Date.now()}`,
@@ -245,7 +245,7 @@ export default function OptionsPage() {
   const [pendingImportUserIcons, setPendingImportUserIcons] = useState<Record<string, UserIconData> | null>(null)
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
   const [showProviderSelect, setShowProviderSelect] = useState(false)
-  const [serviceDraft, setServiceDraft] = useState<ModelServiceConfig>(createServiceDraft("openai"))
+  const [serviceDraft, setServiceDraft] = useState<ProviderConfig>(createServiceDraft("openai"))
   const [pendingDeleteServiceId, setPendingDeleteServiceId] = useState<string | null>(null)
   const [modelsDevData, setModelsDevData] = useState<ModelsDevData | null>(null)
   const [modelSearchQuery, setModelSearchQuery] = useState("")
@@ -344,7 +344,7 @@ export default function OptionsPage() {
   }, [settings.actions])
 
   const selectedService = selectedServiceId
-    ? settings.modelServices.find((s) => s.id === selectedServiceId)
+    ? settings.providers.find((s) => s.id === selectedServiceId)
     : null
 
   const allProviders = useMemo(() => {
@@ -370,7 +370,7 @@ export default function OptionsPage() {
 
       void saveSettings({
         ...next,
-        modelServices: next.modelServices.map((service) => ({
+        providers: next.providers.map((service) => ({
           ...service,
           name: service.name.trim(),
           apiBaseUrl: service.apiBaseUrl?.trim() || undefined,
@@ -582,7 +582,7 @@ export default function OptionsPage() {
     void saveUserIconsPromise.then(() =>
       saveSettings({
         ...pendingImportSettings,
-        modelServices: pendingImportSettings.modelServices.map((service) => ({
+        providers: pendingImportSettings.providers.map((service) => ({
           ...service,
           name: service.name.trim(),
           apiBaseUrl: service.apiBaseUrl?.trim() || undefined,
@@ -614,8 +614,8 @@ export default function OptionsPage() {
     const newService = createServiceDraft(provider)
     saveSettingsNow((current) => ({
       ...current,
-      modelServices: [...current.modelServices, newService],
-      activeModelServiceId: current.activeModelServiceId || newService.id
+      providers: [...current.providers, newService],
+      activeProviderId: current.activeProviderId || newService.id
     }))
     setSelectedServiceId(newService.id)
     setServiceDraft(newService)
@@ -637,8 +637,8 @@ export default function OptionsPage() {
     }
     saveSettingsNow((current) => ({
       ...current,
-      modelServices: [...current.modelServices, newService],
-      activeModelServiceId: current.activeModelServiceId || newService.id
+      providers: [...current.providers, newService],
+      activeProviderId: current.activeProviderId || newService.id
     }))
     setSelectedServiceId(newService.id)
     setServiceDraft(newService)
@@ -664,7 +664,7 @@ export default function OptionsPage() {
       return
     }
 
-    const normalizedDraft: ModelServiceConfig = {
+    const normalizedDraft: ProviderConfig = {
       ...serviceDraft,
       name: serviceDraft.name.trim(),
       apiBaseUrl: serviceDraft.apiBaseUrl?.trim() || undefined,
@@ -674,7 +674,7 @@ export default function OptionsPage() {
 
     saveSettingsNow((current) => ({
       ...current,
-      modelServices: current.modelServices.map((service) => (service.id === selectedServiceId ? normalizedDraft : service))
+      providers: current.providers.map((provider) => (provider.id === selectedServiceId ? normalizedDraft : provider))
     }))
   }
 
@@ -685,7 +685,7 @@ export default function OptionsPage() {
     
     saveSettingsNow((current) => ({
       ...current,
-      modelServices: current.modelServices.map((service) =>
+      providers: current.providers.map((service) =>
         service.id === selectedServiceId ? { ...service, [field]: value } : service
       )
     }))
@@ -701,7 +701,7 @@ export default function OptionsPage() {
     
     saveSettingsNow((current) => ({
       ...current,
-      modelServices: current.modelServices.map((service) =>
+      providers: current.providers.map((service) =>
         service.id === selectedServiceId
           ? { ...service, modelParams: { ...service.modelParams, [key]: value } }
           : service
@@ -712,29 +712,29 @@ export default function OptionsPage() {
   const toggleServiceActive = (serviceId: string) => {
     saveSettingsNow((current) => {
       // 单选模式：如果点击的是已启用的，不允许禁用
-      if (current.activeModelServiceId === serviceId) {
+      if (current.activeProviderId === serviceId) {
         return current
       }
       // 启用新的，自动禁用旧的
-      return { ...current, activeModelServiceId: serviceId }
+      return { ...current, activeProviderId: serviceId }
     })
   }
 
   const deleteService = (serviceId: string) => {
     saveSettingsNow((current) => {
-      const remainingServices = current.modelServices.filter((service) => service.id !== serviceId)
-      const activeModelServiceId =
-        current.activeModelServiceId === serviceId ? (remainingServices[0]?.id ?? "") : current.activeModelServiceId
+      const remainingServices = current.providers.filter((service) => service.id !== serviceId)
+      const activeProviderId =
+        current.activeProviderId === serviceId ? (remainingServices[0]?.id ?? "") : current.activeProviderId
 
       return {
         ...current,
-        modelServices: remainingServices,
-        activeModelServiceId
+        providers: remainingServices,
+        activeProviderId
       }
     })
     
     // 自动选中下一个provider
-    const remaining = settings.modelServices.filter((s) => s.id !== serviceId)
+    const remaining = settings.providers.filter((s) => s.id !== serviceId)
     if (remaining.length > 0) {
       setSelectedServiceId(remaining[0].id)
       setServiceDraft({ ...remaining[0], modelParams: { ...remaining[0].modelParams } })
@@ -962,14 +962,14 @@ export default function OptionsPage() {
           }}>
           {/* List items */}
           <div style={{ flex: 1, overflowY: "auto", padding: uiSpace[8] }}>
-            {settings.modelServices.length === 0 ? (
+            {settings.providers.length === 0 ? (
               <div style={{ ...emptyStateStyle, margin: uiSpace[8], fontSize: uiTypography.fontSize.sm }}>
                 {t("options.connection.emptyServiceList")}
               </div>
             ) : (
-              settings.modelServices.map((service) => {
+              settings.providers.map((service) => {
                 const isSelected = selectedServiceId === service.id
-                const isActive = settings.activeModelServiceId === service.id
+                const isActive = settings.activeProviderId === service.id
                 const providerMeta = PROVIDERS[service.provider]
                 const displayName = service.name || providerMeta.name
 
