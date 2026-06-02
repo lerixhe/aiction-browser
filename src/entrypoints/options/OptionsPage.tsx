@@ -90,16 +90,7 @@ export default function OptionsPage() {
   const saveSettingsNow = (updater: (current: ExtensionSettings) => ExtensionSettings) => {
     setSettings((current) => {
       const next = updater(current)
-      void saveSettings({
-        ...next,
-        providers: next.providers.map((provider) => ({
-          ...provider,
-          name: provider.name.trim(),
-          apiBaseUrl: provider.apiBaseUrl?.trim() || undefined,
-          apiKey: provider.apiKey.trim(),
-          model: provider.model.trim()
-        }))
-      })
+      void saveSettings(next)
       return next
     })
   }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useDebouncedCallback } from "use-debounce"
 
 import { DEFAULT_CUSTOM_MODEL_PROVIDER } from "@/shared/defaults"
 import { saveSettings } from "@/shared/storage"
@@ -51,9 +52,13 @@ export function useProviderManager(
   const [fetchingModels, setFetchingModels] = useState(false)
   const [fetchError, setFetchError] = useState<string | null>(null)
 
-  // --- Refs ---
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pendingUpdatersRef = useRef<Array<(current: ExtensionSettings) => ExtensionSettings>>([])
+  // --- Debounced save ---
+  const debouncedSaveSettings = useDebouncedCallback(
+    (settings: ExtensionSettings) => {
+      void saveSettings(settings)
+    },
+    400
+  )
 
   // --- Load models.dev data ---
   useEffect(() => {
@@ -89,16 +94,7 @@ export function useProviderManager(
     (updater: (current: ExtensionSettings) => ExtensionSettings) => {
       setSettings((current) => {
         const next = updater(current)
-        void saveSettings({
-          ...next,
-          providers: next.providers.map((provider) => ({
-            ...provider,
-            name: provider.name.trim(),
-            apiBaseUrl: provider.apiBaseUrl?.trim() || undefined,
-            apiKey: provider.apiKey.trim(),
-            model: provider.model.trim()
-          }))
-        })
+        void saveSettings(next)
         return next
       })
     },
@@ -107,31 +103,13 @@ export function useProviderManager(
 
   const saveSettingsDebounced = useCallback(
     (updater: (current: ExtensionSettings) => ExtensionSettings) => {
-      pendingUpdatersRef.current.push(updater)
-      setSettings((current) => updater(current))
-
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
-      debounceTimerRef.current = setTimeout(() => {
-        const updaters = pendingUpdatersRef.current
-        pendingUpdatersRef.current = []
-        debounceTimerRef.current = null
-        setSettings((current) => {
-          const next = updaters.reduce((acc, fn) => fn(acc), current)
-          void saveSettings({
-            ...next,
-            providers: next.providers.map((provider) => ({
-              ...provider,
-              name: provider.name.trim(),
-              apiBaseUrl: provider.apiBaseUrl?.trim() || undefined,
-              apiKey: provider.apiKey.trim(),
-              model: provider.model.trim()
-            }))
-          })
-          return next
-        })
-      }, 400)
+      setSettings((current) => {
+        const next = updater(current)
+        debouncedSaveSettings(next)
+        return next
+      })
     },
-    [setSettings]
+    [setSettings, debouncedSaveSettings]
   )
 
   // --- Provider CRUD ---

@@ -29,7 +29,8 @@
     "pdfjs-dist": "^5.7.284",
     "posthog-js": "^1.376.3",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "use-debounce": "^10.1.1"
   },
   "devDependencies": {
     "@iconify/json": "^2.2.481",

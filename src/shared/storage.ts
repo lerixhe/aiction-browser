@@ -114,10 +114,23 @@ export async function getSettings(): Promise<ExtensionSettings> {
 
 const THEME_CACHE_KEY = "aiction:theme"
 
+export function trimProviders(providers: ProviderConfig[]): ProviderConfig[] {
+  return providers.map((provider) => ({
+    ...provider,
+    name: provider.name.trim(),
+    apiBaseUrl: provider.apiBaseUrl?.trim() || undefined,
+    apiKey: provider.apiKey.trim(),
+    model: provider.model.trim()
+  }))
+}
+
 export async function saveSettings(settings: ExtensionSettings): Promise<void> {
   try {
     await chrome.storage.sync.set({
-      [SETTINGS_KEY]: settings
+      [SETTINGS_KEY]: {
+        ...settings,
+        providers: trimProviders(settings.providers)
+      }
     })
     localStorage.setItem(THEME_CACHE_KEY, settings.theme)
   } catch {
