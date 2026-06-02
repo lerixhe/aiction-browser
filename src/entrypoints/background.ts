@@ -106,16 +106,17 @@ export default defineBackground(() => {
       }
 
       abortController?.abort()
-      abortController = new AbortController()
+      const controller = new AbortController()
+      abortController = controller
 
-      void streamChat(request.payload.messages, abortController.signal, (event) => {
+      void streamChat(request.payload.messages, controller.signal, (event) => {
         try {
           port.postMessage(event)
         } catch {
           return
         }
       }).catch((error: unknown) => {
-        if (abortController?.signal.aborted && isAbortError(error)) {
+        if (controller.signal.aborted && isAbortError(error)) {
           try {
             port.postMessage({ type: "cancelled" } satisfies ChatStreamEvent)
           } catch {
