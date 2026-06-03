@@ -141,8 +141,6 @@ export function useChatState() {
         // Ignore
       }
 
-      void trackEvent("chat_started", { model: modelName })
-
       try {
         let streamedContent = ""
         let streamedReasoning = ""

@@ -1,7 +1,6 @@
 import type { CSSProperties } from "react"
 
 import { ToggleSwitch } from "@/shared/ui/toggle-switch"
-import { trackEvent } from "@/shared/analytics"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiRadius, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { createCardStyle } from "@/shared/ui/styles"
@@ -168,7 +167,6 @@ export function AboutSection({ settings, saveSettingsNow }: AboutSectionProps) {
             onChange={() => {
               const next = !settings.telemetryEnabled
               saveSettingsNow((current) => ({ ...current, telemetryEnabled: next }))
-              void trackEvent("telemetry_toggled", { enabled: next })
             }}
             theme={theme}
           />

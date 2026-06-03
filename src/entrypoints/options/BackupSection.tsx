@@ -1,6 +1,7 @@
 import { useRef, useState, type CSSProperties } from "react"
 
 import { getUserIcons, normalizeSettings, saveSettings, saveUserIcon } from "@/shared/storage"
+import { trackEvent } from "@/shared/analytics"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { createButtonStyle, createCardStyle, createStatusMessageStyle } from "@/shared/ui/styles"
@@ -47,6 +48,7 @@ export function BackupSection({ settings, setSettings, onImportComplete }: Backu
     URL.revokeObjectURL(url)
 
     setBackupStatus({ success: true, message: t("options.connection.configExported") })
+    void trackEvent("settings_exported", { provider_count: settings.providers.length, action_count: settings.actions.length })
   }
 
   const handleImportClick = () => {
@@ -107,6 +109,7 @@ export function BackupSection({ settings, setSettings, onImportComplete }: Backu
     )
       .then(() => {
         setBackupStatus({ success: true, message: t("options.connection.configImported") })
+        void trackEvent("settings_imported", { provider_count: pendingImportSettings.providers.length, action_count: pendingImportSettings.actions.length, has_user_icons: Boolean(pendingImportUserIcons && Object.keys(pendingImportUserIcons).length > 0) })
         onImportComplete()
       })
       .catch((error: unknown) => {

@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react"
 
 import { ToggleSwitch } from "@/shared/ui/toggle-switch"
+import { trackEvent } from "@/shared/analytics"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { createCardStyle, createFieldLabelStyle } from "@/shared/ui/styles"
@@ -58,7 +59,9 @@ export function AppearanceSection({ settings, saveSettingsNow }: AppearanceSecti
               key={value}
               type="button"
               onClick={() => {
+                const fromTheme = settings.theme
                 saveSettingsNow((current) => ({ ...current, theme: value }))
+                void trackEvent("theme_changed", { from_theme: fromTheme, to_theme: value })
               }}
               style={{
                 padding: `${uiSpace[6]}px ${uiSpace[16]}px`,
@@ -126,7 +129,9 @@ export function AppearanceSection({ settings, saveSettingsNow }: AppearanceSecti
                   key={value}
                   type="button"
                   onClick={() => {
+                    const fromLang = settings.language
                     saveSettingsNow((current) => ({ ...current, language: value }))
+                    void trackEvent("language_changed", { from_language: fromLang, to_language: value })
                   }}
                   style={{
                     padding: `${uiSpace[6]}px ${uiSpace[16]}px`,

@@ -3,6 +3,7 @@ import { useDebouncedCallback } from "use-debounce"
 
 import { DEFAULT_CUSTOM_MODEL_PROVIDER } from "@/shared/defaults"
 import { saveSettings } from "@/shared/storage"
+import { trackEvent } from "@/shared/analytics"
 import {
   requestModelsDev,
   getModelsForProvider,
@@ -133,7 +134,8 @@ export function useProviderManager(
     setTestResult(null)
     setModelSearchQuery("")
     setProviderSearchQuery("")
-  }, [saveSettingsNow])
+    void trackEvent("provider_created", { provider_type: "custom", provider_count: settings.providers.length + 1 })
+  }, [saveSettingsNow, settings.providers.length])
 
   const selectModelsDevProvider = useCallback(
     (providerInfo: ModelsDevProviderInfo) => {
@@ -156,8 +158,9 @@ export function useProviderManager(
       setTestResult(null)
       setModelSearchQuery("")
       setProviderSearchQuery("")
+      void trackEvent("provider_created", { provider_type: "models_dev", provider_name: providerInfo.name, provider_count: settings.providers.length + 1 })
     },
-    [saveSettingsNow]
+    [saveSettingsNow, settings.providers.length]
   )
 
   const closeConnectionEditor = useCallback(() => {
@@ -236,12 +239,20 @@ export function useProviderManager(
 
   const toggleProviderActive = useCallback(
     (providerId: string) => {
+      const fromProviderId = settings.activeProviderId
+      const fromProvider = settings.providers.find((p) => p.id === fromProviderId)
+      const toProvider = settings.providers.find((p) => p.id === providerId)
       saveSettingsNow((current) => {
         if (current.activeProviderId === providerId) return current
         return { ...current, activeProviderId: providerId }
       })
+      void trackEvent("provider_switched", {
+        from_provider: fromProvider?.name || fromProviderId || "none",
+        to_provider: toProvider?.name || providerId,
+        provider_count: settings.providers.length
+      })
     },
-    [saveSettingsNow]
+    [settings, saveSettingsNow]
   )
 
   const deleteProvider = useCallback(

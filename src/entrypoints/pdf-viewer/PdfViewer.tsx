@@ -234,7 +234,6 @@ export function PdfViewerPage() {
             }
 
             openToolbar(context, anchor)
-            void trackEvent("selection_detected", { text_length: selectedText.length })
           }
         } else {
           // Check if click was outside toolbar area
@@ -280,8 +279,6 @@ export function PdfViewerPage() {
       closeToolbar()
       resetMessages()
 
-      void trackEvent("panel_opened")
-
       if (selectionContext) {
         const ctx = { ...selectionContext, text }
         setContext(ctx)
@@ -303,9 +300,13 @@ export function PdfViewerPage() {
       const prompt = resolveActionTemplate(template, context, settings)
 
       const matchedAction = settings.actions.find((a) => a.template === template)
+      const BUILTIN_IDS = new Set(["explain", "translate"])
+      const customActions = settings.actions.filter((a) => !BUILTIN_IDS.has(a.id))
       void trackEvent("action_clicked", {
         action_id: matchedAction?.id ?? "unknown",
-        action_label: matchedAction?.label ?? "unknown"
+        action_label: matchedAction?.label ?? "unknown",
+        custom_action_count: customActions.length,
+        custom_action_labels: customActions.map((a) => a.label).join(",")
       })
 
       await openPanelWithAction(text, prompt)

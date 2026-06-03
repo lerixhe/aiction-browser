@@ -61,7 +61,6 @@ export default function App() {
       if (context && anchor) {
         setSelectionStart(start)
         openToolbar(context, anchor)
-        void trackEvent("selection_detected", { text_length: context.text.length })
       } else {
         setSelectionStart(null)
         closeToolbar()
@@ -93,8 +92,6 @@ export default function App() {
       closeToolbar()
       resetMessages()
 
-      void trackEvent("panel_opened")
-
       if (selectionContext) {
         const ctx = { ...selectionContext, text }
         setContext(ctx)
@@ -116,9 +113,13 @@ export default function App() {
       const prompt = resolveActionTemplate(template, context, settings)
 
       const matchedAction = settings.actions.find((a) => a.template === template)
+      const BUILTIN_IDS = new Set(["explain", "translate"])
+      const customActions = settings.actions.filter((a) => !BUILTIN_IDS.has(a.id))
       void trackEvent("action_clicked", {
         action_id: matchedAction?.id ?? "unknown",
-        action_label: matchedAction?.label ?? "unknown"
+        action_label: matchedAction?.label ?? "unknown",
+        custom_action_count: customActions.length,
+        custom_action_labels: customActions.map((a) => a.label).join(",")
       })
 
       await openPanelWithAction(text, prompt)
