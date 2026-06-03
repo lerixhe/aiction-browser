@@ -29,6 +29,7 @@ export default {
   "chat.inputPlaceholder": "Ask a follow-up (Enter to send, Shift+Enter for new line)",
   "chat.stop": "Stop",
   "chat.send": "Send",
+  "chat.modelLabel": "Model",
   "options.nav.appearance": "Appearance",
   "options.nav.connection": "API Providers",
   "options.nav.actions": "AI Actions",

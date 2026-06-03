@@ -12,6 +12,7 @@ interface Props {
   capturedText: string
   messages: ChatMessage[]
   requestState: "idle" | "streaming" | "cancelled" | "failed"
+  modelName?: string
   onCapturedTextChange: (text: string) => void
   onSend: (input: string) => void
   onStop: () => void
@@ -194,6 +195,7 @@ export default function ChatWindow({
   capturedText,
   messages,
   requestState,
+  modelName,
   onCapturedTextChange,
   onSend,
   onStop,
@@ -380,6 +382,31 @@ export default function ChatWindow({
           userSelect: "none"
         }}
       />
+
+      {/* Model name */}
+      {modelName && (
+        <div
+          style={{
+            padding: `0 ${uiSpace[8]}px ${uiSpace[4]}px`,
+            flexShrink: 0
+          }}>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: uiSpace[4],
+              padding: `${uiSpace[2]}px ${uiSpace[6]}px`,
+              borderRadius: uiRadius.sm,
+              background: theme.bg.surfaceMuted,
+              fontSize: uiTypography.fontSize.xs,
+              color: theme.text.secondary,
+              fontFamily: uiTypography.fontFamily
+            }}>
+            <span style={{ opacity: 0.7 }}>{t("chat.modelLabel")}:</span>
+            <span style={{ fontWeight: uiTypography.fontWeight.medium }}>{modelName}</span>
+          </div>
+        </div>
+      )}
 
       {/* Captured text section */}
       {hasCapturedText && (

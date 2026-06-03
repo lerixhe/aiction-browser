@@ -29,6 +29,7 @@ export default {
   "chat.inputPlaceholder": "继续提问（Enter 发送，Shift+Enter 换行）",
   "chat.stop": "停止",
   "chat.send": "发送",
+  "chat.modelLabel": "模型",
   "options.nav.appearance": "外观",
   "options.nav.connection": "API提供商",
   "options.nav.actions": "AI Actions",

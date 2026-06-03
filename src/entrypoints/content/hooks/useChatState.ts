@@ -55,6 +55,7 @@ export function useChatState() {
   const [panelOpen, setPanelOpen] = useState(false)
   const [capturedText, setCapturedText] = useState("")
   const [context, setContext] = useState<SelectionContext | null>(null)
+  const [modelName, setModelName] = useState<string>("")
 
   const messagesRef = useRef<ChatMessage[]>([])
   const activeStreamAbortRef = useRef<AbortController | null>(null)
@@ -74,6 +75,26 @@ export function useChatState() {
       if (throttleTimerRef.current !== null) {
         clearTimeout(throttleTimerRef.current)
       }
+    }
+  }, [])
+
+  // Fetch model name on mount
+  useEffect(() => {
+    let cancelled = false
+    const fetchModelName = async () => {
+      try {
+        const settings = await getSettings()
+        const activeProvider = getActiveProvider(settings)
+        if (!cancelled && activeProvider?.model) {
+          setModelName(activeProvider.model)
+        }
+      } catch {
+        // Ignore errors
+      }
+    }
+    void fetchModelName()
+    return () => {
+      cancelled = true
     }
   }, [])
 
@@ -305,6 +326,7 @@ export function useChatState() {
     sendPrompt,
     stopStreaming,
     clearChat,
-    resetMessages
+    resetMessages,
+    modelName
   }
 }

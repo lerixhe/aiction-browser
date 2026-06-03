@@ -42,7 +42,8 @@ export default function App() {
     setContext,
     sendPrompt,
     stopStreaming,
-    resetMessages
+    resetMessages,
+    modelName
   } = useChatState()
 
   // Keep ref in sync with state for stable callback dependency
@@ -169,6 +170,7 @@ export default function App() {
           capturedText={capturedText}
           messages={messages}
           requestState={requestState.status}
+          modelName={modelName}
           onCapturedTextChange={setCapturedText}
           onSend={(input) => {
             void handleFollowupSend(input)
