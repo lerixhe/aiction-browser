@@ -6,12 +6,12 @@ export function getServiceInitial(name: string | undefined) {
   return trimmed[0]!.toLocaleUpperCase()
 }
 
-export function getAvatarDisplayText(iconText: string | undefined, serviceName: string | undefined) {
+export function getAvatarDisplayText(iconText: string | undefined, providerName: string | undefined) {
   const custom = iconText?.trim() ?? ""
   if (custom) {
     return custom.slice(0, 4)
   }
-  return getServiceInitial(serviceName)
+  return getServiceInitial(providerName)
 }
 
 export function hashString(value: string) {
@@ -23,8 +23,8 @@ export function hashString(value: string) {
   return Math.abs(hash)
 }
 
-export function getAvatarPalette(iconText: string | undefined, serviceName: string | undefined, dark: boolean) {
-  const seed = iconText?.trim() || serviceName?.trim() || "service"
+export function getAvatarPalette(iconText: string | undefined, providerName: string | undefined, dark: boolean) {
+  const seed = iconText?.trim() || providerName?.trim() || "service"
   const hue = hashString(seed) % 360
   return dark
     ? {

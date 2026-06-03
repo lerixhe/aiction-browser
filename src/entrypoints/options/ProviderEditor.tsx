@@ -118,7 +118,7 @@ export function ProviderEditor({
       {/* Name */}
       <div style={{ marginBottom: uiSpace[16] }}>
         <label htmlFor="provider-name" style={fieldLabelStyle}>
-          {t("options.connection.serviceName")}
+          {t("options.connection.providerName")}
         </label>
         <input
           id="provider-name"

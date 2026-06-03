@@ -4,8 +4,8 @@ import { getSettings, saveSettings } from "@/shared/storage"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { createFieldLabelStyle, createInputStyle } from "@/shared/ui/styles"
-import { getAvatarPalette, getAvatarDisplayText } from "@/shared/ui/avatar"
 import { ActionIcon } from "@/shared/ui/iconify"
+import { ProviderLogoById } from "@/entrypoints/options/ProviderLogo"
 import { ToggleSwitch } from "@/shared/ui/toggle-switch"
 import { useI18n } from "@/shared/i18n/context"
 import type { ActionTemplate, ExtensionSettings } from "@/shared/types"
@@ -117,9 +117,8 @@ export default function Popup() {
   const [pressedBtn, setPressedBtn] = useState<string | null>(null)
   const serviceMenuRef = useRef<HTMLDivElement | null>(null)
   const actionsMenuRef = useRef<HTMLDivElement | null>(null)
-  const activeService =
+  const activeProvider =
     settings?.providers.find((provider) => provider.id === settings.activeProviderId) ?? null
-  const avatarPalette = getAvatarPalette(activeService?.name, activeService?.name, themeName === "dark")
   const enabledActionsCount = settings?.actions.filter((a) => a.enabled !== false).length ?? 0
 
   useEffect(() => {
@@ -331,7 +330,7 @@ export default function Popup() {
     <div style={shellStyle}>
       {/* Service Selector */}
       <div style={{ marginBottom: uiSpace[16] }}>
-        <div style={fieldLabelStyle}>{t("popup.selectService")}</div>
+        <div style={fieldLabelStyle}>{t("popup.selectProvider")}</div>
 
         <div ref={serviceMenuRef} style={{ position: "relative" }}>
           <button
@@ -351,15 +350,15 @@ export default function Popup() {
               opacity: !settings || changing ? 0.6 : 1
             }}>
             <div aria-hidden="true" style={triggerLeftIcon}>
-              <span
-                style={{
-                  ...avatarStyle(avatarPalette, AVATAR_SIZE, getAvatarDisplayText(activeService?.name, activeService?.name).length)
-                }}>
-                {getAvatarDisplayText(activeService?.name, activeService?.name)}
-              </span>
+              <ProviderLogoById
+                providerId={activeProvider?.modelsDevId || ""}
+                name={activeProvider?.name || "Custom"}
+                size={AVATAR_SIZE}
+                theme={theme}
+              />
             </div>
             <span style={{ ...menuItemTextStyle, flex: 1 }}>
-              {activeService?.name || t("popup.noService")}
+              {activeProvider?.name || t("popup.noProvider")}
             </span>
             <div style={triggerChevron}>
               <ChevronIcon color={theme.text.secondary} expanded={serviceMenuOpen} />
@@ -370,9 +369,7 @@ export default function Popup() {
           {serviceMenuOpen && settings?.providers.length ? (
             <div role="listbox" style={menuStyle}>
               {settings.providers.map((service) => {
-                const palette = getAvatarPalette(service.name, service.name, themeName === "dark")
                 const selected = service.id === settings.activeProviderId
-                const displayText = getAvatarDisplayText(service.name, service.name)
 
                 return (
                   <button
@@ -384,11 +381,16 @@ export default function Popup() {
                     onMouseEnter={() => setHoveredItem(service.id)}
                     onMouseLeave={() => setHoveredItem(null)}
                     style={menuItemStyle(service.id, selected)}>
-                    <span aria-hidden="true" style={menuItemAvatarStyle(palette, displayText)}>
-                      {displayText}
+                    <span aria-hidden="true" style={{ marginRight: uiSpace[12] }}>
+                      <ProviderLogoById
+                        providerId={service.modelsDevId || ""}
+                        name={service.name || "Custom"}
+                        size={AVATAR_SIZE}
+                        theme={theme}
+                      />
                     </span>
                     <span style={menuItemTextStyle}>
-                      {service.name || t("popup.unnamedService")}
+                      {service.name || t("popup.unnamedProvider")}
                     </span>
                     {selected ? (
                       <span
