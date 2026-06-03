@@ -126,7 +126,7 @@ export function BackupSection({ settings, setSettings, onImportComplete }: Backu
   }
 
   const primaryBtnStyle: CSSProperties = {
-    ...createButtonStyle(theme, "primary")
+    ...createButtonStyle(theme, "primary", { compact: true })
   }
 
   const insetCardStyle: CSSProperties = {
@@ -207,7 +207,7 @@ export function BackupSection({ settings, setSettings, onImportComplete }: Backu
             onMouseUp={() => setPressedBtn(null)}
             onMouseLeave={() => setPressedBtn(null)}
             style={{
-              ...createButtonStyle(theme, "secondary"),
+              ...createButtonStyle(theme, "secondary", { compact: true }),
               transform: pressedBtn === "import-settings" ? "scale(0.96)" : "scale(1)"
             }}>
             {t("options.backup.importButton")}

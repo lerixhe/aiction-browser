@@ -394,17 +394,6 @@ export function ActionsSection({ settings, saveSettingsNow }: ActionsSectionProp
             </div>
           ) : (
             <div>
-              {/* Detail title */}
-              <h3
-                style={{
-                  margin: `0 0 ${uiSpace[20]}px`,
-                  fontSize: uiTypography.fontSize.md,
-                  fontWeight: uiTypography.fontWeight.semibold,
-                  color: theme.text.primary
-                }}>
-                {t("options.actions.detailTitle")}
-              </h3>
-
               {/* Action name */}
               <div style={{ marginBottom: uiSpace[16] }}>
                 <label style={fieldLabelStyle}>{t("options.actions.actionName")}</label>

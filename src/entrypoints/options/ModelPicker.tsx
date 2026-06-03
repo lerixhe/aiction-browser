@@ -121,7 +121,14 @@ export function ModelPicker({
           />
 
           {hasDevModels ? (
-            <div style={{ marginTop: uiSpace[8] }}>
+            <div
+              style={{
+                marginTop: uiSpace[8],
+                border: `1px solid ${theme.border.hairline}`,
+                borderRadius: uiRadius.md,
+                overflow: "hidden",
+                background: theme.bg.surface
+              }}>
               <input
                 type="text"
                 value={modelSearchQuery}
@@ -130,14 +137,13 @@ export function ModelPicker({
                 style={{
                   width: "100%",
                   boxSizing: "border-box",
-                  padding: `${uiSpace[4]}px ${uiSpace[8]}px`,
+                  padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
                   fontSize: uiTypography.fontSize.xs,
-                  border: `1px solid ${theme.border.hairline}`,
-                  borderRadius: uiRadius.sm,
-                  background: theme.bg.surface,
+                  border: "none",
+                  borderBottom: `1px solid ${theme.border.hairline}`,
+                  background: theme.bg.surfaceMuted,
                   color: theme.text.primary,
                   outline: "none",
-                  marginBottom: uiSpace[6],
                   fontFamily: uiTypography.fontFamily
                 }}
               />
@@ -146,8 +152,9 @@ export function ModelPicker({
                   display: "flex",
                   flexDirection: "column",
                   gap: uiSpace[2],
-                  maxHeight: 240,
-                  overflowY: "auto"
+                  maxHeight: 200,
+                  overflowY: "auto",
+                  padding: `${uiSpace[4]}px 0`
                 }}>
                 {filtered.map((m) => {
                   const isSelected = currentModel === m.id
@@ -160,8 +167,9 @@ export function ModelPicker({
                         display: "flex",
                         alignItems: "center",
                         gap: uiSpace[8],
-                        padding: `${uiSpace[4]}px ${uiSpace[10]}px`,
-                        border: `1px solid ${isSelected ? theme.accent.primary : "transparent"}`,
+                        padding: `${uiSpace[6]}px ${uiSpace[10]}px`,
+                        margin: `0 ${uiSpace[4]}px`,
+                        border: "none",
                         borderRadius: uiRadius.sm,
                         background: isSelected ? `${theme.accent.primary}14` : "transparent",
                         color: isSelected ? theme.accent.primary : theme.text.primary,
@@ -231,11 +239,11 @@ export function ModelPicker({
                   <div
                     style={{
                       textAlign: "center",
-                      padding: uiSpace[12],
+                      padding: `${uiSpace[16]}px ${uiSpace[12]}px`,
                       color: theme.text.secondary,
                       fontSize: uiTypography.fontSize.xs
                     }}>
-                    No models matching "{modelSearchQuery}"
+                    {t("options.connection.noModelsMatching", [modelSearchQuery])}
                   </div>
                 ) : null}
               </div>

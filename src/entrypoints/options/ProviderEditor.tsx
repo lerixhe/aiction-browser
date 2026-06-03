@@ -61,7 +61,7 @@ export function ProviderEditor({
 
   const fieldLabelStyle = createFieldLabelStyle(theme)
   const createInput = (fieldName: string) => createInputStyle(theme, focusedField === fieldName)
-  const primaryBtnStyle = createButtonStyle(theme, "primary")
+  const primaryBtnStyle = createButtonStyle(theme, "primary", { compact: true })
   const secondaryBtnStyle = createButtonStyle(theme, "secondary", { compact: true })
 
   const [pressedBtn, setPressedBtn] = useState<string | null>(null)
@@ -220,6 +220,8 @@ export function ProviderEditor({
             aria-live="polite"
             style={{
               ...createStatusMessageStyle(theme, testResult.success ? "success" : "error"),
+              padding: `${uiSpace[4]}px ${uiSpace[10]}px`,
+              fontSize: uiTypography.fontSize.xs,
               borderRadius: uiRadius.pill,
               fontWeight: uiTypography.fontWeight.medium,
               lineHeight: 1.5
