@@ -1,63 +1,74 @@
 # AIction
 
-> **[English](./README.md)** | 中文
+> 选中文本 → 触发 AI → 继续对话
 
-轻量级 Chrome 扩展（MV3），为网页选中内容提供 AI 辅助。
+轻量级 Chrome 扩展，为网页选中内容提供 AI 辅助。支持任意 OpenAI 兼容的 `/chat/completions` 端点。
 
-在任意页面选择文本，通过内联工具栏触发 AI 动作，并在浮动聊天面板中继续对话。支持任何 OpenAI 兼容的 `/chat/completions` 端点。
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-yellow)](https://chromewebstore.google.com/detail/YOUR_EXTENSION_ID)
+[![Version](https://img.shields.io/badge/version-0.1.0-green)](package.json)
+
+**[English](./README.md)**
 
 ## 功能特性
 
-- **内联 AI 工具栏** — 选择文本后立即通过环形展开菜单或胶囊工具栏触发 AI 动作
-- **浮动聊天面板** — 在可拖拽、可调整大小的面板中继续对话，支持流式响应
-- **自定义动作** — 创建自己的提示词模板，使用 `{text}` 占位符
-- **多模型支持** — OpenAI、Anthropic、Google、DeepSeek、OpenRouter 或任何 OpenAI 兼容 API
-- **思维过程展示** — 查看模型思考过程（支持 DeepSeek 等模型的 `reasoning_content`）
-- **深色模式** — 自动/浅色/深色主题
-- **PDF 查看器** — 内置 PDF 查看器，支持 AI 辅助
-- **备份与恢复** — 以 JSON 格式导入/导出配置
+**内联 AI 工具栏**
 
-## 截图
-
-### 动作按钮演示
+在任意网页选中文本，工具栏随即出现，提供可配置的 AI 动作。
 
 ![动作按钮演示](./docs/images/动作按钮演示.gif)
 
+**浮动聊天面板**
+
+在可拖拽、可调整大小的面板中继续对话，支持流式响应。
+
+**自定义动作**
+
+创建自己的提示词模板，使用 `{text}` 占位符。内置动作：
+
+| 动作 | 模板 |
+|------|------|
+| 解释 | `帮我解释选中内容「{text}」` |
+| 翻译 | `请将以下内容翻译为简体中文：\n{text}` |
+
+**多模型支持**
+
+OpenAI、Anthropic Claude、Google Gemini、DeepSeek、OpenRouter，或任何 OpenAI 兼容 API。
+
+**其他功能**
+
+- 思维链展示 — 查看模型推理过程（DeepSeek `reasoning_content` 等）
+- 深色模式 — 自动 / 浅色 / 深色主题
+- PDF 查看器 — 内置 PDF 查看器，支持 AI 辅助
+- 备份恢复 — 以 JSON 格式导入/导出配置
+
 ## 安装
 
-### 从源码安装（开发模式）
+**Chrome 应用商店**（推荐）
+
+[从 Chrome 应用商店安装](YOUR_CHROME_WEBSTORE_LINK)
+
+**开发者模式**
 
 ```bash
-# 克隆仓库
-git clone <repo-url>
+git clone https://github.com/YOUR_USERNAME/aiction.git
 cd aiction
-
-# 安装依赖（自动运行 `wxt prepare`）
 npm install
-
-# 启动开发构建（监听文件变化）
 npm run dev
-
-# 构建生产版本
-npm run build
 ```
 
-### 加载未打包扩展
-
-1. 运行 `npm run build`
-2. 打开 `chrome://extensions`
-3. 开启 **开发者模式**
-4. 点击 **加载已解压的扩展程序**
-5. 选择 `.output/chrome-mv3` 目录
+然后：
+1. 打开 `chrome://extensions`
+2. 开启"开发者模式"
+3. 点击"加载已解压的扩展程序"
+4. 选择 `.output/chrome-mv3` 目录
 
 ## 快速上手
 
-1. **配置 API** — 右键点击扩展图标 → 选项，或从 `chrome://extensions` 打开选项页
-2. **添加模型服务** — 输入 API Base URL、API Key 和模型名称
-3. **测试连接** — 点击"测试连接"验证配置是否正确
-4. **选择文本** — 在网页上高亮选中文本
-5. **触发 AI** — 点击出现的工具栏按钮，选择一个动作
-6. **开始对话** — 在浮动面板中继续交流
+1. 右键扩展图标 → **选项**
+2. 添加模型服务（API URL + Key + Model）
+3. 点击"测试连接"
+4. 在任意网页选中文本 → 点击工具栏 → 选择动作
 
 ## 配置
 
@@ -79,80 +90,24 @@ npm run build
 | Presence Penalty | 0 | -2 - 2 |
 | Frequency Penalty | 0 | -2 - 2 |
 
-### 自定义动作
-
-在选项页创建自定义提示词模板，使用 `{text}` 作为选中文本的占位符。
-
-**内置动作：**
-
-| 动作 | 模板 |
-|------|------|
-| 解释 | `帮我解释选中内容「{text}」` |
-| 翻译 | `请将以下内容翻译为简体中文：\n{text}` |
-
 ## 架构
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                  Chrome 扩展 (MV3)                       │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │ 内容脚本      │  │ 后台服务      │  │ 选项页        │  │
-│  │ Content      │  │ Background   │  │ Options      │  │
-│  │ Script       │  │ Service      │  │ Page         │  │
-│  │              │  │ Worker       │  │              │  │
-│  │ • 文本选择    │  │ • AI API     │  │ • 设置        │  │
-│  │ • 工具栏      │  │ • 流式传输    │  │ • 模型        │  │
-│  │ • 聊天面板    │  │ • 存储        │  │ • 动作        │  │
-│  └──────┬───────┘  └──────┬───────┘  └──────────────┘  │
-│         │                 │                             │
-│         └── chrome.runtime.connect (流式) ──────┘        │
-│         └── chrome.runtime.onMessage (单次) ──────┘      │
-│                                                         │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │              共享模块 (src/shared)                │    │
-│  │  types • storage • messaging • prompt • tokens  │    │
-│  └─────────────────────────────────────────────────┘    │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
+内容脚本（选中文本、工具栏、聊天面板）
+    ↓ chrome.runtime.connect（流式传输）
+后台服务（AI API、存储）
+    ↓ chrome.runtime.sendMessage（单次请求）
+选项页（设置、模型、动作）
 ```
 
-### 技术栈
+详细架构文档：[docs/WIKI.md](docs/WIKI.md)
 
-- **构建工具**：[WXT](https://wxt.dev/)
-- **UI**：React 19 + TypeScript
-- **AI SDK**：Vercel AI SDK (`ai` 包)
-- **Manifest**：Chrome Manifest V3
+## 技术栈
 
-### 目录结构
-
-```
-src/
-├── entrypoints/
-│   ├── background.ts          # 后台服务工作线程
-│   ├── content/
-│   │   ├── index.tsx          # 内容脚本入口（Shadow DOM UI）
-│   │   ├── App.tsx            # 根 React 组件
-│   │   ├── components/        # SelectionToolbar、ChatWindow 等
-│   │   └── hooks/             # useChatState、useDraggable、useSelectionDetection
-│   ├── options/               # 选项页
-│   ├── popup/                 # 浏览器动作弹窗
-│   └── pdf-viewer/            # 内置 PDF 查看器
-├── shared/
-│   ├── types.ts               # TypeScript 接口定义
-│   ├── storage.ts             # Chrome 存储封装
-│   ├── messaging.ts           # 基于端口的流式传输助手
-│   ├── prompt.ts              # 提示词模板解析
-│   ├── constants.ts           # 消息类型、错误字符串
-│   ├── defaults.ts            # 默认设置与动作预设
-│   ├── errors.ts              # 错误格式化
-│   ├── model-provider.ts      # 多模型提供商 AI SDK 解析
-│   ├── i18n/                  # 国际化
-│   └── ui/                    # 主题、图标、设计令牌
-└── assets/
-    └── icon.png               # 扩展图标源文件（>=256px）
-```
+- [WXT](https://wxt.dev/) — 构建框架
+- React 19 + TypeScript
+- [Vercel AI SDK](https://sdk.vercel.ai/) — 流式 AI 调用
+- Chrome Manifest V3
 
 ## 开发
 
@@ -160,31 +115,31 @@ src/
 
 | 命令 | 说明 |
 |------|------|
-| `npm run dev` | 启动开发构建，监听文件变化 |
+| `npm run dev` | 开发构建，监听文件变化 |
 | `npm run dev:firefox` | Firefox 开发构建 |
-| `npm run build` | 生产扩展构建 |
+| `npm run build` | 生产构建 |
 | `npm run typecheck` | TypeScript 类型检查 |
 | `npm run zip` | 打包扩展 |
 
 ### 路径别名
 
-TypeScript 路径别名：`~/*` 和 `@/*` 均映射到 `src/*`
+`~/*` 和 `@/*` 均映射到 `src/*`：
 
 ```typescript
 import { useUiTheme } from "@/shared/ui/theme"
 ```
 
-### 修改后操作步骤
+### 修改后验证
 
 1. 运行 `npm run typecheck` 和 `npm run build`
 2. 打开 `chrome://extensions`
 3. 点击扩展的刷新按钮
-4. **刷新目标网页**（已打开的标签页保留旧的内容脚本实例）
+4. 刷新目标网页
 
 ## 贡献
 
 1. Fork 本仓库
-2. 创建功能分支
+2. 创建分支：`git checkout -b feature/xxx`
 3. 进行修改
 4. 运行 `npm run typecheck` 和 `npm run build`
 5. 在 Chrome 中测试
@@ -192,4 +147,4 @@ import { useUiTheme } from "@/shared/ui/theme"
 
 ## 许可证
 
-本项目基于 GNU General Public License v3.0 许可证 - 详见 [LICENSE](LICENSE) 文件。
+[GPL-3.0](LICENSE)
