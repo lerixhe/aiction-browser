@@ -133,7 +133,7 @@ export default {
   "options.about.feature4": "Compatible with OpenAI, Claude, Gemini, and other major LLMs",
   "options.about.feature5": "Conversational interaction with continuous follow-up questions",
   "options.about.contactTitle": "Contact Us",
-  "options.about.emailLabel": "Email: lerixhe@gmail.com",
+  "options.about.emailLabel": "Email: support@aiction.app",
   "options.about.versionTitle": "Version Info",
   "options.about.versionPrefix": "Version: v$1",
   "options.about.license": "License: GPL-3.0",

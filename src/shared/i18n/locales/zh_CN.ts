@@ -133,7 +133,7 @@ export default {
   "options.about.feature4": "兼容 OpenAI、Claude、Gemini 等主流大模型",
   "options.about.feature5": "对话式交互，持续追问不中断",
   "options.about.contactTitle": "联系我们",
-  "options.about.emailLabel": "Email：lerixhe@gmail.com",
+  "options.about.emailLabel": "Email：support@aiction.app",
   "options.about.versionTitle": "版本信息",
   "options.about.versionPrefix": "当前版本：v$1",
   "options.about.license": "开源协议：GPL-3.0",
