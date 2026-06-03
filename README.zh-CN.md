@@ -19,12 +19,12 @@
 **内联 AI 工具栏**
 
 在任意网页选中文本，工具栏随即出现，提供可配置的 AI 动作。
-![浅色工具栏](./docs/images/toolbar-white.jpg)
-![深色工具栏](./docs/images/toolbar-black.jpg)
+![toolbar](./docs/images/bar.png)
 
 **浮动聊天面板**
 
 在可拖拽、可调整大小的面板中继续对话，支持流式响应。
+![chatwindow](./docs/images/chat.png)
 
 **自定义动作**
 

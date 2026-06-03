@@ -19,12 +19,12 @@ A lightweight Chrome extension for getting AI help on selected web content. Supp
 **Inline AI Toolbar**
 
 Select text on any page, a toolbar appears with configurable actions.
-![Light Toolbar](./docs/images/toolbar-white.jpg)
-![Dark Toolbar](./docs/images/toolbar-black.jpg)
+![Toolbar](./docs/images/bar.png)
 
 **Floating Chat Panel**
 
 Continue the conversation in a draggable, resizable panel with streaming responses.
+![chatwindow](./docs/images/chat.png)
 
 **Custom Actions**
 
