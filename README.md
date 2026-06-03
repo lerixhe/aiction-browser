@@ -12,11 +12,15 @@ A lightweight Chrome extension for getting AI help on selected web content. Supp
 
 ## Features
 
+### Feature Demo
+
+![Feature Demo](./docs/images/demo.gif)
+
 **Inline AI Toolbar**
 
 Select text on any page, a toolbar appears with configurable actions.
-
-![Action Button Demo](./docs/images/动作按钮演示.gif)
+![Light Toolbar](./docs/images/toolbar-white.jpg)
+![Dark Toolbar](./docs/images/toolbar-black.jpg)
 
 **Floating Chat Panel**
 
@@ -31,9 +35,13 @@ Create your own prompt templates with `{text}` placeholders. Built-in actions:
 | Explain | `Explain the selected content: "{text}"` |
 | Translate | `Translate the following to English:\n{text}` |
 
+![Custom Actions](./docs/images/actions.jpg)
+
 **Multi-Provider Support**
 
 OpenAI, Anthropic Claude, Google Gemini, DeepSeek, OpenRouter, or any OpenAI-compatible API.
+
+![API Providers](./docs/images/providers.jpg)
 
 **Other Features**
 

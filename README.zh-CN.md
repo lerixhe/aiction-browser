@@ -12,11 +12,15 @@
 
 ## 功能特性
 
+### 功能演示
+
+![功能演示](./docs/images/demo.gif)
+
 **内联 AI 工具栏**
 
 在任意网页选中文本，工具栏随即出现，提供可配置的 AI 动作。
-
-![动作按钮演示](./docs/images/动作按钮演示.gif)
+![浅色工具栏](./docs/images/toolbar-white.jpg)
+![深色工具栏](./docs/images/toolbar-black.jpg)
 
 **浮动聊天面板**
 
@@ -31,9 +35,13 @@
 | 解释 | `帮我解释选中内容「{text}」` |
 | 翻译 | `请将以下内容翻译为简体中文：\n{text}` |
 
+![自定义](./docs/images/actions.jpg)
+
 **多模型支持**
 
 OpenAI、Anthropic Claude、Google Gemini、DeepSeek、OpenRouter，或任何 OpenAI 兼容 API。
+
+![API提供商](./docs/images/providers.jpg)
 
 **其他功能**
 
