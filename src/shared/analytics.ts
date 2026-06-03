@@ -54,30 +54,40 @@ export async function isTelemetryEnabled(): Promise<boolean> {
 // ── Content Script: PostHog SDK ─────────────────────────────────
 
 let sdkInitialized = false
+let initPromise: Promise<boolean> | null = null
 
 export async function initContentScriptAnalytics(): Promise<void> {
   if (sdkInitialized) return
 
-  const enabled = await isTelemetryEnabled()
-  if (!enabled) return
+  if (!initPromise) {
+    initPromise = (async () => {
+      const enabled = await isTelemetryEnabled()
+      if (!enabled) return false
 
-  const distinctId = await getAnonymousId()
+      const distinctId = await getAnonymousId()
+
+      if (!(posthog as any).__loaded) {
+        posthog.init(POSTHOG_PROJECT_TOKEN, {
+          api_host: POSTHOG_HOST,
+          persistence: "memory",
+          autocapture: false,
+          capture_pageview: false,
+          capture_pageleave: false,
+          disable_session_recording: true,
+          advanced_disable_decide: true,
+          loaded: (ph) => {
+            ph.identify(distinctId)
+          }
+        })
+      }
+      return true
+    })()
+  }
 
   try {
-    posthog.init(POSTHOG_PROJECT_TOKEN, {
-      api_host: POSTHOG_HOST,
-      persistence: "memory",
-      autocapture: false,
-      capture_pageview: false,
-      capture_pageleave: false,
-      disable_session_recording: true,
-      advanced_disable_decide: true,
-      loaded: (ph) => {
-        ph.identify(distinctId)
-      }
-    })
-    sdkInitialized = true
+    sdkInitialized = await initPromise
   } catch (error) {
+    initPromise = null
     console.warn("[AIction] PostHog SDK init failed:", error)
   }
 }
