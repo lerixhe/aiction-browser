@@ -1,10 +1,10 @@
 {
   "extName": {
-    "message": "AIction",
+    "message": "AIction - 自定义 AI Actions 与网页划词效率工具",
     "description": "扩展名称"
   },
   "extDescription": {
-    "message": "轻量级 Chrome 扩展，帮你随时获取 AI 辅助。",
+    "message": "在任意网页划词，一键唤醒你的自定义 AI Actions！支持一键解释、专业总结、自由对话与智能翻译。无需频繁复制粘贴，让大模型成为你的网页快捷键，打造极致丝滑的 AI 网页阅读与办公体验。",
     "description": "扩展描述"
   }
 }

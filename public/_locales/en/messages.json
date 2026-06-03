@@ -1,10 +1,10 @@
 {
   "extName": {
-    "message": "AIction",
+    "message": "AIction - Custom AI Actions & Text Selection Productivity Tool",
     "description": "Extension name"
   },
   "extDescription": {
-    "message": "A lightweight Chrome extension for getting AI help on selected web content.",
+    "message": "Select text on any webpage and trigger custom AI Actions instantly. Supports one-click explanation, professional summaries, open-ended chat, and smart translation. Eliminate copy-pasting—turn LLMs into your web shortcuts for a smooth AI reading and productivity experience.",
     "description": "Extension description"
   }
 }
