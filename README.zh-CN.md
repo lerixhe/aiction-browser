@@ -11,9 +11,10 @@
 - **内联 AI 工具栏** — 选择文本后立即通过环形展开菜单或胶囊工具栏触发 AI 动作
 - **浮动聊天面板** — 在可拖拽、可调整大小的面板中继续对话，支持流式响应
 - **自定义动作** — 创建自己的提示词模板，使用 `{text}` 占位符
-- **多模型支持** — 连接 OpenAI、DeepSeek 或任何 OpenAI 兼容的 API
+- **多模型支持** — OpenAI、Anthropic、Google、DeepSeek、OpenRouter 或任何 OpenAI 兼容 API
 - **思维过程展示** — 查看模型思考过程（支持 DeepSeek 等模型的 `reasoning_content`）
 - **深色模式** — 自动/浅色/深色主题
+- **PDF 查看器** — 内置 PDF 查看器，支持 AI 辅助
 - **备份与恢复** — 以 JSON 格式导入/导出配置
 
 ## 截图
@@ -31,7 +32,7 @@
 git clone <repo-url>
 cd aiction
 
-# 安装依赖
+# 安装依赖（自动运行 `wxt prepare`）
 npm install
 
 # 启动开发构建（监听文件变化）
@@ -47,7 +48,7 @@ npm run build
 2. 打开 `chrome://extensions`
 3. 开启 **开发者模式**
 4. 点击 **加载已解压的扩展程序**
-5. 选择 `build/chrome-mv3-prod` 目录
+5. 选择 `.output/chrome-mv3` 目录
 
 ## 快速上手
 
@@ -106,7 +107,8 @@ npm run build
 │  │ • 聊天面板    │  │ • 存储        │  │ • 动作        │  │
 │  └──────┬───────┘  └──────┬───────┘  └──────────────┘  │
 │         │                 │                             │
-│         └──── chrome.runtime.onMessage ────┘            │
+│         └── chrome.runtime.connect (流式) ──────┘        │
+│         └── chrome.runtime.onMessage (单次) ──────┘      │
 │                                                         │
 │  ┌─────────────────────────────────────────────────┐    │
 │  │              共享模块 (src/shared)                │    │
@@ -119,33 +121,37 @@ npm run build
 ### 技术栈
 
 - **构建工具**：[WXT](https://wxt.dev/)
-- **UI**：React 18 + TypeScript
+- **UI**：React 19 + TypeScript
+- **AI SDK**：Vercel AI SDK (`ai` 包)
 - **Manifest**：Chrome Manifest V3
 
 ### 目录结构
 
 ```
-aiction/
-├── background.ts          # 后台入口（薄包装层）
-├── options.tsx            # 选项页入口（薄包装层）
-├── popup.tsx              # 浏览器动作弹窗
-├── contents/
-│   └── main.tsx           # 内容脚本入口（WXT defineContentScript）
-├── src/
-│   ├── background/        # 后台服务工作线程逻辑
-│   ├── contents/          # 内容脚本 UI
-│   │   ├── components/    # React 组件
-│   │   ├── hooks/         # 自定义 React Hooks
-│   │   └── utils/         # DOM 工具函数
-│   ├── options/           # 选项页组件
-│   └── shared/            # 共享模块
-│       ├── types.ts       # TypeScript 类型定义
-│       ├── storage.ts     # Chrome 存储封装
-│       ├── messaging.ts   # 消息传递 (streamChat)
-│       ├── prompt.ts      # 提示词构建
-│       └── ui/            # 设计令牌与主题
-├── WIKI.md                # 详细架构文档
-└── package.json
+src/
+├── entrypoints/
+│   ├── background.ts          # 后台服务工作线程
+│   ├── content/
+│   │   ├── index.tsx          # 内容脚本入口（Shadow DOM UI）
+│   │   ├── App.tsx            # 根 React 组件
+│   │   ├── components/        # SelectionToolbar、ChatWindow 等
+│   │   └── hooks/             # useChatState、useDraggable、useSelectionDetection
+│   ├── options/               # 选项页
+│   ├── popup/                 # 浏览器动作弹窗
+│   └── pdf-viewer/            # 内置 PDF 查看器
+├── shared/
+│   ├── types.ts               # TypeScript 接口定义
+│   ├── storage.ts             # Chrome 存储封装
+│   ├── messaging.ts           # 基于端口的流式传输助手
+│   ├── prompt.ts              # 提示词模板解析
+│   ├── constants.ts           # 消息类型、错误字符串
+│   ├── defaults.ts            # 默认设置与动作预设
+│   ├── errors.ts              # 错误格式化
+│   ├── model-provider.ts      # 多模型提供商 AI SDK 解析
+│   ├── i18n/                  # 国际化
+│   └── ui/                    # 主题、图标、设计令牌
+└── assets/
+    └── icon.png               # 扩展图标源文件（>=256px）
 ```
 
 ## 开发
@@ -155,25 +161,25 @@ aiction/
 | 命令 | 说明 |
 |------|------|
 | `npm run dev` | 启动开发构建，监听文件变化 |
+| `npm run dev:firefox` | Firefox 开发构建 |
 | `npm run build` | 生产扩展构建 |
 | `npm run typecheck` | TypeScript 类型检查 |
-| `npm run package` | 打包扩展 |
+| `npm run zip` | 打包扩展 |
 
 ### 路径别名
 
-TypeScript 路径别名：`~/*` 映射到 `src/*`
+TypeScript 路径别名：`~/*` 和 `@/*` 均映射到 `src/*`
 
 ```typescript
-import { useUiTheme } from "~/shared/ui/theme"
+import { useUiTheme } from "@/shared/ui/theme"
 ```
 
 ### 修改后操作步骤
 
-1. 运行 `npm run build`
+1. 运行 `npm run typecheck` 和 `npm run build`
 2. 打开 `chrome://extensions`
 3. 点击扩展的刷新按钮
 4. **刷新目标网页**（已打开的标签页保留旧的内容脚本实例）
-
 
 ## 贡献
 
@@ -183,3 +189,7 @@ import { useUiTheme } from "~/shared/ui/theme"
 4. 运行 `npm run typecheck` 和 `npm run build`
 5. 在 Chrome 中测试
 6. 提交 Pull Request
+
+## 许可证
+
+本项目基于 GNU General Public License v3.0 许可证 - 详见 [LICENSE](LICENSE) 文件。

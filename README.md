@@ -11,8 +11,10 @@ Select text on any page, trigger AI actions from an inline toolbar, and continue
 - **Inline AI Toolbar** — Select text and instantly trigger AI actions via a toolbar
 - **Floating Chat Panel** — Continue the conversation in a draggable, resizable panel with streaming responses
 - **Custom Actions** — Create your own prompt templates with `{text}` placeholders
-- **Multi-Model Support** — Connect to OpenAI, DeepSeek, or any OpenAI-compatible API
+- **Multi-Provider Support** — OpenAI, Anthropic, Google, DeepSeek, OpenRouter, or any OpenAI-compatible API
 - **Reasoning Display** — View model thinking process (supports `reasoning_content` from DeepSeek, etc.)
+- **Dark Mode** — Auto / Light / Dark theme
+- **PDF Viewer** — Built-in PDF viewer with AI assistance
 - **Backup & Restore** — Export/import settings as JSON
 
 ## Screenshots
@@ -30,7 +32,7 @@ Select text on any page, trigger AI actions from an inline toolbar, and continue
 git clone <repo-url>
 cd aiction
 
-# Install dependencies
+# Install dependencies (runs `wxt prepare` automatically)
 npm install
 
 # Start dev build (watches for changes)
@@ -46,7 +48,7 @@ npm run build
 2. Open `chrome://extensions`
 3. Enable **Developer mode**
 4. Click **Load unpacked**
-5. Select the `build/chrome-mv3-prod` directory
+5. Select the `.output/chrome-mv3` directory
 
 ## Quick Start
 
@@ -104,7 +106,8 @@ Create custom prompt templates in the Options page. Use `{text}` as a placeholde
 │  │ • Chat Panel │  │ • Storage    │  │ • Actions    │  │
 │  └──────┬───────┘  └──────┬───────┘  └──────────────┘  │
 │         │                 │                             │
-│         └──── chrome.runtime.onMessage ────┘            │
+│         └── chrome.runtime.connect (streaming) ──┘      │
+│         └── chrome.runtime.onMessage (one-shot) ──┘     │
 │                                                         │
 │  ┌─────────────────────────────────────────────────┐    │
 │  │              Shared Modules (src/shared)        │    │
@@ -117,33 +120,37 @@ Create custom prompt templates in the Options page. Use `{text}` as a placeholde
 ### Tech Stack
 
 - **Build Tool**: [WXT](https://wxt.dev/)
-- **UI**: React 18 + TypeScript
+- **UI**: React 19 + TypeScript
+- **AI SDK**: Vercel AI SDK (`ai` package)
 - **Manifest**: Chrome Manifest V3
 
 ### Directory Structure
 
 ```
-aiction/
-├── background.ts          # Background entry (thin wrapper)
-├── options.tsx            # Options page entry (thin wrapper)
-├── popup.tsx              # Browser action popup
-├── contents/
-│   └── main.tsx           # Content script entry (WXT defineContentScript)
-├── src/
-│   ├── background/        # Background service worker logic
-│   ├── contents/          # Content script UI
-│   │   ├── components/    # React components
-│   │   ├── hooks/         # Custom React hooks
-│   │   └── utils/         # DOM utilities
-│   ├── options/           # Options page components
-│   └── shared/            # Shared modules
-│       ├── types.ts       # TypeScript type definitions
-│       ├── storage.ts     # Chrome storage wrapper
-│       ├── messaging.ts   # Message passing (streamChat)
-│       ├── prompt.ts      # Prompt building
-│       └── ui/            # Design tokens & theme
-├── WIKI.md                # Detailed architecture docs
-└── package.json
+src/
+├── entrypoints/
+│   ├── background.ts          # Background service worker
+│   ├── content/
+│   │   ├── index.tsx          # Content script entry (Shadow DOM UI)
+│   │   ├── App.tsx            # Root React component
+│   │   ├── components/        # SelectionToolbar, ChatWindow, etc.
+│   │   └── hooks/             # useChatState, useDraggable, useSelectionDetection
+│   ├── options/               # Options page
+│   ├── popup/                 # Browser action popup
+│   └── pdf-viewer/            # Built-in PDF viewer
+├── shared/
+│   ├── types.ts               # TypeScript interfaces
+│   ├── storage.ts             # Chrome storage wrappers
+│   ├── messaging.ts           # Port-based streaming helper
+│   ├── prompt.ts              # Prompt template resolution
+│   ├── constants.ts           # Message types, error strings
+│   ├── defaults.ts            # Default settings & action presets
+│   ├── errors.ts              # Error formatting
+│   ├── model-provider.ts      # Multi-provider AI SDK resolution
+│   ├── i18n/                  # Internationalization
+│   └── ui/                    # Theme, icons, design tokens
+└── assets/
+    └── icon.png               # Extension icon source (>=256px)
 ```
 
 ## Development
@@ -153,21 +160,22 @@ aiction/
 | Command | Description |
 |---------|-------------|
 | `npm run dev` | Start dev build with file watching |
+| `npm run dev:firefox` | Dev build for Firefox |
 | `npm run build` | Production extension build |
 | `npm run typecheck` | TypeScript type checking |
-| `npm run package` | Package extension bundle |
+| `npm run zip` | Package extension bundle |
 
 ### Path Aliases
 
-TypeScript path alias: `~/*` maps to `src/*`
+TypeScript path aliases: `~/*` and `@/*` both map to `src/*`
 
 ```typescript
-import { useUiTheme } from "~/shared/ui/theme"
+import { useUiTheme } from "@/shared/ui/theme"
 ```
 
 ### After Making Changes
 
-1. Run `npm run build`
+1. Run `npm run typecheck` and `npm run build`
 2. Go to `chrome://extensions`
 3. Click the reload button on your extension
 4. **Reload the target web page** (existing tabs keep old content-script instances)
