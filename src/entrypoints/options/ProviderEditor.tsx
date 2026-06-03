@@ -20,6 +20,7 @@ interface ProviderEditorProps {
   fetchError: string | null
   modelSearchQuery: string
   paramSupport: ModelParamSupport
+  modelOutputLimit?: number
   onFieldChange: (field: string, value: string) => void
   onModelChange: (model: string) => void
   onFetchModels: () => void
@@ -44,6 +45,7 @@ export function ProviderEditor({
   fetchError,
   modelSearchQuery,
   paramSupport,
+  modelOutputLimit,
   onFieldChange,
   onModelChange,
   onFetchModels,
@@ -232,6 +234,7 @@ export function ProviderEditor({
         theme={theme}
         modelParams={providerDraft.modelParams}
         paramSupport={paramSupport}
+        modelOutputLimit={modelOutputLimit}
         focusedField={focusedField}
         onParamChange={onParamChange}
         onFocusField={onFocusField}

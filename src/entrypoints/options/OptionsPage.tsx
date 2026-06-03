@@ -179,6 +179,7 @@ export default function OptionsPage() {
             fetchError={providerManager.fetchError}
             modelSearchQuery={providerManager.modelSearchQuery}
             paramSupport={providerManager.paramSupport}
+            modelOutputLimit={providerManager.modelOutputLimit}
             onFieldChange={providerManager.updateProviderField}
             onModelChange={(model) => providerManager.updateProviderField("model", model)}
             onFetchModels={providerManager.handleFetchModels}

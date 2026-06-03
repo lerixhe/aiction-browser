@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react"
 import { uiSpace, uiTypography, type UiTheme } from "@/shared/ui/tokens"
 import { createFieldLabelStyle, createInputStyle } from "@/shared/ui/styles"
 import { DEFAULT_CUSTOM_MODEL_PROVIDER } from "@/shared/defaults"
@@ -9,6 +10,7 @@ interface ModelParamsEditorProps {
   theme: UiTheme
   modelParams: ModelParams
   paramSupport: ModelParamSupport
+  modelOutputLimit?: number
   focusedField: string | null
   onParamChange: (key: keyof ModelParams, value: number) => void
   onFocusField: (field: string) => void
@@ -19,18 +21,35 @@ export function ModelParamsEditor({
   theme,
   modelParams,
   paramSupport,
+  modelOutputLimit,
   focusedField,
   onParamChange,
   onFocusField,
   onBlurField
 }: ModelParamsEditorProps) {
   const { t } = useI18n()
+  const prevLimitRef = useRef(modelOutputLimit)
 
   const fieldLabelStyle = createFieldLabelStyle(theme)
   const createInput = (fieldName: string) => createInputStyle(theme, focusedField === fieldName)
 
+  // Auto-cap maxTokens when model output limit changes
+  useEffect(() => {
+    if (modelOutputLimit !== undefined && prevLimitRef.current !== modelOutputLimit) {
+      prevLimitRef.current = modelOutputLimit
+      if (modelParams.maxTokens > modelOutputLimit) {
+        onParamChange("maxTokens", modelOutputLimit)
+      }
+    }
+  }, [modelOutputLimit, modelParams.maxTokens, onParamChange])
+
+  const maxTokensMax = modelOutputLimit ?? 128000
+  const maxTokensDesc = modelOutputLimit
+    ? `${t("options.connection.paramMaxTokens")} (max: ${modelOutputLimit.toLocaleString()})`
+    : t("options.connection.paramMaxTokens")
+
   const allParams = [
-    { key: "maxTokens" as const, label: "Max Tokens", placeholder: "1024", min: 1, max: 128000, step: 1, desc: t("options.connection.paramMaxTokens") },
+    { key: "maxTokens" as const, label: "Max Tokens", placeholder: "1024", min: 1, max: maxTokensMax, step: 1, desc: maxTokensDesc },
     { key: "temperature" as const, label: "Temperature", placeholder: "0.3", min: 0, max: 2, step: 0.1, desc: t("options.connection.paramTemperature") },
     { key: "topP" as const, label: "Top P", placeholder: "0.9", min: 0, max: 1, step: 0.05, desc: t("options.connection.paramTopP") },
     { key: "presencePenalty" as const, label: "Presence Penalty", placeholder: "0", min: -2, max: 2, step: 0.1, desc: t("options.connection.paramPresencePenalty") },

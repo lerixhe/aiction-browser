@@ -376,6 +376,12 @@ export function useProviderManager(
     return getModelParamSupport(modelsDevData, providerDraft.modelsDevId, providerDraft.model)
   }, [modelsDevData, providerDraft.modelsDevId, providerDraft.model])
 
+  const modelOutputLimit = useMemo((): number | undefined => {
+    if (!modelsDevData || !providerDraft.modelsDevId) return undefined
+    const model = modelsDevData[providerDraft.modelsDevId]?.models[providerDraft.model]
+    return model?.limit?.output
+  }, [modelsDevData, providerDraft.modelsDevId, providerDraft.model])
+
   return {
     // State
     selectedProviderId,
@@ -398,6 +404,7 @@ export function useProviderManager(
     isProviderDraftValid,
     devModels,
     paramSupport,
+    modelOutputLimit,
 
     // Setters
     setSelectedProviderId,
