@@ -7,6 +7,7 @@ Chrome extension (MV3) built with WXT + React + TypeScript. Users select text on
 - Build framework: WXT (v0.20.26)
 - TypeScript path alias: `~/*` and `@/*` map to `src/*` (tsconfig `paths`).
 - WXT modules: `@wxt-dev/auto-icons` (auto-generates extension icons from `src/assets/icon.png`).
+- AI SDK: Vercel AI SDK (`ai` package) for streaming/text generation in background.
 - Detailed architecture docs: `docs/WIKI.md`.
 
 ## Commands
@@ -63,18 +64,18 @@ Content script hooks in `src/entrypoints/content/hooks/`: `useChatState.ts`, `us
 
 ## Icon Generation Workflow
 
-WXT reads `public/icon.png` and copies it to the output. **Source PNG should be ≥256px** to avoid upscaling artifacts.
+WXT reads `src/assets/icon.png` via `@wxt-dev/auto-icons` and copies it to the output. **Source PNG should be >=256px** to avoid upscaling artifacts.
 
 Two files define the icon — keep them in sync:
 
 | File | Role |
 |------|------|
-| `src/assets/icon.png` | High-res PNG source of truth (256×256, sharp + lanczos3 downscale) |
+| `src/assets/icon.png` | High-res PNG source of truth (256x256, sharp + lanczos3 downscale) |
 | `src/shared/ui/icons.tsx` | `BrandIcon` React component (renders `src/assets/icon.png`) |
 
 ### Steps to update the icon
 
-1. Replace `src/assets/icon.png` with a new PNG (≥256px, transparent corners).
+1. Replace `src/assets/icon.png` with a new PNG (>=256px, transparent corners).
 2. `npm run build` — WXT copies the icon to output.
 3. Verify corners are transparent and edges are sharp.
 
@@ -127,7 +128,7 @@ Two-tier architecture for offline icon rendering and fast icon picker.
 ```
 
 - `body`: SVG inner paths (no outer `<svg>` tag), ~100-400 bytes per icon
-- `width/height`: viewport size (Tabler uses 24×24)
+- `width/height`: viewport size (Tabler uses 24x24)
 
 ### Files
 
@@ -189,6 +190,6 @@ When user picks an icon:
 
 ## Reference Projects
 
-`reference/` 文件夹下有两个同类 Chrome 扩展项目，详见 `reference/README.md`。
+`reference/` contains two similar Chrome extension projects for reference. See `reference/README.md`.
 
-遇到不确定的实现方案（组件结构、消息通信、UI 方案等）时，优先参考这两个项目。
+When unsure about implementation patterns (component structure, messaging, UI approach, etc.), check these projects first.
