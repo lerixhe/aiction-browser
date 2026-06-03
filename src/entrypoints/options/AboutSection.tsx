@@ -87,9 +87,28 @@ export function AboutSection({ settings, saveSettingsNow }: AboutSectionProps) {
             lineHeight: 1.7
           }}>
           <div style={{ fontWeight: uiTypography.fontWeight.semibold, color: theme.text.primary, marginBottom: uiSpace[4] }}>
-            {t("options.about.contactTitle")}
+            {t("options.about.communityTitle")}
           </div>
-          <div>{t("options.about.emailLabel")}</div>
+          <div style={{ display: "flex", alignItems: "center", marginBottom: uiSpace[4] }}>
+            <span style={{ color: theme.brand?.primary || theme.accent?.primary || "#0D9488", marginRight: uiSpace[8] }}>·</span>
+            <span>{t("options.about.githubLabel")}: </span>
+            <a
+              href="https://github.com/lerixhe/aiction"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                color: theme.accent.primary,
+                textDecoration: "none",
+                marginLeft: uiSpace[4]
+              }}
+            >
+              github.com/lerixhe/aiction
+            </a>
+          </div>
+          <div style={{ display: "flex", alignItems: "baseline" }}>
+            <span style={{ color: theme.brand?.primary || theme.accent?.primary || "#0D9488", marginRight: uiSpace[8] }}>·</span>
+            {t("options.about.emailLabel")}
+          </div>
         </div>
       </section>
 
