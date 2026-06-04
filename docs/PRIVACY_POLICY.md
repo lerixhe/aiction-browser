@@ -113,7 +113,7 @@ We may update this Privacy Policy from time to time. We will notify you of any c
 
 If you have questions about this Privacy Policy, please contact us:
 - GitHub: https://github.com/lerixhe/aiction/issues
-- Email: [Your Contact Email]
+- Email: support@aiction.app
 
 ## Open Source
 
