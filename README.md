@@ -59,7 +59,7 @@ OpenAI, Anthropic Claude, Google Gemini, DeepSeek, OpenRouter, or any OpenAI-com
 **Developer Mode**
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/aiction.git
+git clone https://github.com/lerixhe/aiction.git
 cd aiction
 npm install
 npm run dev

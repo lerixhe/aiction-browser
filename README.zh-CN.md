@@ -59,7 +59,7 @@ OpenAI、Anthropic Claude、Google Gemini、DeepSeek、OpenRouter，或任何 Op
 **开发者模式**
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/aiction.git
+git clone https://github.com/lerixhe/aiction.git
 cd aiction
 npm install
 npm run dev
