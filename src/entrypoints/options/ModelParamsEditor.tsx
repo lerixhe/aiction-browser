@@ -44,12 +44,13 @@ export function ModelParamsEditor({
   }, [modelOutputLimit, modelParams.maxTokens, onParamChange])
 
   const maxTokensMax = modelOutputLimit ?? 128000
+  const unlimitedHint = t("options.connection.paramMaxTokensUnlimited")
   const maxTokensDesc = modelOutputLimit
-    ? `${t("options.connection.paramMaxTokens")} (max: ${modelOutputLimit.toLocaleString()})`
-    : t("options.connection.paramMaxTokens")
+    ? `${t("options.connection.paramMaxTokens")} (max: ${modelOutputLimit.toLocaleString()}, ${unlimitedHint})`
+    : `${t("options.connection.paramMaxTokens")} (${unlimitedHint})`
 
   const allParams = [
-    { key: "maxTokens" as const, label: "Max Tokens", placeholder: "1024", min: 1, max: maxTokensMax, step: 1, desc: maxTokensDesc },
+    { key: "maxTokens" as const, label: "Max Tokens", placeholder: "0", min: 0, max: maxTokensMax, step: 1, desc: maxTokensDesc },
     { key: "temperature" as const, label: "Temperature", placeholder: "0.3", min: 0, max: 2, step: 0.1, desc: t("options.connection.paramTemperature") },
     { key: "topP" as const, label: "Top P", placeholder: "0.9", min: 0, max: 1, step: 0.05, desc: t("options.connection.paramTopP") },
     { key: "presencePenalty" as const, label: "Presence Penalty", placeholder: "0", min: -2, max: 2, step: 0.1, desc: t("options.connection.paramPresencePenalty") },

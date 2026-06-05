@@ -56,6 +56,7 @@ export default {
   "options.connection.modelParams": "模型参数",
   "options.connection.modelParamsDesc": "适用于解释、翻译等文本处理场景的采样参数",
   "options.connection.paramMaxTokens": "最大输出 token 数",
+  "options.connection.paramMaxTokensUnlimited": "0 = 模型默认上限",
   "options.connection.paramTemperature": "采样温度，越低越确定",
   "options.connection.paramTopP": "核采样概率阈值",
   "options.connection.paramPresencePenalty": "存在惩罚",

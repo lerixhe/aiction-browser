@@ -46,7 +46,7 @@ async function streamChat(
   const result = streamText({
     model,
     messages,
-    maxOutputTokens: activeService.modelParams.maxTokens,
+    maxOutputTokens: activeService.modelParams.maxTokens || undefined,
     temperature: activeService.modelParams.temperature,
     topP: activeService.modelParams.topP,
     presencePenalty: activeService.modelParams.presencePenalty,

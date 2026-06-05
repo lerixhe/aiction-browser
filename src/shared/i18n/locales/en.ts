@@ -56,6 +56,7 @@ export default {
   "options.connection.modelParams": "Model Parameters",
   "options.connection.modelParamsDesc": "Sampling parameters suitable for text processing tasks like explaining and translating",
   "options.connection.paramMaxTokens": "Maximum output tokens",
+  "options.connection.paramMaxTokensUnlimited": "0 = model default limit",
   "options.connection.paramTemperature": "Sampling temperature, lower is more deterministic",
   "options.connection.paramTopP": "Nucleus sampling probability threshold",
   "options.connection.paramPresencePenalty": "Presence penalty",
