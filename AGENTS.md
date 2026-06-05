@@ -1,13 +1,15 @@
 # AGENTS.md
 
 ## Project Summary
-Chrome extension (MV3) built with WXT + React + TypeScript. Users select text on any page, trigger AI actions from an inline toolbar, and continue conversation in a floating chat panel. AI backend uses an OpenAI-compatible `/chat/completions` endpoint.
+Chrome extension (MV3) built with WXT + React + TypeScript. Users select text on any page, trigger AI actions from an inline toolbar, and continue conversation in a floating chat panel. AI backend uses an OpenAI-compatible `/chat/completions` endpoint via Vercel AI SDK. Supports i18n (English/Chinese), multiple AI providers via models.dev integration, and includes a built-in PDF viewer.
 
 ## Quick Facts
 - Build framework: WXT (v0.20.26)
 - TypeScript path alias: `~/*` and `@/*` map to `src/*` (tsconfig `paths`).
 - WXT modules: `@wxt-dev/auto-icons` (auto-generates extension icons from `src/assets/icon.png`).
 - AI SDK: Vercel AI SDK (`ai` package) for streaming/text generation in background.
+- i18n: English/Chinese support via `src/shared/i18n/`.
+- Provider logos: loaded from `models.dev` via `src/shared/models-dev.ts`.
 - Detailed architecture docs: `docs/WIKI.md`.
 
 ## Commands
@@ -31,16 +33,34 @@ Chrome extension (MV3) built with WXT + React + TypeScript. Users select text on
 Three runtime contexts communicate via `chrome.runtime.onMessage` and `chrome.runtime.connect`:
 
 - **Content script** (`src/entrypoints/content/`): detects selection from range/input/textarea, computes toolbar anchor, renders `SelectionToolbar` and `ChatWindow` (draggable), stores per-page conversation state in React.
-- **Background** (`src/entrypoints/background.ts`): registers the message handler, reads settings from `chrome.storage.sync`, calls the API, normalizes responses. **Never move API requests into the content script.**
+- **Background** (`src/entrypoints/background.ts`): registers the message handler, reads settings from `chrome.storage.sync`, calls the API via `streamText()` / `generateText()` from Vercel AI SDK, normalizes responses. Also handles PDF viewer context menu and models.dev data fetching. **Never move API requests into the content script.**
 - **Options** (`src/entrypoints/options/`): edits API config, translation language, and custom actions, then validates and persists settings.
 
 ### Communication flow
-- **Streaming (chat):** Content script opens a `chrome.runtime.connect` port (`AICTION_STREAM`). Background listens on `chrome.runtime.onConnect`, calls `fetch()` with streaming, and `port.postMessage`s events back.
+- **Streaming (chat):** Content script opens a `chrome.runtime.connect` port (`AICTION_STREAM`). Background listens on `chrome.runtime.onConnect`, calls `streamText()` with streaming, and `port.postMessage`s events back.
 - **Non-streaming (API test, fetch models):** Uses `chrome.runtime.sendMessage` and background responds via `sendResponse`.
 
-Shared logic in `src/shared/*`: `types.ts`, `selection.ts`, `prompt.ts`, `messaging.ts`, `storage.ts`, `constants.ts`, `defaults.ts`, `errors.ts`, `iconify.tsx`.
+Shared logic in `src/shared/*`: `types.ts`, `selection.ts`, `prompt.ts`, `messaging.ts`, `storage.ts`, `constants.ts`, `defaults.ts`, `errors.ts`, `analytics.ts`, `model-provider.ts`, `models-dev.ts`, `iconify.tsx`.
+
+Shared UI in `src/shared/ui/`: `tokens.ts`, `styles.ts`, `theme.ts`, `icons.tsx`, `iconify.tsx`, `markdown.tsx`, `toggle-switch.tsx`, `avatar.ts`, `bundled-icons.ts`, `icon-library.ts`.
 
 Content script hooks in `src/entrypoints/content/hooks/`: `useChatState.ts`, `useDraggable.ts`, `useSelectionDetection.ts`, `useToolbarState.ts`.
+
+### i18n System
+- Translation files in `src/shared/i18n/` (English + Chinese).
+- `I18nRoot` wraps the content script React tree; Options and Popup use `useI18n()` hook.
+- All user-facing strings go through `t("key")` — never hardcode UI text.
+
+### Models.dev Integration
+- `src/shared/models-dev.ts` fetches provider metadata (name, logo, models) from `models.dev`.
+- Background caches the data and serves it to Options/Popup via `AICTION_MODELS_DEV_REQUEST` message.
+- Provider logos loaded dynamically: `https://models.dev/logos/{providerId}.svg`.
+- Used in Options page provider selector and Popup provider dropdown.
+
+### PDF Viewer
+- `src/entrypoints/pdf-viewer/` — built-in PDF viewer page.
+- Background registers a context menu "Open PDF with AIction" on PDF pages.
+- Opens the PDF in a new tab with the extension's viewer, enabling text selection and AI actions on PDF content.
 
 ## Invariants
 - Keep `data-aiction-root="true"` on the extension UI root. Selection and mousedown handlers depend on ignoring events inside that subtree.
