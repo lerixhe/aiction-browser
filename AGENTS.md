@@ -10,7 +10,6 @@ Chrome extension (MV3) built with WXT + React + TypeScript. Users select text on
 - AI SDK: Vercel AI SDK (`ai` package) for streaming/text generation in background.
 - i18n: English/Chinese support via `src/shared/i18n/`.
 - Provider logos: loaded from `models.dev` via `src/shared/models-dev.ts`.
-- Detailed architecture docs: `docs/WIKI.md`.
 
 ## Commands
 - `npm run dev`: WXT dev build/watch (Chrome). Use `npm run dev:firefox` for Firefox.
