@@ -19,7 +19,7 @@ export const DEFAULT_ACTIONS: ActionTemplate[] = [
 
 export const DEFAULT_MODEL_PARAMS: ModelParams = {
   maxTokens: 0,
-  temperature: 0.3,
+  temperature: 0,
   topP: 0.9,
   presencePenalty: 0,
   frequencyPenalty: 0
