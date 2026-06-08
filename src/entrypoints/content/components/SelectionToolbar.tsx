@@ -275,11 +275,13 @@ export default function SelectionToolbar({
           {quickActions.map((action) => {
             const isHovered = hoveredQuickId === action.id
             const label = t(`options.actions.quickAction.${action.type}` as never)
+            const description = t(`options.actions.quickAction.${action.type}.description` as never)
+            const tooltip = description !== `${action.type}.description` ? description : label
             return (
-              <ToolbarTooltip key={action.id} label={label}>
+              <ToolbarTooltip key={action.id} label={tooltip}>
                 <button
                   type="button"
-                  aria-label={label}
+                  aria-label={tooltip}
                   onMouseEnter={() => setHoveredQuickId(action.id)}
                   onMouseLeave={() => setHoveredQuickId(null)}
                   onClick={() => onQuickAction(action)}

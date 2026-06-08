@@ -242,6 +242,12 @@ export function ActionsSection({ settings, saveSettingsNow }: ActionsSectionProp
     return t(key)
   }
 
+  const quickActionDescription = (action: QuickAction): string | undefined => {
+    const key = `options.actions.quickAction.${action.type}.description` as const
+    const val = t(key)
+    return val === key ? undefined : val
+  }
+
   const updateQuickAction = (index: number, patch: Partial<QuickAction>) => {
     saveSettingsNow((current) => ({
       ...current,
@@ -302,6 +308,17 @@ export function ActionsSection({ settings, saveSettingsNow }: ActionsSectionProp
                 }}>
                 {quickActionLabel(action)}
               </span>
+
+              {quickActionDescription(action) && (
+                <span
+                  style={{
+                    fontSize: uiTypography.fontSize.xs,
+                    color: theme.text.secondary,
+                    flexShrink: 0
+                  }}>
+                  {quickActionDescription(action)}
+                </span>
+              )}
 
               <ToggleSwitch
                 checked={action.enabled}
