@@ -90,7 +90,7 @@ export default {
   "options.connection.missingUrlKeyModel": "请填写 API Base URL、API Key 和 Model 后再测试。",
   "options.connection.missingApiBaseUrl": "请先填写 API Base URL",
   "options.actions.title": "自定义 AI Actions",
-  "options.actions.quickActionsTitle": "快捷操作",
+  "options.actions.quickActionsTitle": "快捷 Actions",
   "options.actions.quickAction.copyToClipboard": "复制到剪贴板",
   "options.actions.addAction": "新增动作",
   "options.actions.newActionLabel": "新动作",
