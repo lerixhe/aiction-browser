@@ -151,16 +151,18 @@ export default defineBackground(() => {
       })
     }
 
-    chrome.contextMenus.create({
-      id: "open-pdf-with-aiction",
-      title: i18nStore.t("background.openPdfWithAIction"),
-      contexts: ["page", "frame"],
-      documentUrlPatterns: [
-        "*://*/*.pdf",
-        "*://*/*.PDF",
-        "file://*/*.pdf",
-        "file://*/*.PDF"
-      ]
+    chrome.contextMenus.removeAll(() => {
+      chrome.contextMenus.create({
+        id: "open-pdf-with-aiction",
+        title: i18nStore.t("background.openPdfWithAIction"),
+        contexts: ["page", "frame"],
+        documentUrlPatterns: [
+          "*://*/*.pdf",
+          "*://*/*.PDF",
+          "file://*/*.pdf",
+          "file://*/*.PDF"
+        ]
+      })
     })
   })
 
