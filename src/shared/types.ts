@@ -10,6 +10,15 @@ export interface ActionTemplate {
   icon?: string
 }
 
+export type QuickActionType = "copyToClipboard"
+
+export interface QuickAction {
+  id: string
+  type: QuickActionType
+  icon: string
+  enabled: boolean
+}
+
 export interface ModelParams {
   maxTokens: number
   temperature: number
@@ -34,6 +43,7 @@ export interface ExtensionSettings {
   theme: ThemePreference
   language: LanguagePreference
   actions: ActionTemplate[]
+  quickActions: QuickAction[]
   telemetryEnabled: boolean
 }
 

@@ -9,7 +9,7 @@ import { initContentScriptAnalytics, trackEvent } from "@/shared/analytics"
 import { resolveActionTemplate, formatFreeInputPrompt } from "@/shared/prompt"
 import { getSettings } from "@/shared/storage"
 import { useI18n } from "@/shared/i18n/context"
-import type { SelectionAnchor, SelectionContext } from "@/shared/types"
+import type { SelectionAnchor, SelectionContext, QuickAction } from "@/shared/types"
 
 // Set worker source - use the .mjs worker file from pdfjs-dist
 pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL("pdf.worker.mjs")
@@ -180,6 +180,7 @@ export function PdfViewerPage() {
     toolbarAnchor,
     selectionContext,
     actions,
+    quickActions,
     closeToolbar,
     openToolbar,
     toolbarVisibleRef
@@ -314,6 +315,34 @@ export function PdfViewerPage() {
     [selectionContext, openPanelWithAction]
   )
 
+  // Handle quick action
+  const handleQuickAction = useCallback(
+    async (action: QuickAction) => {
+      if (!selectionContext) return
+
+      const text = selectionContext.text
+
+      if (action.type === "copyToClipboard") {
+        try {
+          await navigator.clipboard.writeText(text)
+        } catch {
+          const textarea = document.createElement("textarea")
+          textarea.value = text
+          textarea.style.position = "fixed"
+          textarea.style.opacity = "0"
+          document.body.appendChild(textarea)
+          textarea.select()
+          document.execCommand("copy")
+          document.body.removeChild(textarea)
+        }
+        closeToolbar()
+      }
+
+      void trackEvent("quick_action_clicked", { action_type: action.type })
+    },
+    [selectionContext, closeToolbar]
+  )
+
   // Handle free submit from panel captured text
   const handleFreeSubmit = useCallback(
     async (input: string, text: string) => {
@@ -365,8 +394,12 @@ export function PdfViewerPage() {
           anchor={toolbarAnchor}
           selectionStart={null}
           actions={actions}
+          quickActions={quickActions}
           onAction={(template, text) => {
             void handleAction(template, selectionContext?.text ?? text)
+          }}
+          onQuickAction={(action) => {
+            void handleQuickAction(action)
           }}
           onClose={() => {
             closeToolbar()

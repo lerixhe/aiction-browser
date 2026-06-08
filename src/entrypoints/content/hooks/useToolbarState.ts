@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import { getSettings } from "@/shared/storage"
-import type { ActionTemplate, SelectionAnchor, SelectionContext } from "@/shared/types"
+import type { ActionTemplate, QuickAction, SelectionAnchor, SelectionContext } from "@/shared/types"
 
 /**
  * Hook for managing toolbar state and custom actions
@@ -11,6 +11,7 @@ export function useToolbarState() {
   const [toolbarAnchor, setToolbarAnchor] = useState<SelectionAnchor | null>(null)
   const [selectionContext, setSelectionContext] = useState<SelectionContext | null>(null)
   const [actions, setActions] = useState<ActionTemplate[]>([])
+  const [quickActions, setQuickActions] = useState<QuickAction[]>([])
 
   const toolbarVisibleRef = useRef(false)
   const selectionContextRef = useRef<SelectionContext | null>(null)
@@ -28,6 +29,7 @@ export function useToolbarState() {
   useEffect(() => {
     void getSettings().then((settings) => {
       setActions(settings.actions.filter((a) => a.enabled !== false))
+      setQuickActions(settings.quickActions.filter((a) => a.enabled))
     })
 
     const onStorageChanged: Parameters<typeof chrome.storage.onChanged.addListener>[0] = (_changes, areaName) => {
@@ -37,6 +39,7 @@ export function useToolbarState() {
 
       void getSettings().then((settings) => {
         setActions(settings.actions.filter((a) => a.enabled !== false))
+        setQuickActions(settings.quickActions.filter((a) => a.enabled))
       })
     }
 
@@ -76,6 +79,7 @@ export function useToolbarState() {
     toolbarAnchor,
     selectionContext,
     actions,
+    quickActions,
     toolbarVisibleRef,
     selectionContextRef,
     closeToolbar,

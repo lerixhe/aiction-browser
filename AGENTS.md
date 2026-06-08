@@ -81,6 +81,16 @@ Content script hooks in `src/entrypoints/content/hooks/`: `useChatState.ts`, `us
 - If a content-script change still doesn't appear after extension + page reload, close and reopen the tab.
 - For background/service-worker changes, verify from the extension's service worker inspector.
 
+### Extension Testing Lessons
+- `npm run build` runs `npm run bundle-icons` first, which invokes `tsx`. In sandboxed environments this can fail with `listen EPERM` while creating a temp IPC pipe. Treat that as an environment/sandbox issue; rerun the build in an unrestricted local shell before assuming the project is broken.
+- Chrome content scripts do not run on `data:`, `chrome://`, or extension error pages. Use a real `http://127.0.0.1:<port>` test page, reload the page after reloading the extension, and verify the content script has created the `aiction-ui` shadow host.
+- Do not trust the first `chrome-extension://...` DevTools target when testing with remote debugging. Stock Chrome may expose built-in component extensions such as Google Hangouts or Google Network Speech. Confirm the extension identity by reading `chrome.runtime.getManifest()` and expect AIction's service worker to be `background.js`.
+- Launching macOS Google Chrome with `--load-extension=.output/chrome-mv3` may fail to load the unpacked extension in some local automation setups, even when DevTools shows unrelated extension targets. If `chrome-extension://<id>/options.html` opens `chrome-error://chromewebdata/` with `ERR_FILE_NOT_FOUND`, the ID is not AIction or the extension did not load.
+- For content-script UI smoke tests, a useful fallback is a synthetic page test: open a local HTTP page, stub the minimal `chrome.runtime` / `chrome.storage` APIs, inject the built `.output/chrome-mv3/content-scripts/content.js`, select text, and inspect the Shadow DOM. This verifies the built content bundle behavior, but it does not prove manifest-driven Chrome injection.
+- Selection toolbar tests should account for i18n. The quick copy button may have `aria-label="Copy to Clipboard"` or `aria-label="复制到剪贴板"` depending on the resolved UI language.
+- When verifying copy behavior, assert both outcomes: clipboard text equals the selected text, and the toolbar closes after the copy quick action.
+- Always remove temporary test scripts and stop local test servers / temporary Chrome profiles after browser automation.
+
 ## Icon Generation Workflow
 
 WXT reads `src/assets/icon.png` via `@wxt-dev/auto-icons` and copies it to the output. **Source PNG should be >=256px** to avoid upscaling artifacts.

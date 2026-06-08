@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 
-import ToolbarActionMenu from "@/entrypoints/content/components/ToolbarActionMenu"
+import ToolbarActionMenu, { ToolbarTooltip } from "@/entrypoints/content/components/ToolbarActionMenu"
 import { useUiTheme } from "@/shared/ui/theme"
 import { uiLayer, uiMotion, uiRadius, uiTypography } from "@/shared/ui/tokens"
-import type { ActionTemplate, SelectionAnchor } from "@/shared/types"
+import { ActionIcon } from "@/shared/ui/iconify"
+import { useI18n } from "@/shared/i18n/context"
+import type { ActionTemplate, QuickAction, SelectionAnchor } from "@/shared/types"
 
 interface SelectionStart {
   x: number
@@ -22,12 +24,16 @@ interface Props {
   anchor: SelectionAnchor | null
   selectionStart: SelectionStart | null
   actions: ActionTemplate[]
+  quickActions: QuickAction[]
   onAction: (template: string, text: string) => void
+  onQuickAction: (action: QuickAction) => void
   onClose: () => void
 }
 
 const CURSOR_CLEARANCE = 20
 const DOWNWARD_TOLERANCE = 8
+const BUTTON_HEIGHT = 28
+const BUTTON_GAP = 2
 
 function getSelectionDirection(
   startX: number,
@@ -70,10 +76,13 @@ export default function SelectionToolbar({
   anchor,
   selectionStart,
   actions,
+  quickActions,
   onAction,
+  onQuickAction,
   onClose
 }: Props) {
   const theme = useUiTheme()
+  const { t } = useI18n()
   const toolbarRef = useRef<HTMLDivElement>(null)
   const posRef = useRef<{ x: number; y: number } | null>(null)
   const directionRef = useRef<SelectionDirection>(SelectionDirection.BOTTOM_RIGHT)
@@ -82,6 +91,7 @@ export default function SelectionToolbar({
   const dragOffsetRef = useRef({ x: 0, y: 0 })
   const userDraggedRef = useRef(false)
   const [isDragging, setIsDragging] = useState(false)
+  const [hoveredQuickId, setHoveredQuickId] = useState<string | null>(null)
 
   const updatePosition = useCallback(() => {
     if (!visible || !toolbarRef.current || !posRef.current) return
@@ -175,7 +185,7 @@ export default function SelectionToolbar({
     onAction(action.template, "")
   }
 
-  if (!visible || !anchor || actions.length === 0) {
+  if (!visible || !anchor || (actions.length === 0 && quickActions.length === 0)) {
     return null
   }
 
@@ -254,19 +264,64 @@ export default function SelectionToolbar({
           flexShrink: 0
         }} />
 
-        <ToolbarActionMenu
-          actions={actions}
-          onActionClick={handleActionClick}
-          theme={theme}
-          onClose={onClose}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault()
-              event.stopPropagation()
-              onClose()
-            }
-          }}
-        />
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: BUTTON_GAP,
+          height: BUTTON_HEIGHT,
+          padding: "0 4px",
+          pointerEvents: "auto"
+        }}>
+          {quickActions.map((action) => {
+            const isHovered = hoveredQuickId === action.id
+            const label = t(`options.actions.quickAction.${action.type}` as never)
+            return (
+              <ToolbarTooltip key={action.id} label={label}>
+                <button
+                  type="button"
+                  aria-label={label}
+                  onMouseEnter={() => setHoveredQuickId(action.id)}
+                  onMouseLeave={() => setHoveredQuickId(null)}
+                  onClick={() => onQuickAction(action)}
+                  style={{
+                    width: BUTTON_HEIGHT,
+                    height: BUTTON_HEIGHT,
+                    borderRadius: uiRadius.sm,
+                    border: "none",
+                    background: isHovered ? theme.accent.primary : "transparent",
+                    color: isHovered ? theme.text.inverse : theme.text.primary,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    outline: "none",
+                    padding: 0,
+                    transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}, color ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+                  }}>
+                  <ActionIcon
+                    icon={action.icon}
+                    size={16}
+                    color={isHovered ? theme.text.inverse : theme.text.primary}
+                  />
+                </button>
+              </ToolbarTooltip>
+            )
+          })}
+
+          <ToolbarActionMenu
+            actions={actions}
+            onActionClick={handleActionClick}
+            theme={theme}
+            onClose={onClose}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault()
+                event.stopPropagation()
+                onClose()
+              }
+            }}
+          />
+        </div>
       </div>
     </div>
   )

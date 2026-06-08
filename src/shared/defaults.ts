@@ -1,4 +1,4 @@
-import type { ActionTemplate, ExtensionSettings, ModelParams, ProviderConfig } from "@/shared/types"
+import type { ActionTemplate, ExtensionSettings, ModelParams, ProviderConfig, QuickAction } from "@/shared/types"
 
 export const DEFAULT_ACTIONS: ActionTemplate[] = [
   {
@@ -14,6 +14,15 @@ export const DEFAULT_ACTIONS: ActionTemplate[] = [
     template: "请将以下内容翻译为简体中文：\n{text}",
     enabled: true,
     icon: "tabler:language"
+  }
+]
+
+export const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
+  {
+    id: "copyToClipboard",
+    type: "copyToClipboard",
+    icon: "tabler:copy",
+    enabled: true
   }
 ]
 
@@ -39,6 +48,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   theme: "auto",
   language: "system",
   actions: DEFAULT_ACTIONS,
+  quickActions: DEFAULT_QUICK_ACTIONS,
   telemetryEnabled: true
 }
 
@@ -49,7 +59,8 @@ export const SECTION_DEFAULTS: Record<SectionKey, Partial<ExtensionSettings>> = 
     theme: DEFAULT_SETTINGS.theme
   },
   actions: {
-    actions: DEFAULT_SETTINGS.actions
+    actions: DEFAULT_SETTINGS.actions,
+    quickActions: DEFAULT_SETTINGS.quickActions
   },
   about: {
     telemetryEnabled: DEFAULT_SETTINGS.telemetryEnabled

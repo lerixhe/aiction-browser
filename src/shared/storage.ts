@@ -1,5 +1,5 @@
 import { DEFAULT_CUSTOM_MODEL_PROVIDER, DEFAULT_SETTINGS } from "@/shared/defaults"
-import type { ExtensionSettings, LanguagePreference, ModelParams, ProviderConfig, ThemePreference, UserIconData } from "@/shared/types"
+import type { ExtensionSettings, LanguagePreference, ModelParams, ProviderConfig, QuickAction, QuickActionType, ThemePreference, UserIconData } from "@/shared/types"
 
 export { DEFAULT_SETTINGS }
 
@@ -17,6 +17,25 @@ function validateActions(items: unknown[]): ExtensionSettings["actions"] {
         template: String(record.template),
         enabled: typeof record.enabled === "boolean" ? record.enabled : true,
         icon: typeof record.icon === "string" ? record.icon : undefined
+      }
+    })
+}
+
+const VALID_QUICK_ACTION_TYPES: QuickActionType[] = ["copyToClipboard"]
+
+function validateQuickActions(items: unknown[]): QuickAction[] {
+  return items
+    .filter((item) => {
+      const record = item as Record<string, unknown>
+      return typeof record.id === "string" && typeof record.type === "string" && VALID_QUICK_ACTION_TYPES.includes(record.type as QuickActionType)
+    })
+    .map((item) => {
+      const record = item as Record<string, unknown>
+      return {
+        id: String(record.id),
+        type: record.type as QuickActionType,
+        icon: typeof record.icon === "string" ? record.icon : "",
+        enabled: typeof record.enabled === "boolean" ? record.enabled : true
       }
     })
 }
@@ -74,6 +93,10 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
       ? validateActions(saved.customActions)
       : DEFAULT_SETTINGS.actions
 
+  const quickActions = Array.isArray(saved.quickActions)
+    ? validateQuickActions(saved.quickActions)
+    : DEFAULT_SETTINGS.quickActions
+
   const providers = Array.isArray(saved.providers) ? validateProviders(saved.providers) : DEFAULT_SETTINGS.providers
   const activeProviderId =
     typeof saved.activeProviderId === "string" && providers.some((provider) => provider.id === saved.activeProviderId)
@@ -91,6 +114,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     theme,
     language,
     actions,
+    quickActions,
     telemetryEnabled
   }
 }

@@ -11,7 +11,7 @@ import { createButtonStyle, createCardStyle, createFieldLabelStyle, createInputS
 import { ACTION_ICON_LIBRARY, type IconEntry } from "@/shared/ui/icon-library"
 import { BUNDLED_TABLER_ICONS } from "@/shared/ui/bundled-icons"
 import { useI18n } from "@/shared/i18n/context"
-import type { ActionTemplate, ExtensionSettings } from "@/shared/types"
+import type { ActionTemplate, ExtensionSettings, QuickAction } from "@/shared/types"
 
 function PlusIcon({ size, color }: { size: number; color: string }) {
   return (
@@ -237,8 +237,84 @@ export function ActionsSection({ settings, saveSettingsNow }: ActionsSectionProp
     fontSize: uiTypography.fontSize.md
   }
 
+  const quickActionLabel = (action: QuickAction): string => {
+    const key = `options.actions.quickAction.${action.type}` as const
+    return t(key)
+  }
+
+  const updateQuickAction = (index: number, patch: Partial<QuickAction>) => {
+    saveSettingsNow((current) => ({
+      ...current,
+      quickActions: current.quickActions.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, ...patch } : item
+      )
+    }))
+  }
+
   return (
-    <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
+    <>
+      {/* Quick Actions Card */}
+      <section style={{ ...cardStyle, padding: 0, overflow: "hidden", marginBottom: uiSpace[16] }}>
+        <div style={{ padding: `${uiSpace[20]}px ${uiSpace[24]}px ${uiSpace[16]}px`, borderBottom: `0.5px solid ${theme.border.hairline}` }}>
+          <h2
+            style={{
+              margin: 0,
+              fontSize: uiTypography.fontSize.lg,
+              fontWeight: uiTypography.fontWeight.semibold,
+              letterSpacing: uiTypography.letterSpacing.tight
+            }}>
+            {t("options.actions.quickActionsTitle")}
+          </h2>
+        </div>
+
+        <div style={{ padding: `${uiSpace[8]}px ${uiSpace[12]}px` }}>
+          {settings.quickActions.map((action, index) => (
+            <div
+              key={action.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: uiSpace[12],
+                padding: `${uiSpace[10]}px ${uiSpace[12]}px`,
+                borderRadius: uiRadius.sm
+              }}>
+              <div
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: uiRadius.sm,
+                  background: theme.bg.surface,
+                  color: theme.accent.primary,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0
+                }}>
+                <ActionIcon icon={action.icon} size={16} color={theme.accent.primary} />
+              </div>
+
+              <span
+                style={{
+                  flex: 1,
+                  fontSize: uiTypography.fontSize.sm,
+                  fontWeight: uiTypography.fontWeight.regular,
+                  color: theme.text.primary
+                }}>
+                {quickActionLabel(action)}
+              </span>
+
+              <ToggleSwitch
+                checked={action.enabled}
+                onChange={() => updateQuickAction(index, { enabled: !action.enabled })}
+                theme={theme}
+              />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Custom AI Actions Card */}
+      <section style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
       {/* Header */}
       <div style={{ padding: `${uiSpace[20]}px ${uiSpace[24]}px ${uiSpace[16]}px`, borderBottom: `0.5px solid ${theme.border.hairline}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <h2
@@ -668,5 +744,6 @@ export function ActionsSection({ settings, saveSettingsNow }: ActionsSectionProp
         </div>
       </div>
     </section>
+    </>
   )
 }

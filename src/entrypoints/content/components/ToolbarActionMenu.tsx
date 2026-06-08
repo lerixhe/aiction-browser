@@ -15,7 +15,7 @@ interface ToolbarActionMenuProps {
   onKeyDown?: (event: React.KeyboardEvent) => void
 }
 
-function ToolbarTooltip({ label, children }: { label: string; children: React.ReactNode }) {
+export function ToolbarTooltip({ label, children }: { label: string; children: React.ReactNode }) {
   const [show, setShow] = useState(false)
   const [pos, setPos] = useState({ top: 0, left: 0 })
 

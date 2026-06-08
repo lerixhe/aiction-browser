@@ -9,7 +9,7 @@ import { useToolbarState } from "@/entrypoints/content/hooks/useToolbarState"
 import { initContentScriptAnalytics, trackEvent } from "@/shared/analytics"
 import { resolveActionTemplate, formatFreeInputPrompt } from "@/shared/prompt"
 import { getSettings } from "@/shared/storage"
-import type { SelectionAnchor, SelectionContext } from "@/shared/types"
+import type { SelectionAnchor, SelectionContext, QuickAction } from "@/shared/types"
 
 export default function App() {
   const extensionRootRef = useRef<HTMLDivElement | null>(null)
@@ -26,6 +26,7 @@ export default function App() {
     toolbarAnchor,
     selectionContext,
     actions,
+    quickActions,
     closeToolbar,
     openToolbar,
     toolbarVisibleRef
@@ -127,6 +128,35 @@ export default function App() {
     [selectionContext, openPanelWithAction]
   )
 
+  // Handle quick action
+  const handleQuickAction = useCallback(
+    async (action: QuickAction) => {
+      if (!selectionContext) return
+
+      const text = selectionContext.text
+
+      if (action.type === "copyToClipboard") {
+        try {
+          await navigator.clipboard.writeText(text)
+        } catch {
+          // Fallback for contexts where clipboard API is blocked
+          const textarea = document.createElement("textarea")
+          textarea.value = text
+          textarea.style.position = "fixed"
+          textarea.style.opacity = "0"
+          document.body.appendChild(textarea)
+          textarea.select()
+          document.execCommand("copy")
+          document.body.removeChild(textarea)
+        }
+        closeToolbar()
+      }
+
+      void trackEvent("quick_action_clicked", { action_type: action.type })
+    },
+    [selectionContext, closeToolbar]
+  )
+
   // Handle free submit from panel captured text
   const handleFreeSubmit = useCallback(
     async (input: string, text: string) => {
@@ -158,8 +188,12 @@ export default function App() {
         anchor={toolbarAnchor}
         selectionStart={selectionStart}
         actions={actions}
+        quickActions={quickActions}
         onAction={(template, text) => {
           void handleAction(template, selectionContext?.text ?? text)
+        }}
+        onQuickAction={(action) => {
+          void handleQuickAction(action)
         }}
         onClose={() => {
           closeToolbar()

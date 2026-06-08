@@ -90,6 +90,8 @@ export default {
   "options.connection.missingUrlKeyModel": "Please fill in API Base URL, API Key, and Model before testing.",
   "options.connection.missingApiBaseUrl": "Please fill in API Base URL first",
   "options.actions.title": "Custom AI Actions",
+  "options.actions.quickActionsTitle": "Quick Actions",
+  "options.actions.quickAction.copyToClipboard": "Copy to Clipboard",
   "options.actions.addAction": "Add AI Action",
   "options.actions.newActionLabel": "New AI Action",
   "options.actions.newActionTemplate": "Help me process the following content「{text}」",
