@@ -1,7 +1,7 @@
 {
   "name": "aiction",
   "displayName": "AIction",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A lightweight Chrome extension for getting AI help on selected web content.",
   "license": "GPL-3.0",
   "type": "module",
