@@ -11,7 +11,7 @@ import { i18nStore } from "@/shared/i18n/index"
 import { formatApiError, getErrorMessage, isAbortError } from "@/shared/errors"
 import { getActiveProvider, getSettings } from "@/shared/storage"
 import { resolveLanguageModel } from "@/shared/model-provider"
-import { fetchModelsDev } from "@/shared/models-dev"
+import { fetchModelsDev, getModelParamSupport } from "@/shared/models-dev"
 import {
   trackBackgroundEvent,
   startBackgroundBatching,
@@ -43,16 +43,40 @@ async function streamChat(
   const modelsDevData = await fetchModelsDev()
   const model = resolveLanguageModel(activeService, modelsDevData)
 
-  const result = streamText({
+  const paramSupport = getModelParamSupport(
+    modelsDevData,
+    activeService.modelsDevId ?? "",
+    activeService.model
+  )
+  const params = activeService.modelParams
+
+  const streamParams: Parameters<typeof streamText>[0] = {
     model,
     messages,
-    maxOutputTokens: activeService.modelParams.maxTokens >= 1 ? activeService.modelParams.maxTokens : undefined,
-    temperature: activeService.modelParams.temperature,
-    topP: activeService.modelParams.topP,
-    presencePenalty: activeService.modelParams.presencePenalty,
-    frequencyPenalty: activeService.modelParams.frequencyPenalty,
     abortSignal: signal,
-  })
+  }
+
+  if (paramSupport.maxTokens && params.maxTokens >= 1) {
+    streamParams.maxOutputTokens = params.maxTokens
+  }
+
+  if (paramSupport.temperature) {
+    streamParams.temperature = params.temperature
+  }
+
+  if (paramSupport.topP && params.topP > 0) {
+    streamParams.topP = params.topP
+  }
+
+  if (paramSupport.presencePenalty) {
+    streamParams.presencePenalty = params.presencePenalty
+  }
+
+  if (paramSupport.frequencyPenalty) {
+    streamParams.frequencyPenalty = params.frequencyPenalty
+  }
+
+  const result = streamText(streamParams)
 
   let hasContent = false
 
