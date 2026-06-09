@@ -92,6 +92,8 @@ export default {
   "options.actions.quickActionsTitle": "Quick Actions",
   "options.actions.quickAction.copyToClipboard": "Copy",
   "options.actions.quickAction.copyToClipboard.description": "Copies the selected text to the clipboard",
+  "options.actions.quickAction.speakText": "Speak",
+  "options.actions.quickAction.speakText.description": "Reads the selected text aloud using text-to-speech",
   "options.actions.addAction": "Add AI Action",
   "options.actions.newActionLabel": "New AI Action",
   "options.actions.newActionTemplate": "Help me process the following content「{text}」",

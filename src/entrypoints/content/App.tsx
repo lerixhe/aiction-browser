@@ -11,10 +11,35 @@ import { resolveActionTemplate, formatFreeInputPrompt } from "@/shared/prompt"
 import { getSettings } from "@/shared/storage"
 import type { SelectionAnchor, SelectionContext, QuickAction } from "@/shared/types"
 
+const MAX_UTTERANCE_LENGTH = 180
+
+function splitText(text: string): string[] {
+  const normalized = text.replace(/\s+/g, " ").trim()
+  if (!normalized) return []
+
+  const sentences = normalized.match(/[^。！？.!?]+[。！？.!?]?/g) || [normalized]
+  const chunks: string[] = []
+  let current = ""
+
+  for (const sentence of sentences) {
+    if (current.length + sentence.length > MAX_UTTERANCE_LENGTH) {
+      if (current) chunks.push(current)
+      current = sentence
+    } else {
+      current += sentence
+    }
+  }
+
+  if (current) chunks.push(current)
+  return chunks
+}
+
 export default function App() {
   const extensionRootRef = useRef<HTMLDivElement | null>(null)
   const panelOpenRef = useRef(false)
   const [selectionStart, setSelectionStart] = useState<SelectionStart | null>(null)
+  const speechSynthRef = useRef(window.speechSynthesis)
+  const isSpeakingRef = useRef(false)
 
   useEffect(() => {
     void initContentScriptAnalytics()
@@ -149,6 +174,39 @@ export default function App() {
           document.execCommand("copy")
           document.body.removeChild(textarea)
         }
+        closeToolbar()
+      } else if (action.type === "speakText") {
+        const synth = speechSynthRef.current
+        if (!synth) return
+
+        if (isSpeakingRef.current) {
+          synth.cancel()
+          isSpeakingRef.current = false
+          return
+        }
+
+        const chunks = splitText(text)
+        if (chunks.length === 0) return
+
+        isSpeakingRef.current = true
+
+        const speakNext = (index: number) => {
+          if (index >= chunks.length) {
+            isSpeakingRef.current = false
+            return
+          }
+
+          const utterance = new SpeechSynthesisUtterance(chunks[index])
+          utterance.lang = navigator.language || "zh-CN"
+          utterance.rate = 1
+          utterance.onend = () => speakNext(index + 1)
+          utterance.onerror = () => {
+            isSpeakingRef.current = false
+          }
+          synth.speak(utterance)
+        }
+
+        speakNext(0)
         closeToolbar()
       }
 

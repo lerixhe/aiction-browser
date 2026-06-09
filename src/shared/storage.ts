@@ -21,7 +21,7 @@ function validateActions(items: unknown[]): ExtensionSettings["actions"] {
     })
 }
 
-const VALID_QUICK_ACTION_TYPES: QuickActionType[] = ["copyToClipboard"]
+const VALID_QUICK_ACTION_TYPES: QuickActionType[] = ["copyToClipboard", "speakText"]
 
 function validateQuickActions(items: unknown[]): QuickAction[] {
   return items
@@ -93,9 +93,16 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
       ? validateActions(saved.customActions)
       : DEFAULT_SETTINGS.actions
 
-  const quickActions = Array.isArray(saved.quickActions)
-    ? validateQuickActions(saved.quickActions)
-    : DEFAULT_SETTINGS.quickActions
+  const quickActions = (() => {
+    const savedActions = Array.isArray(saved.quickActions)
+      ? validateQuickActions(saved.quickActions)
+      : DEFAULT_SETTINGS.quickActions
+
+    const savedIds = new Set(savedActions.map((a) => a.id))
+    const missingDefaults = DEFAULT_SETTINGS.quickActions.filter((a) => !savedIds.has(a.id))
+
+    return [...savedActions, ...missingDefaults]
+  })()
 
   const providers = Array.isArray(saved.providers) ? validateProviders(saved.providers) : DEFAULT_SETTINGS.providers
   const activeProviderId =

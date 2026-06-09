@@ -21,6 +21,31 @@ Chrome extension (MV3) built with WXT + React + TypeScript. Users select text on
 ## Workflow Rules
 - **代码修改后必须验证**：每次修改代码后，必须主动运行 `npm run typecheck` 和 `npm run build`，确保类型正确且构建成功。不要等待用户手动执行。
 
+## 开发经验教训
+
+### 配置迁移与合并策略
+**场景**：当向共享配置（如 `DEFAULT_SETTINGS`、`DEFAULT_QUICK_ACTIONS`）添加新项时，已有用户的配置不会自动更新。
+
+**通用原则**：`normalizeSettings()` 必须合并默认值和已保存的值，而不仅仅是验证已保存的值。
+
+**实现模式**：
+```typescript
+const items = (() => {
+  const savedItems = Array.isArray(saved.items) ? validate(saved.items) : DEFAULT.items
+  const savedIds = new Set(savedItems.map(i => i.id))
+  const missingDefaults = DEFAULT.items.filter(i => !savedIds.has(i.id))
+  return [...savedItems, ...missingDefaults]
+})()
+```
+
+**检查清单**：
+1. 更新类型定义（`types.ts`）
+2. 更新默认配置（`defaults.ts`）
+3. 更新验证逻辑（`storage.ts`）
+4. **更新 `normalizeSettings()` 合并逻辑** ← 容易遗漏
+5. 添加 i18n 翻译
+6. 运行 `npm run typecheck` 和 `npm run build`
+
 ## Entry Points (WXT file-based routing)
 - `src/entrypoints/background.ts`: Background Service Worker (uses `defineBackground()`).
 - `src/entrypoints/content/index.tsx`: Content Script UI (uses `defineContentScript()` + `createShadowRootUi()`).

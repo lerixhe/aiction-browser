@@ -92,6 +92,8 @@ export default {
   "options.actions.quickActionsTitle": "快捷 Actions",
   "options.actions.quickAction.copyToClipboard": "复制",
   "options.actions.quickAction.copyToClipboard.description": "复制到剪贴板",
+  "options.actions.quickAction.speakText": "朗读",
+  "options.actions.quickAction.speakText.description": "使用语音合成朗读选中文本",
   "options.actions.addAction": "新增动作",
   "options.actions.newActionLabel": "新动作",
   "options.actions.newActionTemplate": "帮我处理以下内容「{text}」",

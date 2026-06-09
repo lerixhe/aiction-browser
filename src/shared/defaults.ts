@@ -23,6 +23,12 @@ export const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
     type: "copyToClipboard",
     icon: "tabler:copy",
     enabled: true
+  },
+  {
+    id: "speakText",
+    type: "speakText",
+    icon: "tabler:volume",
+    enabled: true
   }
 ]
 

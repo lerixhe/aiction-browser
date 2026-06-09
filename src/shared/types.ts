@@ -10,7 +10,7 @@ export interface ActionTemplate {
   icon?: string
 }
 
-export type QuickActionType = "copyToClipboard"
+export type QuickActionType = "copyToClipboard" | "speakText"
 
 export interface QuickAction {
   id: string
