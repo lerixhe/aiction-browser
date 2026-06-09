@@ -123,10 +123,27 @@ export function ActionsSection({ settings, saveSettingsNow }: ActionsSectionProp
         const response = await fetch(`https://api.iconify.design/${iconName}.svg?height=24`)
         if (response.ok) {
           const svgText = await response.text()
+          const svgMatch = svgText.match(/<svg[^>]*>/)
           const bodyMatch = svgText.match(/<svg[^>]*>([\s\S]*?)<\/svg>/)
-          if (bodyMatch) {
-            await saveUserIcon(iconName, { body: bodyMatch[1], width: 24, height: 24 })
-            addIcon(iconName, { body: bodyMatch[1], width: 24, height: 24 })
+          if (bodyMatch && svgMatch) {
+            const svgTag = svgMatch[0]
+            const viewBoxMatch = svgTag.match(/viewBox=["']([^"']+)["']/)
+            let width = 24
+            let height = 24
+            if (viewBoxMatch) {
+              const viewBox = viewBoxMatch[1].split(/\s+/)
+              if (viewBox.length === 4) {
+                width = parseInt(viewBox[2]) || 24
+                height = parseInt(viewBox[3]) || 24
+              }
+            } else {
+              const widthMatch = svgTag.match(/width=["']([^"']+)["']/)
+              const heightMatch = svgTag.match(/height=["']([^"']+)["']/)
+              if (widthMatch) width = parseInt(widthMatch[1]) || 24
+              if (heightMatch) height = parseInt(heightMatch[1]) || 24
+            }
+            await saveUserIcon(iconName, { body: bodyMatch[1], width, height })
+            addIcon(iconName, { body: bodyMatch[1], width, height })
           }
         }
       } catch (error) {
