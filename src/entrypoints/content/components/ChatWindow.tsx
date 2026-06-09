@@ -206,6 +206,7 @@ export default function ChatWindow({
   const [input, setInput] = useState("")
   const [focused, setFocused] = useState<string | null>(null)
   const [hovered, setHovered] = useState<string | null>(null)
+  const [capturedTagHovered, setCapturedTagHovered] = useState(false)
   const [closePressed, setClosePressed] = useState(false)
   const [sendPressed, setSendPressed] = useState(false)
   const messagesContainerRef = useRef<HTMLDivElement | null>(null)
@@ -408,7 +409,7 @@ export default function ChatWindow({
         </div>
       )}
 
-      {/* Captured text section */}
+      {/* Captured text capsule tag */}
       {hasCapturedText && (
         <div
           style={{
@@ -418,35 +419,80 @@ export default function ChatWindow({
           }}>
           <div
             style={{
-              fontSize: uiTypography.fontSize.xs,
-              fontWeight: uiTypography.fontWeight.medium,
-              color: theme.text.secondary,
-              marginBottom: uiSpace[4],
-              letterSpacing: uiTypography.letterSpacing.wide,
-              textTransform: "uppercase"
-            }}>
-            {t("chat.capturedTextLabel")}
-          </div>
-          <textarea
-            value={capturedText}
-            onChange={(event) => onCapturedTextChange(event.target.value)}
-            onFocus={() => setFocused("captured")}
-            onBlur={() => setFocused(null)}
-            onKeyDown={(event) => event.stopPropagation()}
-            rows={3}
-            aria-label={t("chat.capturedTextareaLabel")}
-            placeholder={t("chat.capturedTextareaPlaceholder")}
-            style={{
-              ...createInputStyle(theme, focused === "captured"),
-              width: "100%",
-              resize: "vertical",
-              borderRadius: uiRadius.sm,
-              fontSize: uiTypography.fontSize.sm,
-              fontFamily: "inherit",
-              lineHeight: 1.4,
-              boxSizing: "border-box"
+              position: "relative",
+              display: "inline-flex"
             }}
-          />
+            onMouseEnter={() => setCapturedTagHovered(true)}
+            onMouseLeave={() => setCapturedTagHovered(false)}
+          >
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: uiSpace[6],
+                padding: `${uiSpace[4]}px ${uiSpace[10]}px`,
+                borderRadius: 999,
+                background: theme.brand.secondary,
+                color: theme.text.primary,
+                fontSize: uiTypography.fontSize.xs,
+                fontWeight: uiTypography.fontWeight.medium,
+                cursor: "default",
+                transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
+                lineHeight: 1.4
+              }}
+            >
+              <span>{t("chat.selectedText")}</span>
+              {capturedTagHovered && (
+                <button
+                  onClick={() => onCapturedTextChange("")}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  aria-label={t("chat.clearCapturedText")}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 16,
+                    height: 16,
+                    borderRadius: "50%",
+                    border: "none",
+                    background: theme.bg.surfaceMuted,
+                    cursor: "pointer",
+                    padding: 0,
+                    flexShrink: 0
+                  }}
+                >
+                  <CloseIcon size={10} color={theme.text.secondary} />
+                </button>
+              )}
+            </div>
+            {capturedTagHovered && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  left: 0,
+                  marginTop: uiSpace[4],
+                  padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
+                  borderRadius: uiRadius.md,
+                  background: theme.bg.surface,
+                  border: `1px solid ${theme.border.default}`,
+                  boxShadow: uiShadow.md,
+                  fontSize: uiTypography.fontSize.xs,
+                  color: theme.text.secondary,
+                  maxWidth: 280,
+                  maxHeight: 120,
+                  overflowY: "auto",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  zIndex: 10,
+                  lineHeight: 1.4,
+                  pointerEvents: "none"
+                }}
+              >
+                {capturedText}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
