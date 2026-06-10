@@ -138,8 +138,8 @@ export function ProviderSelectModal({
             overflowY: "auto",
             padding: uiSpace[24],
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-            gap: uiSpace[12],
+            gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+            gap: uiSpace[10],
             alignContent: "start"
           }}>
           {/* Custom provider option */}
@@ -150,8 +150,8 @@ export function ProviderSelectModal({
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: uiSpace[8],
-              padding: uiSpace[16],
+              gap: uiSpace[6],
+              padding: `${uiSpace[12]}px ${uiSpace[8]}px`,
               border: `1px solid ${theme.border.default}`,
               borderRadius: uiRadius.md,
               background: theme.bg.surface,
@@ -169,28 +169,29 @@ export function ProviderSelectModal({
             }}>
             <div
               style={{
-                width: 48,
-                height: 48,
+                width: 36,
+                height: 36,
                 borderRadius: uiRadius.sm,
                 background: theme.bg.surfaceMuted,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center"
               }}>
-              <PlusIcon size={24} color={theme.text.secondary} />
+              <PlusIcon size={18} color={theme.text.secondary} />
             </div>
             <span
               style={{
-                fontSize: uiTypography.fontSize.sm,
+                fontSize: uiTypography.fontSize.xs,
                 fontWeight: uiTypography.fontWeight.semibold,
                 color: theme.text.primary,
-                textAlign: "center"
+                textAlign: "center",
+                lineHeight: uiTypography.lineHeight.tight
               }}>
               {t("options.connection.customProvider")}
             </span>
             <span
               style={{
-                fontSize: uiTypography.fontSize.xs,
+                fontSize: 11,
                 color: theme.text.secondary
               }}>
               OpenAI Compatible
@@ -207,8 +208,8 @@ export function ProviderSelectModal({
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                gap: uiSpace[8],
-                padding: uiSpace[16],
+                gap: uiSpace[6],
+                padding: `${uiSpace[12]}px ${uiSpace[8]}px`,
                 border: `1px solid ${theme.border.default}`,
                 borderRadius: uiRadius.md,
                 background: theme.bg.surface,
@@ -224,19 +225,20 @@ export function ProviderSelectModal({
                 e.currentTarget.style.borderColor = theme.border.default
                 e.currentTarget.style.background = theme.bg.surface
               }}>
-              <ProviderLogoById providerId={provider.id} name={provider.name} size={48} theme={theme} />
+              <ProviderLogoById providerId={provider.id} name={provider.name} size={36} theme={theme} />
               <span
                 style={{
-                  fontSize: uiTypography.fontSize.sm,
+                  fontSize: uiTypography.fontSize.xs,
                   fontWeight: uiTypography.fontWeight.semibold,
                   color: theme.text.primary,
-                  textAlign: "center"
+                  textAlign: "center",
+                  lineHeight: uiTypography.lineHeight.tight
                 }}>
                 {provider.name}
               </span>
               <span
                 style={{
-                  fontSize: uiTypography.fontSize.xs,
+                  fontSize: 11,
                   color: theme.text.secondary
                 }}>
                 {provider.modelCount} {t("options.connection.models")}
