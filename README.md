@@ -8,7 +8,7 @@ A lightweight Chrome extension for getting AI help on selected web content. Supp
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-yellow)](https://chromewebstore.google.com/detail/YOUR_EXTENSION_ID)
-[![Version](https://img.shields.io/badge/version-0.2.0-green)](package.json)
+[![Version](https://img.shields.io/badge/version-0.3.0-green)](package.json)
 
 **[中文](./README.zh-CN.md)**
 
