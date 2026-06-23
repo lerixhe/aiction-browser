@@ -1,8 +1,10 @@
-# AIction
+# AIction Browser
 
 > Select text → Trigger AI → Continue in chat
 
 A lightweight Chrome extension for getting AI help on selected web content. Supports any OpenAI-compatible `/chat/completions` endpoint.
+
+> ⚠️ **Note**: This is the browser extension component. For the full desktop experience, see [AIction Desktop](https://github.com/lerixhe/aiction).
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-yellow)](https://chromewebstore.google.com/detail/YOUR_EXTENSION_ID)
@@ -59,8 +61,8 @@ OpenAI, Anthropic Claude, Google Gemini, DeepSeek, OpenRouter, or any OpenAI-com
 **Developer Mode**
 
 ```bash
-git clone https://github.com/lerixhe/aiction.git
-cd aiction
+git clone https://github.com/lerixhe/aiction-browser.git
+cd aiction-browser
 npm install
 npm run dev
 ```

@@ -1,5 +1,5 @@
 {
-  "name": "aiction",
+  "name": "aiction-browser",
   "displayName": "AIction",
   "version": "0.2.0",
   "description": "A lightweight Chrome extension for getting AI help on selected web content.",

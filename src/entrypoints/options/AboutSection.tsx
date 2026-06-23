@@ -93,7 +93,7 @@ export function AboutSection({ settings, saveSettingsNow }: AboutSectionProps) {
             <span style={{ color: theme.brand?.primary || theme.accent?.primary || "#0D9488", marginRight: uiSpace[8] }}>·</span>
             <span>{t("options.about.githubLabel")}: </span>
             <a
-              href="https://github.com/lerixhe/aiction"
+              href="https://github.com/lerixhe/aiction-browser"
               target="_blank"
               rel="noopener noreferrer"
               style={{
@@ -102,7 +102,7 @@ export function AboutSection({ settings, saveSettingsNow }: AboutSectionProps) {
                 marginLeft: uiSpace[4]
               }}
             >
-              github.com/lerixhe/aiction
+              github.com/lerixhe/aiction-browser
             </a>
           </div>
           <div style={{ display: "flex", alignItems: "baseline" }}>

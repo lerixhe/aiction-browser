@@ -1,8 +1,10 @@
-# AIction
+# AIction Browser
 
 > 选中文本 → 触发 AI → 继续对话
 
 轻量级 Chrome 扩展，为网页选中内容提供 AI 辅助。支持任意 OpenAI 兼容的 `/chat/completions` 端点。
+
+> ⚠️ **注意**：这是浏览器扩展组件。完整桌面版体验请访问 [AIction Desktop](https://github.com/lerixhe/aiction)。
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-yellow)](https://chromewebstore.google.com/detail/YOUR_EXTENSION_ID)
@@ -59,8 +61,8 @@ OpenAI、Anthropic Claude、Google Gemini、DeepSeek、OpenRouter，或任何 Op
 **开发者模式**
 
 ```bash
-git clone https://github.com/lerixhe/aiction.git
-cd aiction
+git clone https://github.com/lerixhe/aiction-browser.git
+cd aiction-browser
 npm install
 npm run dev
 ```
