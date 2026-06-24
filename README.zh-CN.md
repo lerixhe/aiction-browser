@@ -4,6 +4,9 @@
 
 轻量级 Chrome 扩展，为网页选中内容提供 AI 辅助。支持任意 OpenAI 兼容的 `/chat/completions` 端点。
 
+> 🛒 **已上架 Chrome 网上应用店：**
+> **[从 Chrome 商店安装 Aiction](https://chromewebstore.google.com/detail/aiction-custom-ai-actions/heedegdamjmjffdojaihadbndemmocin?utm_source=github)**
+
 > ⚠️ **注意**：这是浏览器扩展组件。完整桌面版体验请访问 [AIction Desktop](https://github.com/lerixhe/aiction)。
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)

@@ -4,6 +4,9 @@
 
 A lightweight Chrome extension for getting AI help on selected web content. Supports any OpenAI-compatible `/chat/completions` endpoint.
 
+> 🛒 **Now available on the Chrome Web Store:**
+> **[Install Aiction from Chrome Web Store](https://chromewebstore.google.com/detail/aiction-custom-ai-actions/heedegdamjmjffdojaihadbndemmocin?utm_source=github)**
+
 > ⚠️ **Note**: This is the browser extension component. For the full desktop experience, see [AIction Desktop](https://github.com/lerixhe/aiction).
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
