@@ -49,7 +49,20 @@ const items = (() => {
 ## Entry Points (WXT file-based routing)
 - `src/entrypoints/background.ts`: Background Service Worker (uses `defineBackground()`).
 - `src/entrypoints/content/index.tsx`: Content Script UI (uses `defineContentScript()` + `createShadowRootUi()`).
-- `src/entrypoints/options/`: Options Page (HTML entry + React component).
+- `src/entrypoints/options/`: Options Page (HTML entry + React component). Main components:
+  - `OptionsPage.tsx`: Main options page layout
+  - `ProviderEditor.tsx`: AI provider configuration editor
+  - `ProviderList.tsx`: List of configured providers
+  - `ProviderSelectModal.tsx`: Modal for selecting providers
+  - `ProviderLogo.tsx`: Provider logo display
+  - `ModelPicker.tsx`: Model selection component
+  - `ModelParamsEditor.tsx`: Model parameters editor
+  - `ActionsSection.tsx`: Custom actions configuration
+  - `AppearanceSection.tsx`: Theme and appearance settings
+  - `BackupSection.tsx`: Settings export/import
+  - `AboutSection.tsx`: About section
+  - `ConfirmDialog.tsx`: Confirmation dialog
+  - `useProviderManager.ts`: Provider management hook
 - `src/entrypoints/popup/`: Browser Action Popup (HTML entry + React component).
 - `src/entrypoints/pdf-viewer/`: PDF Viewer Page (HTML entry + React component).
 
@@ -64,11 +77,15 @@ Three runtime contexts communicate via `chrome.runtime.onMessage` and `chrome.ru
 - **Streaming (chat):** Content script opens a `chrome.runtime.connect` port (`AICTION_STREAM`). Background listens on `chrome.runtime.onConnect`, calls `streamText()` with streaming, and `port.postMessage`s events back.
 - **Non-streaming (API test, fetch models):** Uses `chrome.runtime.sendMessage` and background responds via `sendResponse`.
 
-Shared logic in `src/shared/*`: `types.ts`, `selection.ts`, `prompt.ts`, `messaging.ts`, `storage.ts`, `constants.ts`, `defaults.ts`, `errors.ts`, `analytics.ts`, `model-provider.ts`, `models-dev.ts`, `iconify.tsx`.
+Shared logic in `src/shared/*`: `types.ts`, `selection.ts`, `prompt.ts`, `messaging.ts`, `storage.ts`, `constants.ts`, `defaults.ts`, `errors.ts`, `analytics.ts`, `model-provider.ts`, `models-dev.ts`.
 
 Shared UI in `src/shared/ui/`: `tokens.ts`, `styles.ts`, `theme.ts`, `icons.tsx`, `iconify.tsx`, `markdown.tsx`, `toggle-switch.tsx`, `avatar.ts`, `bundled-icons.ts`, `icon-library.ts`.
 
 Content script hooks in `src/entrypoints/content/hooks/`: `useChatState.ts`, `useDraggable.ts`, `useSelectionDetection.ts`, `useToolbarState.ts`.
+
+Content script components in `src/entrypoints/content/components/`: `SelectionToolbar.tsx`, `ChatWindow.tsx`, `ToolbarActionMenu.tsx`.
+
+Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (deep active element traversal, extension root checks, selection helpers).
 
 ### i18n System
 - Translation files in `src/shared/i18n/` (English + Chinese).
@@ -189,6 +206,7 @@ Two-tier architecture for offline icon rendering and fast icon picker.
 | File | Role |
 |------|------|
 | `scripts/bundle-icons.ts` | Build script: extracts 106 icons from `@iconify/json` → generates `bundled-icons.ts` |
+| `scripts/check-icons.ts` | Utility script: validates icon availability via Iconify API |
 | `src/shared/ui/bundled-icons.ts` | **Generated**: exports `BUNDLED_TABLER_ICONS` (IconifyJSON, ~22KB) |
 | `src/shared/ui/iconify.tsx` | Calls `addCollection()` at module load; lazy loads user icons on first render |
 | `src/shared/storage.ts` | `getUserIcons()`, `saveUserIcon()`, `loadAndRegisterUserIcons()` |
