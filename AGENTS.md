@@ -46,6 +46,34 @@ const items = (() => {
 5. 添加 i18n 翻译
 6. 运行 `npm run typecheck` 和 `npm run build`
 
+### 灵动岛重构调试经验
+
+**JSX “幽灵报错”：少一个 `}` 的定位方法**
+`style={{...}}>` 误写成 `}>`（丢一个 `}`）时，TS 报「JSX element 'div' has no corresponding closing tag」，但报错位置在 JSX 开头且报错行号下的代码看起来完全正常，肉眼数括号几乎无法定位。对象字面量未闭合会让解析器吞掉半个文件。
+
+解法：用 TypeScript Compiler API 打印 parseDiagnostics + AST，检查关键属性的解析范围：
+```js
+const sf = ts.createSourceFile("x.tsx", src, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TSX)
+console.log(sf.parseDiagnostics)
+// 遍历 AST 看 JsxAttribute/JsxExpression 的 getStart/getEnd 是否异常拖长
+```
+教训：结构诡异的 JSX 语法报错，直接 dump parse tree 看节点的实际 span，比肉眼检查可靠。
+
+**编译验证二分时，rg 过滤条件要匹配错误码而非文件名**
+把待测文件复制到 `/tmp` 做二分时，用 `rg "DynamicIsland"` 过滤 tsc 输出会得到假阴性（/tmp 路径不含该词，错误被静默吞掉，误判为“编译通过”）。过滤应该用错误码（如 `rg "TS17008|TS2657"`）或不过滤。
+
+**edit 工具的多段编辑是原子性的**
+一次 edit 调用里多条 edits[]，任一 oldText 匹配失败会导致整个调用回滚。不要假设“前几条已生效”而基于错误状态继续编辑；多段编辑失败后必须重新读文件确认每段的实际状态。另外多段编辑容易连带丢失换行或改错相邻字符（本次 `}}>` 被误改就是多段编辑引入的）。
+
+**useCallback/hook 间依赖注意声明顺序**
+后声明的 `const collapse = useCallback(...)` 被先声明的 `scheduleCollapse` 依赖时，依赖数组里的 `collapse` 处于 TDZ，运行时 ReferenceError。被依赖的 callback 必须声明在前。
+
+**组件拆分时 `<style>` 内的全局样式会丢**
+原组件根部的 `<style>` 里定义的 `@keyframes`（如 `speech-wave`）在拆分成多个内容件后没有任何组件输出，CSS 动画静默失效（不报错、元素静止）。拆分时列出全局样式清单并指定归属；keyframes 在 shadow root 内全局生效，可提取共享常量在多个组件里重复输出（同名 keyframes 后者覆盖前者，内容相同时无害）。
+
+**收起浮层时要处理残留焦点**
+浮层（岛展开层）收起后 DOM 仍在（仅 opacity 0 + pointerEvents none），键盘焦点会残留在隐形输入框里，后续按键全部落入虚空。收起路径必须统一 blur 岛内焦点（容器用 `onFocusCapture` 记录焦点元素，collapse 时 blur）。
+
 ## Entry Points (WXT file-based routing)
 - `src/entrypoints/background.ts`: Background Service Worker (uses `defineBackground()`).
 - `src/entrypoints/content/index.tsx`: Content Script UI (uses `defineContentScript()` + `createShadowRootUi()`).
@@ -83,7 +111,7 @@ Shared UI in `src/shared/ui/`: `tokens.ts`, `styles.ts`, `theme.ts`, `icons.tsx`
 
 Content script hooks in `src/entrypoints/content/hooks/`: `useChatState.ts`, `useDraggable.ts`, `useSelectionDetection.ts`, `useToolbarState.ts`.
 
-Content script components in `src/entrypoints/content/components/`: `SelectionToolbar.tsx`, `ChatWindow.tsx`, `ToolbarActionMenu.tsx`.
+Content script components in `src/entrypoints/content/components/`: `SelectionToolbar.tsx`, `DynamicIsland.tsx` (通用灵动岛容器), `ChatIslandPanel.tsx` (聊天岛面板 + 胶囊状态), `SpeechPlayer.tsx` (TTS 内容件: `TtsPillContent` / `TtsControlBar` / `TtsMiniBar`), `ToolbarActionMenu.tsx`, `islandMetrics.ts` (共享尺寸常量).
 
 Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (deep active element traversal, extension root checks, selection helpers).
 
@@ -116,6 +144,33 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
 - Text selection inside toolbar/chat inputs must never update page selection context, toolbar anchor, or toolbar visibility.
 - Do not let transient page-selection loss during focus transfer into extension inputs hide the toolbar. Preserve that state during extension-internal interaction.
 - When debugging selection bugs, reload the extension and refresh the target tab before assuming logic is wrong. Stale injected code is a common cause.
+
+## Dynamic Island (灵动岛)
+
+聊天与朗读共用顶部中央的灵动岛（`DynamicIsland.tsx`）。状态机在 `App.tsx`：
+`islandVisible = panelOpen || ttsActive`，`islandExpanded` 由「首个 token 自动展开（延迟 400ms 避开入场动画）/ 手动收起 / Esc / 点外」驱动；用户手动收起后 `suppressAutoExpandRef` 阻止本轮流式再次自动展开，新请求（`openPanelWithAction` / `handleFollowupSend`）时重置。
+
+### 设计要点
+- 三态：胶囊（任务状态）、展开面板（聊天/控制条）；双任务同岛时胶囊左右分区，聊天展开时内嵌 `TtsMiniBar`
+- 胶囊展开触发：仅 TTS 时 hover（移出 300ms 收回），含聊天时 click（点外 = 收起并关闭对话）
+- morph 动画：容器宽高 + 圆角 spring 过渡；两层内容独立固定尺寸居中，靠 opacity/scale 交叉过渡（iOS 手法，morph 中内容不被重排挤压）
+- 拖进度条等瞬时操作通过 `IslandHoldContext` 的 hold/release 抑制 hover 模式自动收回
+- 对话挂起期间（`panelOpen`）划词工具栏被抑制
+
+### 不变量
+- 岛固定顶部中央，聊天岛不做拖拽/resize（身份特征，去掉后大幅简化）
+- 胶囊层 `pointerEvents` 必须按 `expanded` 切换；写死 `none` 会让胶囊内按钮永远无法点击
+- 岛卸载时必须复位 `islandExpanded`（App/PdfViewer 各有兑底 effect），否则下次出现会跳过胶囊直接展开
+- 展开层常挂载（仅 opacity 切换）避免流式更新下 remount 掉帧；代价是收起后需 blur 岛内焦点
+- 输入框 Enter 发送必须检查 `event.nativeEvent.isComposing`（IME 组合确认不是发送）
+
+### 待优化清单
+- [ ] **对话完成后不会自动退场**（原设计为 5s 自动收回）：done 态胶囊常驻，忘关会持续抑制划词工具栏，像扩展坏了。候选方案：完成后 N 秒无交互收回胶囊 → 再无交互自动结束对话
+- [ ] compact 单行预览态（三段式的中间层：流式时不用展开也能瞇一眼最新回复）
+- [ ] 双任务胶囊宽度（`ISLAND_METRICS.dualPillWidth = 232`）需实测微调
+- [ ] `TtsMiniBar` 插入聊天面板时无淡入过渡（内容突然出现轻微跳动）
+- [ ] 无障碍：状态变化无 `aria-live` 播报；胶囊无键盘入口（Tab 不可达）
+- [ ] 代码打磨：`useTtsStatusIcon` 改纯函数（现为 JSX 内调用的 hook 风格）；`iconBtnStyle` 在控制条/迷你条重复定义可工厂化；消息区滚动条颜色 hardcoded 未适配 dark 模式
 
 ## Manual Verification
 - After `npm run build`, load `.output/chrome-mv3` in `chrome://extensions` as an unpacked extension.
