@@ -1,44 +1,53 @@
-import { memo, useEffect, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useRef, useState } from "react"
 
-import { useDraggable } from "@/entrypoints/content/hooks/useDraggable"
+import type { useSpeechPlayer } from "@/entrypoints/content/hooks/useSpeechPlayer"
+import { TtsMiniBar } from "@/entrypoints/content/components/SpeechPlayer"
 import { MarkdownRenderer } from "@/shared/ui/markdown"
 import { useUiTheme } from "@/shared/ui/theme"
-import { uiMotion, uiRadius, uiShadow, uiSpace, uiTypography, uiLayer } from "@/shared/ui/tokens"
-import { createButtonStyle, createCardStyle, createFocusRing, createInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
+import { uiMotion, uiRadius, uiSpace, uiShadow, uiTypography } from "@/shared/ui/tokens"
+import { createButtonStyle, createFocusRing, createInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
 import { useI18n } from "@/shared/i18n/context"
-import type { ChatMessage } from "@/shared/types"
+import type { ChatMessage, ChatRequestState } from "@/shared/types"
+
+type SpeechPlayerInstance = ReturnType<typeof useSpeechPlayer>
+
+/** 聊天任务的胶囊相位 */
+export type ChatIslandPhase = "thinking" | "streaming" | "done" | "cancelled" | "failed"
+
+/** 由请求状态 + 消息推导胶囊相位（idle 且无消息视为等待响应的空窗期） */
+export function deriveChatPhase(
+  requestState: ChatRequestState,
+  messages: ChatMessage[]
+): ChatIslandPhase {
+  if (requestState.status === "failed") return "failed"
+  if (requestState.status === "cancelled") return "cancelled"
+  if (requestState.status === "streaming") {
+    const last = messages[messages.length - 1]
+    return last?.role === "assistant" && last.content ? "streaming" : "thinking"
+  }
+  return messages.length > 0 ? "done" : "thinking"
+}
 
 interface Props {
   capturedText: string
   messages: ChatMessage[]
-  requestState: "idle" | "streaming" | "cancelled" | "failed"
+  requestState: ChatRequestState["status"]
   modelName?: string
+  /** TTS 播放中时传入，面板顶部会内嵌迷你控制条 */
+  ttsPlayer?: SpeechPlayerInstance
   onCapturedTextChange: (text: string) => void
   onSend: (input: string) => void
   onStop: () => void
+  /** 收起为胶囊（岛保留，对话保留） */
+  onCollapse: () => void
+  /** 彻底关闭对话（岛消失） */
   onClose: () => void
 }
 
-function ChevronIcon({ expanded, color }: { expanded: boolean; color: string }) {
+function ChevronDownIcon({ size, color }: { size: number; color: string }) {
   return (
-    <svg
-      width="10"
-      height="10"
-      viewBox="0 0 10 10"
-      fill="none"
-      aria-hidden="true"
-      style={{
-        transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
-        transition: `transform ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
-        flexShrink: 0
-      }}>
-      <path
-        d="M3.5 1.5L7 5L3.5 8.5"
-        stroke={color}
-        strokeWidth={1.5}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M3.5 6L8 10.5L12.5 6" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -48,6 +57,140 @@ function CloseIcon({ size, color }: { size: number; color: string }) {
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <path d="M4 4L12 12M12 4L4 12" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
     </svg>
+  )
+}
+
+/** 思考中的跳动圆点 */
+function ThinkingDot({ color }: { color: string }) {
+  return (
+    <span
+      style={{
+        width: 8,
+        height: 8,
+        borderRadius: "50%",
+        background: color,
+        animation: "thinking-pulse 1s ease-in-out infinite",
+        display: "inline-block"
+      }}
+      aria-hidden="true"
+    />
+  )
+}
+
+/** 流式生成中的打字光标 */
+function TypingCursor({ color }: { color: string }) {
+  return (
+    <span
+      style={{
+        width: 2.5,
+        height: 13,
+        borderRadius: 1,
+        background: color,
+        animation: "island-caret-blink 0.9s steps(1) infinite",
+        display: "inline-block"
+      }}
+      aria-hidden="true"
+    />
+  )
+}
+
+/** 取消/停止的短横图标 */
+function CancelledGlyph({ color }: { color: string }) {
+  return (
+    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="5.5" y="5.5" width="13" height="13" rx="2" stroke={color} strokeWidth={2} />
+    </svg>
+  )
+}
+
+/**
+ * 灵动岛胶囊态的聊天状态内容（图标 + 文案 + hover 关闭按钮）。
+ * 与 TTS 同岛时由 App 负责分区拼接。
+ */
+export function ChatPillContent({
+  phase,
+  onDismiss
+}: {
+  phase: ChatIslandPhase
+  onDismiss: () => void
+}) {
+  const theme = useUiTheme()
+  const { t } = useI18n()
+  const [hovered, setHovered] = useState(false)
+
+  const label =
+    phase === "thinking"
+      ? t("chat.thinking")
+      : phase === "streaming"
+        ? t("island.chat.generating")
+        : phase === "done"
+          ? t("island.chat.done")
+          : phase === "cancelled"
+            ? t("island.chat.cancelled")
+            : t("island.chat.failed")
+
+  const color =
+    phase === "done"
+      ? theme.state.success
+      : phase === "failed"
+        ? theme.state.error
+        : phase === "cancelled"
+          ? theme.text.secondary
+          : theme.text.primary
+
+  const icon =
+    phase === "thinking" ? (
+      <ThinkingDot color={theme.brand.primary} />
+    ) : phase === "streaming" ? (
+      <TypingCursor color={theme.brand.primary} />
+    ) : phase === "done" ? (
+      <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" style={{ color }} aria-hidden="true">
+        <path d="M5 12.5l4.5 4.5L19 7.5" />
+      </svg>
+    ) : phase === "cancelled" ? (
+      <CancelledGlyph color={color} />
+    ) : (
+      <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ color }} aria-hidden="true">
+        <path d="M12 8v5" />
+        <path d="M12 16.5h.01" />
+        <circle cx="12" cy="12" r="9" />
+      </svg>
+    )
+
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      {icon}
+      <span style={{ fontSize: 12, fontWeight: uiTypography.fontWeight.medium, color }}>{label}</span>
+      {hovered && (
+        <button
+          onClick={(event) => {
+            event.stopPropagation()
+            onDismiss()
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+          aria-label={t("chat.closePanel")}
+          title={t("chat.closePanel")}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 16,
+            height: 16,
+            borderRadius: "50%",
+            border: "none",
+            background: theme.bg.surfaceMuted,
+            cursor: "pointer",
+            padding: 0,
+            flexShrink: 0,
+            animation: `island-pill-fade 120ms ${uiMotion.easingStandard}`
+          }}>
+          <CloseIcon size={9} color={theme.text.secondary} />
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -101,20 +244,27 @@ function ThinkingBlock({
           fontWeight: uiTypography.fontWeight.medium,
           textAlign: "left"
         }}>
-        <ChevronIcon expanded={expanded} color={theme.text.secondary} />
-        {isStreaming ? t("chat.thinking") : t("chat.thinkingProcess")}
-        {isStreaming ? (
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              background: theme.brand.primary,
-              animation: "thinking-pulse 1s ease-in-out infinite",
-              display: "inline-block"
-            }}
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 10 10"
+          fill="none"
+          aria-hidden="true"
+          style={{
+            transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
+            transition: `transform ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
+            flexShrink: 0
+          }}>
+          <path
+            d="M3.5 1.5L7 5L3.5 8.5"
+            stroke={theme.text.secondary}
+            strokeWidth={1.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
           />
-        ) : null}
+        </svg>
+        {isStreaming ? t("chat.thinking") : t("chat.thinkingProcess")}
+        {isStreaming ? <ThinkingDot color={theme.brand.primary} /> : null}
       </button>
       {expanded ? (
         <div
@@ -130,12 +280,6 @@ function ThinkingBlock({
           <MarkdownRenderer content={reasoning} color={theme.text.secondary} />
         </div>
       ) : null}
-      <style>{`
-        @keyframes thinking-pulse {
-          0%, 100% { opacity: 0.4; }
-          50% { opacity: 1; }
-        }
-      `}</style>
     </div>
   )
 }
@@ -191,14 +335,16 @@ const MessageBubble = memo(function MessageBubble({ item, isStreaming, theme }: 
   )
 })
 
-export default function ChatWindow({
+export default function ChatIslandPanel({
   capturedText,
   messages,
   requestState,
   modelName,
+  ttsPlayer,
   onCapturedTextChange,
   onSend,
   onStop,
+  onCollapse,
   onClose
 }: Props) {
   const theme = useUiTheme()
@@ -207,102 +353,43 @@ export default function ChatWindow({
   const [focused, setFocused] = useState<string | null>(null)
   const [hovered, setHovered] = useState<string | null>(null)
   const [capturedTagHovered, setCapturedTagHovered] = useState(false)
-  const [closePressed, setClosePressed] = useState(false)
   const [sendPressed, setSendPressed] = useState(false)
   const messagesContainerRef = useRef<HTMLDivElement | null>(null)
-  const panelRef = useRef<HTMLDivElement | null>(null)
-
-  const { elementRef: draggableRef, handleDragStart, setInitialPosition } = useDraggable({
-    initialPosition: {
-      x: Math.max(20, window.innerWidth / 2 - 480),
-      y: Math.max(20, window.innerHeight / 2 - 350)
-    }
-  })
 
   const isStreaming = requestState === "streaming"
   const sendDisabled = isStreaming || !input.trim()
   const hasCapturedText = capturedText.length > 0
+  /** 用户是否停在消息区底部附近（流式期间仅贴底时才自动跟随滚动） */
+  const isNearBottomRef = useRef(true)
+
+  const handleMessagesScroll = useCallback(() => {
+    const el = messagesContainerRef.current
+    if (!el) return
+    isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+  }, [])
 
   useEffect(() => {
     const container = messagesContainerRef.current
-    if (!container) {
+    if (!container || !isNearBottomRef.current) {
       return
     }
 
     container.scrollTop = container.scrollHeight
   }, [messages, requestState])
 
-  useEffect(() => {
-    const panel = panelRef.current
-    if (!panel) return
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault()
-        event.stopPropagation()
-        onClose()
-      }
-    }
-
-    panel.addEventListener("keydown", handleKeyDown)
-    return () => panel.removeEventListener("keydown", handleKeyDown)
-  }, [onClose])
-
   const focusRing = (state: string | null, target: string) =>
     focused === target ? createFocusRing(theme.accent.primary) : "none"
 
-  const panelStyle: React.CSSProperties = {
-    ...createCardStyle(theme),
-    position: "fixed",
-    left: "50%",
-    top: "50%",
-    transform: "translate(-50%, -50%)",
-    width: "min(20vw, 320px)",
-    maxWidth: "calc(100vw - 32px)",
-    aspectRatio: "9/15",
-    maxHeight: "calc(100vh - 32px)",
-    minWidth: 260,
-    minHeight: 300,
-    display: "flex",
-    flexDirection: "column",
-    borderRadius: uiRadius.sm,
-    boxShadow: uiShadow.xl,
-    overflow: "hidden",
-    zIndex: uiLayer.overlay,
-    pointerEvents: "auto",
-    fontFamily: uiTypography.fontFamily,
-    padding: 0,
-    resize: "both",
-    animation: `floating-panel-enter 350ms ${uiMotion.easingSpring} forwards`
-  }
-
   return (
     <div
-      ref={(node) => {
-        panelRef.current = node
-        if (node) {
-          draggableRef.current = node
-          setInitialPosition(node)
-        }
-      }}
-      style={panelStyle}
-      onClick={(event) => {
-        event.stopPropagation()
-      }}
-      onWheel={(event) => {
-        event.stopPropagation()
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        background: theme.bg.surface,
+        fontFamily: uiTypography.fontFamily
       }}>
       <style>{`
-        @keyframes floating-panel-enter {
-          from {
-            opacity: 0;
-            transform: scale(0.92) translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1) translateY(0);
-          }
-        }
         @keyframes message-enter {
           from {
             opacity: 0;
@@ -312,6 +399,18 @@ export default function ChatWindow({
             opacity: 1;
             transform: translateY(0);
           }
+        }
+        @keyframes island-caret-blink {
+          0%, 55% { opacity: 1; }
+          56%, 100% { opacity: 0.15; }
+        }
+        @keyframes island-pill-fade {
+          from { opacity: 0; transform: scale(0.8); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes thinking-pulse {
+          0%, 100% { opacity: 0.4; }
+          50% { opacity: 1; }
         }
         [data-messages-scroll]::-webkit-scrollbar {
           width: 6px;
@@ -326,71 +425,18 @@ export default function ChatWindow({
         [data-messages-scroll]::-webkit-scrollbar-thumb:hover {
           background-color: rgba(0, 0, 0, 0.2);
         }
-        @media (prefers-reduced-motion: reduce) {
-          *, *::before, *::after {
-            animation-duration: 0.01ms !important;
-            animation-iteration-count: 1 !important;
-            transition-duration: 0.01ms !important;
-          }
-        }
       `}</style>
 
-      {/* Close button */}
-      <button
-        onClick={onClose}
-        onMouseDown={(event) => {
-          event.stopPropagation()
-          setClosePressed(true)
-        }}
-        onMouseUp={() => setClosePressed(false)}
-        onFocus={() => setFocused("close")}
-        onBlur={() => setFocused(null)}
-        aria-label={t("chat.closePanel")}
+      {/* 岛头：模型名 + 收起/关闭 */}
+      <div
         style={{
-          position: "absolute",
-          top: uiSpace[8],
-          right: uiSpace[8],
-          zIndex: 10,
-          background: hovered === "close" ? theme.bg.surfaceMuted : "transparent",
-          color: theme.text.secondary,
-          width: 24,
-          height: 24,
-          borderRadius: "50%",
           display: "flex",
           alignItems: "center",
-          justifyContent: "center",
-          padding: 0,
-          border: "none",
-          cursor: "pointer",
-          transform: closePressed ? "scale(0.9)" : "scale(1)"
-        }}
-        onMouseEnter={() => setHovered("close")}
-        onMouseLeave={() => {
-          setHovered(null)
-          setClosePressed(false)
+          gap: uiSpace[6],
+          padding: `${uiSpace[8]}px ${uiSpace[10]}px ${uiSpace[4]}px`,
+          flexShrink: 0
         }}>
-        <CloseIcon size={12} color={theme.text.secondary} />
-      </button>
-
-      {/* Drag handle area */}
-      <div
-        onMouseDown={handleDragStart}
-        onTouchStart={handleDragStart}
-        style={{
-          height: uiSpace[24],
-          flexShrink: 0,
-          cursor: "grab",
-          userSelect: "none"
-        }}
-      />
-
-      {/* Model name */}
-      {modelName && (
-        <div
-          style={{
-            padding: `0 ${uiSpace[8]}px ${uiSpace[4]}px`,
-            flexShrink: 0
-          }}>
+        {modelName ? (
           <div
             style={{
               display: "inline-flex",
@@ -401,13 +447,76 @@ export default function ChatWindow({
               background: theme.bg.surfaceMuted,
               fontSize: uiTypography.fontSize.xs,
               color: theme.text.secondary,
-              fontFamily: uiTypography.fontFamily
+              fontFamily: uiTypography.fontFamily,
+              minWidth: 0,
+              overflow: "hidden"
             }}>
-            <span style={{ opacity: 0.7 }}>{t("chat.modelLabel")}:</span>
-            <span style={{ fontWeight: uiTypography.fontWeight.medium }}>{modelName}</span>
+            <span style={{ opacity: 0.7, flexShrink: 0 }}>{t("chat.modelLabel")}:</span>
+            <span
+              style={{
+                fontWeight: uiTypography.fontWeight.medium,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap"
+              }}>
+              {modelName}
+            </span>
           </div>
-        </div>
-      )}
+        ) : (
+          <div style={{ flex: 1 }} />
+        )}
+
+        <div style={{ flex: 1 }} />
+
+        <button
+          onClick={onCollapse}
+          onMouseEnter={() => setHovered("collapse")}
+          onMouseLeave={() => setHovered(null)}
+          onFocus={() => setFocused("collapse")}
+          onBlur={() => setFocused(null)}
+          aria-label={t("island.chat.collapse")}
+          title={t("island.chat.collapse")}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 22,
+            height: 22,
+            borderRadius: "50%",
+            border: "none",
+            background: hovered === "collapse" ? theme.bg.surfaceMuted : "transparent",
+            cursor: "pointer",
+            padding: 0,
+            flexShrink: 0,
+            boxShadow: focused === "collapse" ? createFocusRing(theme.accent.primary) : "none"
+          }}>
+          <ChevronDownIcon size={12} color={theme.text.secondary} />
+        </button>
+        <button
+          onClick={onClose}
+          onMouseEnter={() => setHovered("close")}
+          onMouseLeave={() => setHovered(null)}
+          onFocus={() => setFocused("close")}
+          onBlur={() => setFocused(null)}
+          aria-label={t("chat.closePanel")}
+          title={t("chat.closePanel")}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 22,
+            height: 22,
+            borderRadius: "50%",
+            border: "none",
+            background: hovered === "close" ? theme.bg.surfaceMuted : "transparent",
+            cursor: "pointer",
+            padding: 0,
+            flexShrink: 0,
+            boxShadow: focused === "close" ? createFocusRing(theme.accent.primary) : "none"
+          }}>
+          <CloseIcon size={11} color={theme.text.secondary} />
+        </button>
+      </div>
 
       {/* Captured text capsule tag */}
       {hasCapturedText && (
@@ -496,10 +605,14 @@ export default function ChatWindow({
         </div>
       )}
 
+      {/* TTS 迷你控制条（朗读与对话同岛时） */}
+      {ttsPlayer ? <TtsMiniBar player={ttsPlayer} /> : null}
+
       {/* Messages area */}
       <div
         ref={messagesContainerRef}
         data-messages-scroll
+        onScroll={handleMessagesScroll}
         style={{
           flex: 1,
           overflowY: "auto",
@@ -544,16 +657,7 @@ export default function ChatWindow({
               alignItems: "center",
               gap: uiSpace[6]
             }}>
-            <span
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                background: theme.accent.primary,
-                animation: "thinking-pulse 1s ease-in-out infinite",
-                display: "inline-block"
-              }}
-            />
+            <ThinkingDot color={theme.accent.primary} />
             {t("chat.generating")}
           </div>
         ) : null}
@@ -577,6 +681,11 @@ export default function ChatWindow({
           onBlur={() => setFocused(null)}
           onKeyDown={(event) => {
             event.stopPropagation()
+
+            // 输入法组合中的 Enter 是确认候选词，不能当成发送
+            if (event.nativeEvent.isComposing) {
+              return
+            }
 
             if (event.key !== "Enter" || event.shiftKey) {
               return
