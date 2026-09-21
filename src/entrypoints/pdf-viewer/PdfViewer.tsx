@@ -4,11 +4,15 @@ import * as pdfjsLib from "pdfjs-dist"
 import SelectionToolbar from "@/entrypoints/content/components/SelectionToolbar"
 import DynamicIsland from "@/entrypoints/content/components/DynamicIsland"
 import ChatIslandPanel, {
+  ChatCircleContent,
+  ChatIdlePill,
   ChatPillContent,
-  deriveChatPhase
+  deriveChatPhase,
+  type ChatIslandPhase
 } from "@/entrypoints/content/components/ChatIslandPanel"
 import { ISLAND_METRICS } from "@/entrypoints/content/components/islandMetrics"
 import { useChatState } from "@/entrypoints/content/hooks/useChatState"
+import { useIslandCoordinator } from "@/entrypoints/content/hooks/useIslandCoordinator"
 import { useToolbarState } from "@/entrypoints/content/hooks/useToolbarState"
 import { initContentScriptAnalytics, trackEvent } from "@/shared/analytics"
 import { resolveActionTemplate, formatFreeInputPrompt } from "@/shared/prompt"
@@ -141,8 +145,6 @@ export function PdfViewerPage() {
   const [scale] = useState(1.5)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  /** 灵动岛是否处于展开态 */
-  const [islandExpanded, setIslandExpanded] = useState(false)
 
   useEffect(() => {
     void initContentScriptAnalytics()
@@ -197,56 +199,53 @@ export function PdfViewerPage() {
   const {
     messages,
     requestState,
-    panelOpen,
-    setPanelOpen,
     capturedText,
     setCapturedText,
     setContext,
     sendPrompt,
     stopStreaming,
+    clearChat,
     resetMessages
   } = useChatState()
 
-  /** 用户手动收起后，本轮流式请求不再自动展开（直到下一次新请求） */
-  const suppressAutoExpandRef = useRef(false)
+  // ---------- 灵动岛状态机（PDF 页无朗读岛，聊天岛常驻居中） ----------
 
-  // 首个 token 到达时自动展开灵动岛（延迟等待入场动画结束）
-  useEffect(() => {
-    if (requestState.status !== "streaming" || suppressAutoExpandRef.current) return
-    const last = messages[messages.length - 1]
-    if (!(last && last.role === "assistant" && last.content.length > 0)) return
-    const timer = window.setTimeout(() => setIslandExpanded(true), 400)
-    return () => window.clearTimeout(timer)
-  }, [messages, requestState.status])
+  const chatActive = requestState.status !== "idle" || messages.length > 0
+  const chatPhase: ChatIslandPhase | "idle" = chatActive ? deriveChatPhase(requestState, messages) : "idle"
+  const chatSettled = chatPhase === "done" || chatPhase === "cancelled"
 
-  // 岛卸载时复位展开态，避免下次出现时跳过胶囊直接展开
-  useEffect(() => {
-    if (!panelOpen) setIslandExpanded(false)
-  }, [panelOpen])
-
-  const handleIslandExpandedChange = useCallback((next: boolean) => {
-    setIslandExpanded(next)
-    if (!next) {
-      suppressAutoExpandRef.current = true
-    }
-  }, [])
-
-  // 彻底关闭对话（岛消失）
-  const closeConversation = useCallback(() => {
-    setPanelOpen(false)
-    setCapturedText("")
+  /** 清空本轮对话（岛保留，回到笑脸「询问」态） */
+  const clearConversation = useCallback(() => {
+    clearChat()
     setContext(null)
-    setIslandExpanded(false)
-  }, [setPanelOpen, setCapturedText, setContext])
+  }, [clearChat, setContext])
+
+  const island = useIslandCoordinator({
+    ttsActive: false,
+    chatSettled,
+    onChatIdleReset: clearConversation
+  })
+
+  // 流式首个 token 到达时自动展开一次（用户收起过则本轮不再打扰）
+  useEffect(() => {
+    if (requestState.status !== "streaming") return
+    const last = messages[messages.length - 1]
+    if (last && last.role === "assistant" && last.content.length > 0) {
+      island.requestAutoExpand("chat")
+    }
+  }, [messages, requestState.status, island.requestAutoExpand])
+
+  // 彻底关闭对话（岛保留，回到笑脸 idle 态；消息按约定留在内存，下次动作时重置）
+  const closeConversation = useCallback(() => {
+    clearChat()
+    setContext(null)
+  }, [clearChat, setContext])
 
   // Custom selection detection for PDF text layer
   useEffect(() => {
     let selectionTimeout: ReturnType<typeof setTimeout> | null = null
 
     const handleMouseUp = (e: MouseEvent) => {
-      // Don't process if panel is open
-      if (panelOpen) return
-
       // Delay to allow selection to complete
       if (selectionTimeout) clearTimeout(selectionTimeout)
       selectionTimeout = setTimeout(() => {
@@ -301,7 +300,7 @@ export function PdfViewerPage() {
       document.removeEventListener('mousedown', handleMouseDown)
       if (selectionTimeout) clearTimeout(selectionTimeout)
     }
-  }, [panelOpen, openToolbar, closeToolbar])
+  }, [openToolbar, closeToolbar])
 
   // Run prompt with selection context
   const runWithSelectionContext = useCallback(
@@ -315,10 +314,9 @@ export function PdfViewerPage() {
   const openPanelWithAction = useCallback(
     async (text: string, prompt: string) => {
       setCapturedText(text)
-      setPanelOpen(true)
       closeToolbar()
       resetMessages()
-      suppressAutoExpandRef.current = false
+      island.markIslandTriggered("chat")
 
       if (selectionContext) {
         const ctx = { ...selectionContext, text }
@@ -326,7 +324,7 @@ export function PdfViewerPage() {
         await runWithSelectionContext(prompt, ctx)
       }
     },
-    [selectionContext, setCapturedText, setPanelOpen, closeToolbar, setContext, runWithSelectionContext, resetMessages]
+    [selectionContext, setCapturedText, closeToolbar, setContext, runWithSelectionContext, resetMessages, island.markIslandTriggered]
   )
 
   // Handle action
@@ -402,10 +400,10 @@ export function PdfViewerPage() {
   const handleFollowupSend = useCallback(
     async (input: string) => {
       void trackEvent("followup_sent", { input_length: input.length, message_count: messages.length })
-      suppressAutoExpandRef.current = false
+      island.markIslandTriggered("chat")
       await sendPrompt(input)
     },
-    [sendPrompt, messages.length]
+    [sendPrompt, messages.length, island.markIslandTriggered]
   )
 
   if (loading) {
@@ -447,35 +445,40 @@ export function PdfViewerPage() {
           }}
         />
 
-        {panelOpen && (
-          <DynamicIsland
-            visible
-            expanded={islandExpanded}
-            onExpandedChange={handleIslandExpandedChange}
-            onOutsideActivate={islandExpanded ? closeConversation : undefined}
-            pillWidth={ISLAND_METRICS.chatPill.width}
-            pillHeight={ISLAND_METRICS.chatPill.height}
-            expandedWidth={ISLAND_METRICS.chatPanel.width}
-            expandedHeight={ISLAND_METRICS.chatPanel.height}
-            expandTrigger="click"
-            ariaLabel={t("island.chat.label")}
-            pill={
-              <ChatPillContent phase={deriveChatPhase(requestState, messages)} onDismiss={closeConversation} />
-            }>
-            <ChatIslandPanel
-              capturedText={capturedText}
-              messages={messages}
-              requestState={requestState.status}
-              onCapturedTextChange={setCapturedText}
-              onSend={(input) => {
-                void handleFollowupSend(input)
-              }}
-              onStop={stopStreaming}
-              onCollapse={() => setIslandExpanded(false)}
-              onClose={closeConversation}
-            />
-          </DynamicIsland>
-        )}
+        {/* 聊天岛：常驻（无朗读岛，始终居中） */}
+        <DynamicIsland
+          form={island.chatForm}
+          anchor={island.chatAnchor}
+          circleSize={ISLAND_METRICS.circle.size}
+          pillWidth={chatActive ? ISLAND_METRICS.chatPill.width : ISLAND_METRICS.chatIdlePill.width}
+          pillHeight={ISLAND_METRICS.chatPill.height}
+          expandedWidth={ISLAND_METRICS.chatPanel.width}
+          expandedHeight={ISLAND_METRICS.chatPanel.height}
+          ariaLabel={chatActive ? t("island.chat.label") : t("island.chat.ask")}
+          circleContent={<ChatCircleContent phase={chatPhase} />}
+          pillContent={
+            chatActive ? (
+              <ChatPillContent phase={chatPhase as ChatIslandPhase} onDismiss={clearConversation} />
+            ) : (
+              <ChatIdlePill />
+            )
+          }
+          onActivate={() => island.activateIsland("chat")}
+          onDeactivate={() => island.deactivateIsland("chat")}
+          onCollapseRequest={() => island.collapseIsland("chat")}>
+          <ChatIslandPanel
+            capturedText={capturedText}
+            messages={messages}
+            requestState={requestState.status}
+            onCapturedTextChange={setCapturedText}
+            onSend={(input) => {
+              void handleFollowupSend(input)
+            }}
+            onStop={stopStreaming}
+            onCollapse={() => island.collapseIsland("chat")}
+            onClose={clearConversation}
+          />
+        </DynamicIsland>
       </div>
 
       <div

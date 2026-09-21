@@ -45,6 +45,7 @@ export default {
   "chat.send": "Send",
   "chat.modelLabel": "Model",
   "island.chat.generating": "Generating",
+  "island.chat.ask": "Ask",
   "island.chat.done": "Done",
   "island.chat.cancelled": "Cancelled",
   "island.chat.failed": "Generation failed",

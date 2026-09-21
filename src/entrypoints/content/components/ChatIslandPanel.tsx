@@ -1,15 +1,12 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react"
 
-import type { useSpeechPlayer } from "@/entrypoints/content/hooks/useSpeechPlayer"
-import { TtsMiniBar } from "@/entrypoints/content/components/SpeechPlayer"
+import SmileyFace from "@/entrypoints/content/components/SmileyFace"
 import { MarkdownRenderer } from "@/shared/ui/markdown"
 import { useUiTheme } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiSpace, uiShadow, uiTypography } from "@/shared/ui/tokens"
 import { createButtonStyle, createFocusRing, createInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
 import { useI18n } from "@/shared/i18n/context"
 import type { ChatMessage, ChatRequestState } from "@/shared/types"
-
-type SpeechPlayerInstance = ReturnType<typeof useSpeechPlayer>
 
 /** 聊天任务的胶囊相位 */
 export type ChatIslandPhase = "thinking" | "streaming" | "done" | "cancelled" | "failed"
@@ -33,8 +30,6 @@ interface Props {
   messages: ChatMessage[]
   requestState: ChatRequestState["status"]
   modelName?: string
-  /** TTS 播放中时传入，面板顶部会内嵌迷你控制条 */
-  ttsPlayer?: SpeechPlayerInstance
   onCapturedTextChange: (text: string) => void
   onSend: (input: string) => void
   onStop: () => void
@@ -104,8 +99,80 @@ function CancelledGlyph({ color }: { color: string }) {
 }
 
 /**
+ * 聊天岛 idle 态胶囊：笑脸 +「询问」，邀请用户发起对话。
+ */
+export function ChatIdlePill() {
+  const theme = useUiTheme()
+  const { t } = useI18n()
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 7,
+        width: "100%",
+        padding: "0 10px"
+      }}>
+      <SmileyFace size={17} />
+      <span
+        style={{
+          fontSize: 12.5,
+          fontWeight: uiTypography.fontWeight.medium,
+          color: theme.text.primary,
+          whiteSpace: "nowrap"
+        }}>
+        {t("island.chat.ask")}
+      </span>
+    </div>
+  )
+}
+
+/** 聊天岛副岛圆点内容：idle 态静态笑脸轮廓 / 任务状态小图标 */
+export function ChatCircleContent({ phase }: { phase: ChatIslandPhase | "idle" }) {
+  const theme = useUiTheme()
+
+  if (phase === "idle") return <SmileyFace size={15} animated={false} />
+  if (phase === "thinking") return <ThinkingDot color={theme.brand.primary} />
+  if (phase === "streaming") return <TypingCursor color={theme.brand.primary} />
+  if (phase === "cancelled") return <CancelledGlyph color={theme.text.secondary} />
+  if (phase === "done") {
+    return (
+      <svg
+        width={12}
+        height={12}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={theme.state.success}
+        strokeWidth={2.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true">
+        <path d="M5 12.5l4.5 4.5L19 7.5" />
+      </svg>
+    )
+  }
+  return (
+    <svg
+      width={12}
+      height={12}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={theme.state.error}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true">
+      <path d="M12 8v5" />
+      <path d="M12 16.5h.01" />
+      <circle cx="12" cy="12" r="9" />
+    </svg>
+  )
+}
+
+/**
  * 灵动岛胶囊态的聊天状态内容（图标 + 文案 + hover 关闭按钮）。
- * 与 TTS 同岛时由 App 负责分区拼接。
  */
 export function ChatPillContent({
   phase,
@@ -340,7 +407,6 @@ export default function ChatIslandPanel({
   messages,
   requestState,
   modelName,
-  ttsPlayer,
   onCapturedTextChange,
   onSend,
   onStop,
@@ -604,9 +670,6 @@ export default function ChatIslandPanel({
           </div>
         </div>
       )}
-
-      {/* TTS 迷你控制条（朗读与对话同岛时） */}
-      {ttsPlayer ? <TtsMiniBar player={ttsPlayer} /> : null}
 
       {/* Messages area */}
       <div

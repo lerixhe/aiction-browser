@@ -195,6 +195,18 @@ export function TtsPillContent({ player, mini = false }: { player: SpeechPlayerI
   )
 }
 
+/** 朗读岛副岛圆点内容（迷你状态图标） */
+export function TtsCircleContent({ player }: { player: SpeechPlayerInstance }) {
+  const theme = useUiTheme()
+  const { state } = player
+
+  if (state.status === "loading") return <Spinner color={theme.brand.primary} />
+  if (state.status === "failed") return <AlertGlyph size={13} color={theme.state.error} />
+  if (state.status === "finished") return <DoneGlyph size={13} color={theme.state.success} />
+  if (state.status === "paused") return <PauseGlyph size={12} color={theme.brand.primary} />
+  return <WaveBars color={theme.brand.primary} barHeight={9} />
+}
+
 /** 灵动岛展开态的 TTS 完整控制条 */
 export function TtsControlBar({ player }: { player: SpeechPlayerInstance }) {
   const { state } = player

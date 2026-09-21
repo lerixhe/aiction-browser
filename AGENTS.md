@@ -147,30 +147,38 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
 
 ## Dynamic Island (灵动岛)
 
-聊天与朗读共用顶部中央的灵动岛（`DynamicIsland.tsx`）。状态机在 `App.tsx`：
-`islandVisible = panelOpen || ttsActive`，`islandExpanded` 由「首个 token 自动展开（延迟 400ms 避开入场动画）/ 手动收起 / Esc / 点外」驱动；用户手动收起后 `suppressAutoExpandRef` 阻止本轮流式再次自动展开，新请求（`openPanelWithAction` / `handleFollowupSend`）时重置。
+聊天与朗读各自一个岛，顶部并排（仿 iOS 双岛）。跨岛状态机在 `useIslandCoordinator.ts`
+（App 与 PdfViewer 共用），岛容器 `DynamicIsland.tsx` 是受控的「上报制」组件。
+
+- **聊天岛常驻**：idle 态胶囊 = 笑脸动画 +「询问」（`ChatIdlePill` + `SmileyFace`），hover 直接展开聊天面板；对话进行中胶囊显示任务状态（`ChatPillContent`）
+- **朗读岛按需出现**：朗读激活时挂载于右侧（`TtsCircleContent` / `TtsPillContent` / `TtsControlBar`）
+- 布局：聊天岛锁定左缘（50% - anchor）、朗读岛锁定右缘（50% + anchor）（`ISLAND_METRICS.dualAnchor`）；单岛与展开态回到页面正中。主副切换两岛外缘纹丝不动，只有内缘（近端）伸缩——副岛近端拉长成胶囊的同时主岛近端同步缩短成正圆。锚点由最宽组合（主岛胶囊 148 + 副岛圆点 32，双岛时胶囊互斥）决定下限：gap = 2*anchor - 180。全岛统一基础高度 32（圆点直径 = 胶囊高度，morph 时高度恒定只变宽度）
+- 三态：圆点 `circle`（副岛）/ 胶囊 `pill`（主岛）/ 展开面板 `expanded`
+- 主副规则：双岛并存时后触发者为主岛（唯一允许大胶囊），另一个缩小为圆点；展开的岛至多一个，滑向页面中央并遮盖副岛
+- hover 序列：主岛 hover 直接展开、移出 300ms 还原双岛；副岛 hover 先长成胶囊（主副互换、原主岛缩为圆点）停顿 320ms 再自动展开
+- 完成态（done/cancelled）闲置 8s 无交互自动清空对话回到笑脸；failed 保留待用户处理
+- 流式首个 token 自动展开一次；用户收起后本轮不再自动展开（`markIslandTriggered` 新请求时重置）
+- 划词工具栏与岛互不抑制（聊天面板展开时划词工具栏照常出现）
 
 ### 设计要点
-- 三态：胶囊（任务状态）、展开面板（聊天/控制条）；双任务同岛时胶囊左右分区，聊天展开时内嵌 `TtsMiniBar`
-- 胶囊展开触发：仅 TTS 时 hover（移出 300ms 收回），含聊天时 click（点外 = 收起并关闭对话）
-- morph 动画：容器宽高 + 圆角 spring 过渡；两层内容独立固定尺寸居中，靠 opacity/scale 交叉过渡（iOS 手法，morph 中内容不被重排挤压）
-- 拖进度条等瞬时操作通过 `IslandHoldContext` 的 hold/release 抑制 hover 模式自动收回
-- 对话挂起期间（`panelOpen`）划词工具栏被抑制
+- morph 动画：宽高/圆角/left 全 spring 过渡（left 比尺寸略慢产生「滑向目标位」生长感）；三层内容独立固定尺寸居中，opacity/scale 交叉过渡（iOS 手法，morph 中内容不被重排挤压）
+- 容器只上报 hover/点击/Esc/点外事件，展开与主副互换决策集中在 `useIslandCoordinator`（跨岛协调无法在单岛容器内完成）
+- 拖进度条等瞬时操作通过 `IslandHoldContext` 的 hold/release 抑制自动收回（release 后补发被抑制的 leave）
+- 输入框打字时鼠标滑出不收回（仅文本输入焦点抑制，`isTextEntryElement`；按钮残留焦点不抑制）
+- 展开层常挂载（仅 opacity 切换）避免流式更新下 remount 掉帧；收起路径统一 blur 岛内焦点（焦点残留会让按键落入虚空）
 
 ### 不变量
 - 岛固定顶部中央，聊天岛不做拖拽/resize（身份特征，去掉后大幅简化）
-- 胶囊层 `pointerEvents` 必须按 `expanded` 切换；写死 `none` 会让胶囊内按钮永远无法点击
-- 岛卸载时必须复位 `islandExpanded`（App/PdfViewer 各有兑底 effect），否则下次出现会跳过胶囊直接展开
-- 展开层常挂载（仅 opacity 切换）避免流式更新下 remount 掉帧；代价是收起后需 blur 岛内焦点
+- 展开态点击岛外 = 收起（岛保留、对话保留）；清空对话用面板 × 按钮
+- TTS 结束（idle）后朗读岛卸载，主岛身份归还聊天岛（否则聊天岛永远卡在圆点）
+- 内容层 `pointerEvents` 必须按 active 切换；写死 `none` 会让胶囊内按钮永远无法点击
 - 输入框 Enter 发送必须检查 `event.nativeEvent.isComposing`（IME 组合确认不是发送）
 
 ### 待优化清单
-- [ ] **对话完成后不会自动退场**（原设计为 5s 自动收回）：done 态胶囊常驻，忘关会持续抑制划词工具栏，像扩展坏了。候选方案：完成后 N 秒无交互收回胶囊 → 再无交互自动结束对话
 - [ ] compact 单行预览态（三段式的中间层：流式时不用展开也能瞇一眼最新回复）
-- [ ] 双任务胶囊宽度（`ISLAND_METRICS.dualPillWidth = 232`）需实测微调
-- [ ] `TtsMiniBar` 插入聊天面板时无淡入过渡（内容突然出现轻微跳动）
 - [ ] 无障碍：状态变化无 `aria-live` 播报；胶囊无键盘入口（Tab 不可达）
-- [ ] 代码打磨：`useTtsStatusIcon` 改纯函数（现为 JSX 内调用的 hook 风格）；`iconBtnStyle` 在控制条/迷你条重复定义可工厂化；消息区滚动条颜色 hardcoded 未适配 dark 模式
+- [ ] 代码打磨：`useTtsStatusIcon` 改纯函数（现为 JSX 内调用的 hook 风格）；`iconBtnStyle` 在控制条/迷你条重复定义可工厂化；消息区滚动条颜色 hardcoded 未适配 dark 模式；`TtsMiniBar` 已无消费者（双岛分离后不再内嵌）可移除
+- [ ] 双岛外缘锚点（`ISLAND_METRICS.dualAnchor = 92`，最贴状态 4px）与笑脸动画节奏需实测微调
 
 ## Manual Verification
 - After `npm run build`, load `.output/chrome-mv3` in `chrome://extensions` as an unpacked extension.

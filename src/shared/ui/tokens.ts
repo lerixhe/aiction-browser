@@ -206,7 +206,12 @@ export const uiMotion = {
 } as const
 
 export const uiLayer = {
-  overlay: 2147483647
+  /** 最高层：划词工具栏（优先于岛可见） */
+  overlay: 2147483647,
+  /** 展开中的灵动岛（遮盖副岛，低于工具栏） */
+  islandExpanded: 2147483646,
+  /** 折叠态灵动岛（圆点/胶囊） */
+  island: 2147483645
 } as const
 
 export const uiLayout = {
