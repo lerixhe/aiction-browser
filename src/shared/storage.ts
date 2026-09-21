@@ -1,5 +1,5 @@
-import { DEFAULT_CUSTOM_MODEL_PROVIDER, DEFAULT_SETTINGS } from "@/shared/defaults"
-import type { ExtensionSettings, LanguagePreference, ModelParams, ProviderConfig, QuickAction, QuickActionType, ThemePreference, UserIconData } from "@/shared/types"
+import { DEFAULT_CUSTOM_MODEL_PROVIDER, DEFAULT_SETTINGS, DEFAULT_TTS_SETTINGS } from "@/shared/defaults"
+import type { ExtensionSettings, LanguagePreference, ModelParams, ProviderConfig, QuickAction, QuickActionType, ThemePreference, TtsProvider, TtsSettings, UserIconData } from "@/shared/types"
 
 export { DEFAULT_SETTINGS }
 
@@ -38,6 +38,28 @@ function validateQuickActions(items: unknown[]): QuickAction[] {
         enabled: typeof record.enabled === "boolean" ? record.enabled : true
       }
     })
+}
+
+const VALID_TTS_PROVIDERS: TtsProvider[] = ["system", "edge"]
+
+function normalizeTts(value: unknown): TtsSettings {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {}
+
+  // 逐字段合并默认值：新增配置项时旧用户也能拿到默认值
+  return {
+    provider: VALID_TTS_PROVIDERS.includes(record.provider as TtsProvider)
+      ? (record.provider as TtsProvider)
+      : DEFAULT_TTS_SETTINGS.provider,
+    edgeVoice:
+      typeof record.edgeVoice === "string" && record.edgeVoice.trim()
+        ? record.edgeVoice.trim()
+        : DEFAULT_TTS_SETTINGS.edgeVoice,
+    rate:
+      typeof record.rate === "number" && Number.isFinite(record.rate) && record.rate >= 0.5 && record.rate <= 2
+        ? record.rate
+        : DEFAULT_TTS_SETTINGS.rate,
+    autoLocale: typeof record.autoLocale === "boolean" ? record.autoLocale : DEFAULT_TTS_SETTINGS.autoLocale
+  }
 }
 
 function validateModelParams(value: unknown): ModelParams {
@@ -112,6 +134,8 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
 
   const telemetryEnabled = typeof saved.telemetryEnabled === "boolean" ? saved.telemetryEnabled : DEFAULT_SETTINGS.telemetryEnabled
 
+  const tts = normalizeTts(saved.tts)
+
   const validLanguages: LanguagePreference[] = ["system", "en", "zh_CN"]
   const language = validLanguages.includes(saved.language as LanguagePreference) ? (saved.language as LanguagePreference) : DEFAULT_SETTINGS.language
 
@@ -122,6 +146,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     language,
     actions,
     quickActions,
+    tts,
     telemetryEnabled
   }
 }

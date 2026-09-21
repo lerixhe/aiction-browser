@@ -1,45 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import SelectionToolbar from "@/entrypoints/content/components/SelectionToolbar"
+import SpeechPlayer from "@/entrypoints/content/components/SpeechPlayer"
 import ChatWindow from "@/entrypoints/content/components/ChatWindow"
 import { useChatState } from "@/entrypoints/content/hooks/useChatState"
 import { useSelectionDetection } from "@/entrypoints/content/hooks/useSelectionDetection"
 import type { SelectionStart } from "@/entrypoints/content/hooks/useSelectionDetection"
+import { useSpeechPlayer } from "@/entrypoints/content/hooks/useSpeechPlayer"
 import { useToolbarState } from "@/entrypoints/content/hooks/useToolbarState"
 import { initContentScriptAnalytics, trackEvent } from "@/shared/analytics"
 import { resolveActionTemplate, formatFreeInputPrompt } from "@/shared/prompt"
 import { getSettings } from "@/shared/storage"
 import type { SelectionAnchor, SelectionContext, QuickAction } from "@/shared/types"
 
-const MAX_UTTERANCE_LENGTH = 180
-
-function splitText(text: string): string[] {
-  const normalized = text.replace(/\s+/g, " ").trim()
-  if (!normalized) return []
-
-  const sentences = normalized.match(/[^。！？.!?]+[。！？.!?]?/g) || [normalized]
-  const chunks: string[] = []
-  let current = ""
-
-  for (const sentence of sentences) {
-    if (current.length + sentence.length > MAX_UTTERANCE_LENGTH) {
-      if (current) chunks.push(current)
-      current = sentence
-    } else {
-      current += sentence
-    }
-  }
-
-  if (current) chunks.push(current)
-  return chunks
-}
-
 export default function App() {
   const extensionRootRef = useRef<HTMLDivElement | null>(null)
   const panelOpenRef = useRef(false)
   const [selectionStart, setSelectionStart] = useState<SelectionStart | null>(null)
-  const speechSynthRef = useRef(window.speechSynthesis)
-  const isSpeakingRef = useRef(false)
+
+  const speechPlayer = useSpeechPlayer()
 
   useEffect(() => {
     void initContentScriptAnalytics()
@@ -176,43 +155,17 @@ export default function App() {
         }
         closeToolbar()
       } else if (action.type === "speakText") {
-        const synth = speechSynthRef.current
-        if (!synth) return
+        const trimmed = text.trim()
+        if (!trimmed) return
 
-        if (isSpeakingRef.current) {
-          synth.cancel()
-          isSpeakingRef.current = false
-          return
-        }
-
-        const chunks = splitText(text)
-        if (chunks.length === 0) return
-
-        isSpeakingRef.current = true
-
-        const speakNext = (index: number) => {
-          if (index >= chunks.length) {
-            isSpeakingRef.current = false
-            return
-          }
-
-          const utterance = new SpeechSynthesisUtterance(chunks[index])
-          utterance.lang = navigator.language || "zh-CN"
-          utterance.rate = 1
-          utterance.onend = () => speakNext(index + 1)
-          utterance.onerror = () => {
-            isSpeakingRef.current = false
-          }
-          synth.speak(utterance)
-        }
-
-        speakNext(0)
+        // 关闭工具栏；朗读状态固定显示在页面顶部中央的灵动岛中
         closeToolbar()
+        speechPlayer.start(trimmed)
       }
 
       void trackEvent("quick_action_clicked", { action_type: action.type })
     },
-    [selectionContext, closeToolbar]
+    [selectionContext, closeToolbar, speechPlayer.start]
   )
 
   // Handle free submit from panel captured text
@@ -257,6 +210,8 @@ export default function App() {
           closeToolbar()
         }}
       />
+
+      <SpeechPlayer player={speechPlayer} />
 
       {panelOpen && (
         <ChatWindow

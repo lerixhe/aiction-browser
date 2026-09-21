@@ -19,6 +19,19 @@ export interface QuickAction {
   enabled: boolean
 }
 
+export type TtsProvider = "system" | "edge"
+
+export interface TtsSettings {
+  /** 语音合成引擎："edge" 为 Edge 在线语音（默认），"system" 为浏览器系统语音 */
+  provider: TtsProvider
+  /** Edge 语音名称，如 "zh-CN-XiaoxiaoNeural" */
+  edgeVoice: string
+  /** 语速倍率，0.5–2.0，1 为正常语速 */
+  rate: number
+  /** 按选中文本的语言自动切换语音（默认开启） */
+  autoLocale: boolean
+}
+
 export interface ModelParams {
   maxTokens: number
   temperature: number
@@ -44,6 +57,7 @@ export interface ExtensionSettings {
   language: LanguagePreference
   actions: ActionTemplate[]
   quickActions: QuickAction[]
+  tts: TtsSettings
   telemetryEnabled: boolean
 }
 
@@ -173,6 +187,26 @@ export interface UserIconData {
   body: string
   width?: number
   height?: number
+}
+
+// Edge TTS synthesis request/response
+export interface TtsSynthesizeRequest {
+  type: "AICTION_TTS_SYNTHESIZE_REQUEST"
+  payload: {
+    text: string
+    voice: string
+    /** 语速倍率 0.5–2.0 */
+    rate: number
+  }
+}
+
+export interface TtsSynthesizeResponse {
+  success: boolean
+  /** MP3 音频的 base64 编码 */
+  audioBase64?: string
+  /** 音频 MIME 类型，如 "audio/mpeg" */
+  contentType?: string
+  error?: string
 }
 
 // Models.dev cache request/response

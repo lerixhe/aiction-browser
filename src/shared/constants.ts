@@ -7,7 +7,8 @@ export const MESSAGE_TYPES = {
   STREAM_PORT_NAME: "AICTION_STREAM",
   API_TEST_REQUEST: "AICTION_API_TEST_REQUEST",
   FETCH_MODELS_REQUEST: "AICTION_FETCH_MODELS_REQUEST",
-  MODELS_DEV_REQUEST: "AICTION_MODELS_DEV_REQUEST"
+  MODELS_DEV_REQUEST: "AICTION_MODELS_DEV_REQUEST",
+  TTS_SYNTHESIZE_REQUEST: "AICTION_TTS_SYNTHESIZE_REQUEST"
 } as const
 
 // Stream event types
@@ -34,7 +35,9 @@ export const ERROR_MESSAGES = {
   get FETCH_MODELS_MISSING_URL() { return i18nStore.t("errors.fetchModelsMissingUrl") },
   get FETCH_MODELS_EMPTY() { return i18nStore.t("errors.fetchModelsEmpty") },
   get CONTEXT_INVALIDATED() { return i18nStore.t("errors.contextInvalidated") },
-  get REQUEST_TIMEOUT() { return i18nStore.t("errors.requestTimeout") }
+  get REQUEST_TIMEOUT() { return i18nStore.t("errors.requestTimeout") },
+  get TTS_SYNTH_FAILED() { return i18nStore.t("errors.ttsSynthFailed") },
+  get TTS_NO_TEXT() { return i18nStore.t("errors.ttsNoText") }
 } as const
 
 // UI messages

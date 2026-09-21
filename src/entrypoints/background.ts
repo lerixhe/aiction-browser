@@ -4,12 +4,15 @@ import type {
   ChatStreamRequest,
   ApiTestRequest,
   ApiTestResponse,
-  ModelsDevResponse
+  ModelsDevResponse,
+  TtsSynthesizeRequest,
+  TtsSynthesizeResponse
 } from "@/shared/types"
 import { MESSAGE_TYPES, ERROR_MESSAGES } from "@/shared/constants"
 import { i18nStore } from "@/shared/i18n/index"
 import { formatApiError, getErrorMessage, isAbortError } from "@/shared/errors"
 import { getActiveProvider, getSettings } from "@/shared/storage"
+import { DEFAULT_TTS_SETTINGS } from "@/shared/defaults"
 import { resolveLanguageModel } from "@/shared/model-provider"
 import { fetchModelsDev, getModelParamSupport } from "@/shared/models-dev"
 import {
@@ -204,6 +207,45 @@ export default defineBackground(() => {
 
   chrome.runtime.onSuspend?.addListener?.(() => {
     stopBackgroundBatching()
+  })
+
+  chrome.runtime.onMessage.addListener((request: TtsSynthesizeRequest, _sender, sendResponse) => {
+    if (request?.type !== MESSAGE_TYPES.TTS_SYNTHESIZE_REQUEST) {
+      return false
+    }
+
+    const { text, voice, rate } = request.payload ?? { text: "", voice: "", rate: 1 }
+
+    if (!text?.trim()) {
+      sendResponse({ success: false, error: ERROR_MESSAGES.TTS_NO_TEXT } satisfies TtsSynthesizeResponse)
+      return false
+    }
+
+    const doSynthesize = async () => {
+      try {
+        // 动态 import，保持 service worker 启动轻量
+        const { synthesizeEdgeTts } = await import("@/shared/edge-tts")
+        const result = await synthesizeEdgeTts(
+          text,
+          voice?.trim() || DEFAULT_TTS_SETTINGS.edgeVoice,
+          typeof rate === "number" && rate >= 0.5 && rate <= 2 ? rate : DEFAULT_TTS_SETTINGS.rate
+        )
+        void trackBackgroundEvent("edge_tts_synthesize", { success: true, bytes: result.audioBase64.length })
+        sendResponse({ success: true, ...result } satisfies TtsSynthesizeResponse)
+      } catch (error: unknown) {
+        void trackBackgroundEvent("edge_tts_synthesize", {
+          success: false,
+          error: getErrorMessage(error).slice(0, 200)
+        })
+        sendResponse({
+          success: false,
+          error: `${ERROR_MESSAGES.TTS_SYNTH_FAILED}: ${getErrorMessage(error)}`
+        } satisfies TtsSynthesizeResponse)
+      }
+    }
+
+    void doSynthesize()
+    return true
   })
 
   chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {

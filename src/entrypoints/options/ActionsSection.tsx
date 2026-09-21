@@ -5,13 +5,15 @@ import { ActionIcon } from "@/shared/ui/iconify"
 import { ToggleSwitch } from "@/shared/ui/toggle-switch"
 import { hasTextPlaceholder } from "@/shared/prompt"
 import { saveUserIcon } from "@/shared/storage"
+import { EDGE_TTS_VOICE_GROUPS, isKnownEdgeTtsVoice } from "@/shared/edge-tts-voices"
+import { MESSAGE_TYPES } from "@/shared/constants"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { createButtonStyle, createCardStyle, createFieldLabelStyle, createInputStyle as createSharedInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
 import { ACTION_ICON_LIBRARY, type IconEntry } from "@/shared/ui/icon-library"
 import { BUNDLED_TABLER_ICONS } from "@/shared/ui/bundled-icons"
 import { useI18n } from "@/shared/i18n/context"
-import type { ActionTemplate, ExtensionSettings, QuickAction } from "@/shared/types"
+import type { ActionTemplate, ExtensionSettings, QuickAction, TtsProvider, TtsSettings, TtsSynthesizeResponse } from "@/shared/types"
 
 function PlusIcon({ size, color }: { size: number; color: string }) {
   return (
@@ -274,6 +276,98 @@ export function ActionsSection({ settings, saveSettingsNow }: ActionsSectionProp
     }))
   }
 
+  // --- 朗读（TTS）设置 ---
+  const speakTextEnabled = settings.quickActions.some((a) => a.type === "speakText" && a.enabled)
+
+  const updateTts = (patch: Partial<TtsSettings>) => {
+    saveSettingsNow((current) => ({
+      ...current,
+      tts: { ...current.tts, ...patch }
+    }))
+  }
+
+  // --- 试听 ---
+  const [previewState, setPreviewState] = useState<"idle" | "loading" | "playing">("idle")
+  const [previewError, setPreviewError] = useState(false)
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null)
+
+  const stopPreview = () => {
+    previewAudioRef.current?.pause()
+    previewAudioRef.current = null
+    setPreviewState("idle")
+  }
+
+  // 切换引擎/语音时停止正在播放的试听；卸载时清理
+  useEffect(() => {
+    stopPreview()
+  }, [settings.tts.provider, settings.tts.edgeVoice])
+
+  useEffect(() => {
+    return () => {
+      previewAudioRef.current?.pause()
+      previewAudioRef.current = null
+    }
+  }, [])
+
+  const handlePreview = async () => {
+    if (previewState === "loading") return
+    if (previewState === "playing") {
+      stopPreview()
+      return
+    }
+
+    setPreviewError(false)
+    setPreviewState("loading")
+    try {
+      // 试听固定用所选语音；示例句随语音语言（中文语音配中文句，其余配英文句）
+      const voiceLocale = settings.tts.edgeVoice.split("-").slice(0, 2).join("-").toLowerCase()
+      const previewText = voiceLocale.startsWith("zh")
+        ? t("options.actions.tts.previewTextZh")
+        : t("options.actions.tts.previewTextEn")
+
+      const response = (await chrome.runtime.sendMessage({
+        type: MESSAGE_TYPES.TTS_SYNTHESIZE_REQUEST,
+        payload: { text: previewText, voice: settings.tts.edgeVoice, rate: settings.tts.rate }
+      })) as TtsSynthesizeResponse | undefined
+
+      if (!response?.success || !response.audioBase64) {
+        throw new Error(response?.error || "preview failed")
+      }
+
+      const audio = new Audio(`data:${response.contentType || "audio/mpeg"};base64,${response.audioBase64}`)
+      previewAudioRef.current = audio
+      audio.onended = () => {
+        previewAudioRef.current = null
+        setPreviewState("idle")
+      }
+      audio.onerror = () => {
+        previewAudioRef.current = null
+        setPreviewState("idle")
+      }
+      await audio.play()
+      setPreviewState("playing")
+    } catch (error) {
+      console.warn("[AIction] TTS preview failed:", error)
+      previewAudioRef.current = null
+      setPreviewState("idle")
+      setPreviewError(true)
+    }
+  }
+
+  const ttsSelectStyle: CSSProperties = {
+    width: "100%",
+    boxSizing: "border-box",
+    padding: `${uiSpace[6]}px ${uiSpace[8]}px`,
+    fontSize: uiTypography.fontSize.sm,
+    border: `1px solid ${theme.border.default}`,
+    borderRadius: uiRadius.sm,
+    background: theme.bg.surface,
+    color: theme.text.primary,
+    outline: "none",
+    cursor: "pointer",
+    fontFamily: uiTypography.fontFamily
+  }
+
   return (
     <>
       {/* Quick Actions Card */}
@@ -345,6 +439,135 @@ export function ActionsSection({ settings, saveSettingsNow }: ActionsSectionProp
             </div>
           ))}
         </div>
+
+        {/* 朗读引擎设置：仅当「朗读」快捷操作启用时显示 */}
+        {speakTextEnabled && (
+          <div
+            style={{
+              margin: `${uiSpace[4]}px ${uiSpace[12]}px ${uiSpace[12]}px`,
+              padding: `${uiSpace[12]}px ${uiSpace[14]}px`,
+              border: `1px solid ${theme.border.hairline}`,
+              borderRadius: uiRadius.md,
+              background: theme.bg.surfaceMuted,
+              display: "flex",
+              flexDirection: "column",
+              gap: uiSpace[12]
+            }}>
+            {/* 引擎 */}
+            <div>
+              <label style={{ ...fieldLabelStyle, display: "block", marginBottom: uiSpace[4] }}>
+                {t("options.actions.tts.engine")}
+              </label>
+              <select
+                value={settings.tts.provider}
+                onChange={(e) => updateTts({ provider: e.target.value as TtsProvider })}
+                style={ttsSelectStyle}>
+                <option value="edge">{t("options.actions.tts.engineEdge")}</option>
+                <option value="system">{t("options.actions.tts.engineSystem")}</option>
+              </select>
+            </div>
+
+            {/* Edge 语音选择 + 试听 */}
+            {settings.tts.provider === "edge" && (
+              <div>
+                <label style={{ ...fieldLabelStyle, display: "block", marginBottom: uiSpace[4] }}>
+                  {t("options.actions.tts.voice")}
+                </label>
+                <div style={{ display: "flex", gap: uiSpace[8], alignItems: "stretch" }}>
+                  <select
+                    value={settings.tts.edgeVoice}
+                    onChange={(e) => updateTts({ edgeVoice: e.target.value })}
+                    style={{ ...ttsSelectStyle, flex: 1, minWidth: 0 }}>
+                    {/* 保存过的自定义语音不在精选列表内时额外展示，避免值丢失 */}
+                    {!isKnownEdgeTtsVoice(settings.tts.edgeVoice) && (
+                      <option value={settings.tts.edgeVoice}>{settings.tts.edgeVoice}</option>
+                    )}
+                    {EDGE_TTS_VOICE_GROUPS.map((group) => (
+                      <optgroup key={group.locale} label={group.label}>
+                        {group.voices.map((voice) => (
+                          <option key={voice.name} value={voice.name}>
+                            {voice.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => void handlePreview()}
+                    disabled={previewState === "loading"}
+                    style={{
+                      minWidth: 76,
+                      padding: `${uiSpace[6]}px ${uiSpace[10]}px`,
+                      fontSize: uiTypography.fontSize.sm,
+                      borderRadius: uiRadius.sm,
+                      cursor: previewState === "loading" ? "default" : "pointer",
+                      fontFamily: uiTypography.fontFamily,
+                      whiteSpace: "nowrap",
+                      border: `1px solid ${previewState === "playing" ? theme.state.error : theme.border.default}`,
+                      color: previewState === "playing" ? theme.state.error : theme.text.primary,
+                      background: theme.bg.surface,
+                      outline: "none",
+                      transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+                    }}>
+                    {previewState === "loading"
+                      ? t("options.actions.tts.previewLoading")
+                      : previewState === "playing"
+                        ? t("options.actions.tts.previewStop")
+                        : t("options.actions.tts.preview")}
+                  </button>
+                </div>
+                {previewError && (
+                  <p style={{ margin: `${uiSpace[6]}px 0 0`, color: theme.state.error, fontSize: uiTypography.fontSize.xs }}>
+                    {t("options.actions.tts.previewFailed")}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* 自动匹配文本语言（仅 Edge 引擎） */}
+            {settings.tts.provider === "edge" && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: uiSpace[12] }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: uiTypography.fontSize.sm, color: theme.text.primary }}>
+                    {t("options.actions.tts.autoLocale")}
+                  </div>
+                  <div style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary }}>
+                    {t("options.actions.tts.autoLocaleHint")}
+                  </div>
+                </div>
+                <ToggleSwitch
+                  checked={settings.tts.autoLocale}
+                  onChange={() => updateTts({ autoLocale: !settings.tts.autoLocale })}
+                  theme={theme}
+                />
+              </div>
+            )}
+
+            {/* 语速 */}
+            <div>
+              <label style={{ ...fieldLabelStyle, display: "block", marginBottom: uiSpace[4] }}>
+                {t("options.actions.tts.rate")} · {settings.tts.rate.toFixed(2)}x
+              </label>
+              <input
+                type="range"
+                min={0.5}
+                max={2}
+                step={0.05}
+                value={settings.tts.rate}
+                onChange={(e) => updateTts({ rate: Number(e.target.value) })}
+                style={{ width: "100%", accentColor: theme.accent.primary, cursor: "pointer" }}
+              />
+            </div>
+
+            {/* 提示 */}
+            {settings.tts.provider === "edge" && (
+              <p style={{ margin: 0, color: theme.text.secondary, fontSize: uiTypography.fontSize.xs }}>
+                {t("options.actions.tts.edgeHint")}
+              </p>
+            )}
+          </div>
+        )}
       </section>
 
       {/* Custom AI Actions Card */}

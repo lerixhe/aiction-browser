@@ -1,4 +1,4 @@
-import type { ActionTemplate, ExtensionSettings, ModelParams, ProviderConfig, QuickAction } from "@/shared/types"
+import type { ActionTemplate, ExtensionSettings, ModelParams, ProviderConfig, QuickAction, TtsSettings } from "@/shared/types"
 
 export const DEFAULT_ACTIONS: ActionTemplate[] = [
   {
@@ -32,6 +32,13 @@ export const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
   }
 ]
 
+export const DEFAULT_TTS_SETTINGS: TtsSettings = {
+  provider: "edge",
+  edgeVoice: "zh-CN-XiaoxiaoNeural",
+  rate: 1,
+  autoLocale: true
+}
+
 export const DEFAULT_MODEL_PARAMS: ModelParams = {
   maxTokens: 0,
   temperature: 0,
@@ -55,6 +62,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   language: "system",
   actions: DEFAULT_ACTIONS,
   quickActions: DEFAULT_QUICK_ACTIONS,
+  tts: DEFAULT_TTS_SETTINGS,
   telemetryEnabled: true
 }
 
@@ -66,7 +74,8 @@ export const SECTION_DEFAULTS: Record<SectionKey, Partial<ExtensionSettings>> = 
   },
   actions: {
     actions: DEFAULT_SETTINGS.actions,
-    quickActions: DEFAULT_SETTINGS.quickActions
+    quickActions: DEFAULT_SETTINGS.quickActions,
+    tts: DEFAULT_SETTINGS.tts
   },
   about: {
     telemetryEnabled: DEFAULT_SETTINGS.telemetryEnabled
