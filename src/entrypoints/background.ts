@@ -346,16 +346,35 @@ export default defineBackground(() => {
 
     fetch(`${apiBaseUrl.trim().replace(/\/$/, "")}/models`, { headers })
       .then(async (response) => {
+        const rawBody = await response.text()
+
         if (!response.ok) {
-          const rawError = await response.text()
           sendResponse({
             success: false,
-            error: `${ERROR_MESSAGES.FETCH_MODELS_FAILED}: ${formatApiError(response.status, rawError)}`
+            error: `${ERROR_MESSAGES.FETCH_MODELS_FAILED}: ${formatApiError(response.status, rawBody)}`
           })
           return
         }
 
-        const body = await response.json()
+        if (!rawBody.trim()) {
+          sendResponse({
+            success: false,
+            error: `${ERROR_MESSAGES.FETCH_MODELS_FAILED}: ${ERROR_MESSAGES.FETCH_MODELS_EMPTY_BODY}`
+          })
+          return
+        }
+
+        let body: { data?: unknown[] }
+        try {
+          body = JSON.parse(rawBody)
+        } catch {
+          sendResponse({
+            success: false,
+            error: `${ERROR_MESSAGES.FETCH_MODELS_FAILED}: ${ERROR_MESSAGES.FETCH_MODELS_INVALID_JSON}`
+          })
+          return
+        }
+
         const rawList: unknown[] = Array.isArray(body?.data) ? body.data : []
         const models = rawList
           .map((item) => (item && typeof item === "object" && "id" in item ? String(item.id) : ""))

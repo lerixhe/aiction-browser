@@ -11,6 +11,8 @@ export default {
   "errors.fetchModelsFailed": "Failed to fetch model list",
   "errors.fetchModelsMissingUrl": "Please fill in API Base URL first",
   "errors.fetchModelsEmpty": "No available models found",
+  "errors.fetchModelsEmptyBody": "The API returned an empty response body. Check that the API Base URL is correct (it should end at /v1)",
+  "errors.fetchModelsInvalidJson": "The API response is not valid JSON. Make sure the Base URL points to an OpenAI-compatible endpoint",
   "errors.contextInvalidated": "Extension context invalidated. Please refresh the page and try again.",
   "errors.requestTimeout": "Request timed out",
   "errors.ttsSynthFailed": "Speech synthesis failed",

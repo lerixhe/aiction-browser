@@ -11,6 +11,8 @@ export default {
   "errors.fetchModelsFailed": "获取模型列表失败",
   "errors.fetchModelsMissingUrl": "请先填写 API Base URL",
   "errors.fetchModelsEmpty": "未找到可用模型",
+  "errors.fetchModelsEmptyBody": "API 返回了空响应体，请检查 API Base URL 是否正确（应填到 /v1 为止）",
+  "errors.fetchModelsInvalidJson": "API 响应不是有效的 JSON，请确认 Base URL 指向 OpenAI 兼容接口",
   "errors.contextInvalidated": "扩展上下文已失效，请刷新页面重试。",
   "errors.requestTimeout": "请求超时",
   "errors.ttsSynthFailed": "语音合成失败",

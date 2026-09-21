@@ -34,6 +34,8 @@ export const ERROR_MESSAGES = {
   get FETCH_MODELS_FAILED() { return i18nStore.t("errors.fetchModelsFailed") },
   get FETCH_MODELS_MISSING_URL() { return i18nStore.t("errors.fetchModelsMissingUrl") },
   get FETCH_MODELS_EMPTY() { return i18nStore.t("errors.fetchModelsEmpty") },
+  get FETCH_MODELS_EMPTY_BODY() { return i18nStore.t("errors.fetchModelsEmptyBody") },
+  get FETCH_MODELS_INVALID_JSON() { return i18nStore.t("errors.fetchModelsInvalidJson") },
   get CONTEXT_INVALIDATED() { return i18nStore.t("errors.contextInvalidated") },
   get REQUEST_TIMEOUT() { return i18nStore.t("errors.requestTimeout") },
   get TTS_SYNTH_FAILED() { return i18nStore.t("errors.ttsSynthFailed") },
