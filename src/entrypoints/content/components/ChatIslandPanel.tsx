@@ -129,12 +129,12 @@ export function ChatIdlePill() {
   )
 }
 
-/** 聊天岛副岛圆点内容：idle 态静态笑脸轮廓 / 任务状态小图标 */
+/** 聊天岛圆球层内容（当前形态固定为胶囊，此层不激活；保留供单岛场景） */
 export function ChatCircleContent({ phase }: { phase: ChatIslandPhase | "idle" }) {
   const theme = useUiTheme()
 
   if (phase === "idle") return <SmileyFace size={15} animated={false} />
-  if (phase === "thinking") return <ThinkingDot color={theme.brand.primary} />
+  if (phase === "thinking") return <SmileyFace size={15} mood="thinking" />
   if (phase === "streaming") return <TypingCursor color={theme.brand.primary} />
   if (phase === "cancelled") return <CancelledGlyph color={theme.text.secondary} />
   if (phase === "done") {
@@ -207,7 +207,7 @@ export function ChatPillContent({
 
   const icon =
     phase === "thinking" ? (
-      <ThinkingDot color={theme.brand.primary} />
+      <SmileyFace size={14} mood="thinking" />
     ) : phase === "streaming" ? (
       <TypingCursor color={theme.brand.primary} />
     ) : phase === "done" ? (

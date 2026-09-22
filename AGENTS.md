@@ -151,18 +151,19 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
 （App 与 PdfViewer 共用），岛容器 `DynamicIsland.tsx` 是受控的「上报制」组件。
 
 - **聊天岛常驻**：idle 态胶囊 = 笑脸动画 +「询问」（`ChatIdlePill` + `SmileyFace`），hover 直接展开聊天面板；对话进行中胶囊显示任务状态（`ChatPillContent`）
-- **朗读岛按需出现**：朗读激活时挂载于右侧（`TtsCircleContent` / `TtsPillContent` / `TtsControlBar`）
-- 布局：聊天岛锁定左缘（50% - anchor）、朗读岛锁定右缘（50% + anchor）（`ISLAND_METRICS.dualAnchor`）；单岛与展开态回到页面正中。主副切换两岛外缘纹丝不动，只有内缘（近端）伸缩——副岛近端拉长成胶囊的同时主岛近端同步缩短成正圆。锚点由最宽组合（主岛胶囊 148 + 副岛圆点 32，双岛时胶囊互斥）决定下限：gap = 2*anchor - 180。全岛统一基础高度 32（圆点直径 = 胶囊高度，morph 时高度恒定只变宽度）
-- 三态：圆点 `circle`（副岛）/ 胶囊 `pill`（主岛）/ 展开面板 `expanded`
-- 主副规则：双岛并存时后触发者为主岛（唯一允许大胶囊），另一个缩小为圆点；展开的岛至多一个，滑向页面中央并遮盖副岛
-- hover 序列：主岛 hover 直接展开、移出 300ms 还原双岛；副岛 hover 先长成胶囊（主副互换、原主岛缩为圆点）停顿 320ms 再自动展开
+- **朗读岛按需出现**：朗读激活时挂载于右侧（`TtsCircleContent` / `TtsControlBar`）
+- 形态固定（无主副互换）：聊天岛只在胶囊 `pill` ⇄ 展开 `expanded` 间切换；朗读岛只在圆球 `circle` ⇄ 展开 `expanded` 间切换。双岛时恒为「聊天胶囊（左） + 朗读圆球（右）」
+- 布局：聊天岛锁定左缘（50% - anchor）、朗读岛锁定右缘（50% + anchor）；单岛与展开态回到页面正中。锚点由 `dualAnchorFor(chatPillWidth)` 随聊天胶囊宽度动态推导，使双岛间距恒为 `dualGap`（16px，idle/任务两态一致）；两岛必须传同一个 anchor（App 里算一次同时传两岛）。全岛统一基础高度 32（圆球直径 = 胶囊高度，morph 时高度恒定只变宽度）
+- 展开的岛至多一个，滑向页面中央并遮盖另一个岛；hover 任一岛直接展开，移出 300ms 还原
+- **朗读退场（吸收动画）**：finished 后闲置 5s（未悬停、未展开）触发 → 聊天岛同帧 `left → center` 右移回中，朗读球播 `island-exit`（塌到右缘后左移 anchor——经 `--island-exit-shift` CSS 变量跟随动态锚点，恰好落到页面中心，被聊天岛 zIndex 更低地吸收）→ 动画完 `stop()` 卸载；退场期间重新发起朗读则取消退场
+- **退场倒计时圆环**：等待的 5s 内朗读球边缘显示环形进度（`TtsCountdownRing`，linear 收圈）。计时的唯一事实来源是 coordinator 的 `ttsDismissCounting`（= 退场 setTimeout 的启停条件）：悬停/展开时环与计时器同帧暂停，移开后一起从头重计；时长取 `ISLAND_METRICS.ttsDismissMs`，改一处即可
 - 完成态（done/cancelled）闲置 8s 无交互自动清空对话回到笑脸；failed 保留待用户处理
-- 流式首个 token 自动展开一次；用户收起后本轮不再自动展开（`markIslandTriggered` 新请求时重置）
+- 流式首个 token 自动展开一次；用户收起后本轮不再自动展开（`markIslandTriggered` 新请求时重置；新任务触发会收起另一岛的展开态，避免反馈被遮挡）
 - 划词工具栏与岛互不抑制（聊天面板展开时划词工具栏照常出现）
 
 ### 设计要点
 - morph 动画：宽高/圆角/left 全 spring 过渡（left 比尺寸略慢产生「滑向目标位」生长感）；三层内容独立固定尺寸居中，opacity/scale 交叉过渡（iOS 手法，morph 中内容不被重排挤压）
-- 容器只上报 hover/点击/Esc/点外事件，展开与主副互换决策集中在 `useIslandCoordinator`（跨岛协调无法在单岛容器内完成）
+- 容器只上报 hover/点击/Esc/点外事件，展开决策集中在 `useIslandCoordinator`（跨岛协调无法在单岛容器内完成）
 - 拖进度条等瞬时操作通过 `IslandHoldContext` 的 hold/release 抑制自动收回（release 后补发被抑制的 leave）
 - 输入框打字时鼠标滑出不收回（仅文本输入焦点抑制，`isTextEntryElement`；按钮残留焦点不抑制）
 - 展开层常挂载（仅 opacity 切换）避免流式更新下 remount 掉帧；收起路径统一 blur 岛内焦点（焦点残留会让按键落入虚空）
@@ -170,7 +171,7 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
 ### 不变量
 - 岛固定顶部中央，聊天岛不做拖拽/resize（身份特征，去掉后大幅简化）
 - 展开态点击岛外 = 收起（岛保留、对话保留）；清空对话用面板 × 按钮
-- TTS 结束（idle）后朗读岛卸载，主岛身份归还聊天岛（否则聊天岛永远卡在圆点）
+- TTS 结束（idle）后朗读岛卸载；退场动画依赖 `ttsExiting` 标记（动画期间 status 仍是 finished，stop 后才真正卸载）
 - 内容层 `pointerEvents` 必须按 active 切换；写死 `none` 会让胶囊内按钮永远无法点击
 - 输入框 Enter 发送必须检查 `event.nativeEvent.isComposing`（IME 组合确认不是发送）
 

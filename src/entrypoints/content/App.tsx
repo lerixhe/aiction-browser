@@ -9,10 +9,11 @@ import ChatIslandPanel, {
   deriveChatPhase,
   type ChatIslandPhase
 } from "@/entrypoints/content/components/ChatIslandPanel"
-import { TtsCircleContent, TtsPillContent, TtsControlBar } from "@/entrypoints/content/components/SpeechPlayer"
-import { ISLAND_METRICS } from "@/entrypoints/content/components/islandMetrics"
+import { TtsCircleContent, TtsCountdownRing, TtsPillContent, TtsControlBar } from "@/entrypoints/content/components/SpeechPlayer"
+import { ISLAND_METRICS, dualAnchorFor } from "@/entrypoints/content/components/islandMetrics"
 import { useChatState } from "@/entrypoints/content/hooks/useChatState"
 import { useIslandCoordinator } from "@/entrypoints/content/hooks/useIslandCoordinator"
+import { MOVE_MS } from "@/entrypoints/content/components/DynamicIsland"
 import { useSelectionDetection } from "@/entrypoints/content/hooks/useSelectionDetection"
 import type { SelectionStart } from "@/entrypoints/content/hooks/useSelectionDetection"
 import { useSpeechPlayer } from "@/entrypoints/content/hooks/useSpeechPlayer"
@@ -60,11 +61,20 @@ export default function App() {
     modelName
   } = useChatState()
 
-  // ---------- 灵动岛状态机（双岛：朗读左 / 聊天右） ----------
+  // ---------- 灵动岛状态机（双岛：聊天左 / 朗读右） ----------
 
   const ttsActive = speechPlayer.state.status !== "idle"
+  const ttsFinished = speechPlayer.state.status === "finished"
+  /** 朗读退场中：球播吸收动画（缩向页面中心），聊天岛同时回中；动画完 stop 卸载 */
+  const [ttsExiting, setTtsExiting] = useState(false)
+  /** 启动朗读退场（引用稳定：否则每次渲染重建退场计时器，5s 永远到不了点） */
+  const handleTtsDismiss = useCallback(() => setTtsExiting(true), [])
   /** 对话是否活跃（岛胶囊显示任务状态而非笑脸「询问」） */
   const chatActive = requestState.status !== "idle" || messages.length > 0
+  /** 聊天岛折叠胶囊宽度（idle 92 / 任务 148） */
+  const chatPillWidth = chatActive ? ISLAND_METRICS.chatPill.width : ISLAND_METRICS.chatIdlePill.width
+  /** 双岛外缘锚点：随胶囊宽度推导，使双岛间距恒为 dualGap（两岛必须同值） */
+  const dualAnchor = dualAnchorFor(chatPillWidth)
   const chatPhase: ChatIslandPhase | "idle" = chatActive ? deriveChatPhase(requestState, messages) : "idle"
   /** 完成/取消态闲置一段时间后自动清空，回到笑脸 idle 态 */
   const chatSettled = chatPhase === "done" || chatPhase === "cancelled"
@@ -77,9 +87,29 @@ export default function App() {
 
   const island = useIslandCoordinator({
     ttsActive,
+    ttsExiting,
+    ttsFinished,
+    onTtsDismiss: handleTtsDismiss,
     chatSettled,
     onChatIdleReset: clearConversation
   })
+
+  // 退场动画（island-exit）播完 → 真正停止朗读、卸载朗读岛并复位退场标记
+  useEffect(() => {
+    if (!ttsExiting) return
+    const timer = window.setTimeout(() => {
+      speechPlayer.stop()
+      setTtsExiting(false)
+    }, MOVE_MS + 40)
+    return () => window.clearTimeout(timer)
+  }, [ttsExiting, speechPlayer.stop])
+
+  // 退场期间用户重新发起朗读（loading/playing 等）→ 取消退场，岛回到正常态
+  useEffect(() => {
+    if (!ttsExiting) return
+    const status = speechPlayer.state.status
+    if (status !== "finished" && status !== "idle") setTtsExiting(false)
+  }, [ttsExiting, speechPlayer.state.status])
 
   // 流式首个 token 到达时自动展开一次（用户收起过则本轮不再打扰）
   useEffect(() => {
@@ -125,7 +155,7 @@ export default function App() {
       setCapturedText(text)
       closeToolbar()
       resetMessages()
-      // 后触发者为主岛：对话触发让聊天岛接管主位
+      // 新任务触发：重置自动展开窗口并收起另一岛（markIslandTriggered）
       island.markIslandTriggered("chat")
 
       if (selectionContext) {
@@ -189,7 +219,7 @@ export default function App() {
         const trimmed = text.trim()
         if (!trimmed) return
 
-        // 朗读触发：朗读岛出现在左侧并成为主岛（聊天岛缩小为圆点副岛）
+        // 朗读触发：朗读岛出现在右侧（形态固定，无主副互换）
         closeToolbar()
         island.markIslandTriggered("tts")
         speechPlayer.start(trimmed)
@@ -261,8 +291,9 @@ export default function App() {
         form={island.chatForm}
         anchor={island.chatAnchor}
         circleSize={ISLAND_METRICS.circle.size}
-        pillWidth={chatActive ? ISLAND_METRICS.chatPill.width : ISLAND_METRICS.chatIdlePill.width}
+        pillWidth={chatPillWidth}
         pillHeight={ISLAND_METRICS.chatPill.height}
+        dualAnchor={dualAnchor}
         expandedWidth={ISLAND_METRICS.chatPanel.width}
         expandedHeight={ISLAND_METRICS.chatPanel.height}
         ariaLabel={chatAriaLabel}
@@ -289,16 +320,26 @@ export default function App() {
       {/* 朗读岛：朗读激活时出现在右侧 */}
       {ttsActive && (
         <DynamicIsland
-          form={island.ttsForm ?? "pill"}
+          form={island.ttsForm ?? "circle"}
           anchor={island.ttsAnchor}
           circleSize={ISLAND_METRICS.circle.size}
           pillWidth={ISLAND_METRICS.ttsPill.width}
           pillHeight={ISLAND_METRICS.ttsPill.height}
+          dualAnchor={dualAnchor}
           expandedWidth={ISLAND_METRICS.ttsBar.width}
           expandedHeight={ISLAND_METRICS.ttsBar.height}
           ariaLabel={t("ui.tts.speaking")}
-          circleContent={<TtsCircleContent player={speechPlayer} />}
+          circleContent={
+            <div style={{ position: "relative", width: ISLAND_METRICS.circle.size, height: ISLAND_METRICS.circle.size }}>
+              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <TtsCircleContent player={speechPlayer} />
+              </div>
+              {/* 退场倒计时：与退场计时器同帧启停（悬停/展开暂停，移开重计） */}
+              {island.ttsDismissCounting && <TtsCountdownRing />}
+            </div>
+          }
           pillContent={<TtsPillContent player={speechPlayer} />}
+          exiting={ttsExiting}
           onActivate={() => island.activateIsland("tts")}
           onDeactivate={() => island.deactivateIsland("tts")}
           onCollapseRequest={() => island.collapseIsland("tts")}>

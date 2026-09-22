@@ -2,6 +2,7 @@ import { useContext, useRef, useState } from "react"
 
 import type { useSpeechPlayer } from "@/entrypoints/content/hooks/useSpeechPlayer"
 import { IslandHoldContext } from "@/entrypoints/content/components/DynamicIsland"
+import { ISLAND_METRICS } from "@/entrypoints/content/components/islandMetrics"
 import { EDGE_TTS_VOICE_GROUPS, isKnownEdgeTtsVoice } from "@/shared/edge-tts-voices"
 import { useI18n } from "@/shared/i18n/context"
 import { useUiTheme } from "@/shared/ui/theme"
@@ -195,7 +196,7 @@ export function TtsPillContent({ player, mini = false }: { player: SpeechPlayerI
   )
 }
 
-/** 朗读岛副岛圆点内容（迷你状态图标） */
+/** 朗读岛圆球内容（迷你状态图标） */
 export function TtsCircleContent({ player }: { player: SpeechPlayerInstance }) {
   const theme = useUiTheme()
   const { state } = player
@@ -205,6 +206,57 @@ export function TtsCircleContent({ player }: { player: SpeechPlayerInstance }) {
   if (state.status === "finished") return <DoneGlyph size={13} color={theme.state.success} />
   if (state.status === "paused") return <PauseGlyph size={12} color={theme.brand.primary} />
   return <WaveBars color={theme.brand.primary} barHeight={9} />
+}
+
+/** 朗读退场倒计时圆环：铺满 32px 圆球边缘，5s 内从满环收到零（linear）。
+ *  挂载/卸载由 coordinator 的 ttsDismissCounting 驱动，与退场 setTimeout 同帧启停——
+ *  悬停/展开时环与计时器一起暂停，移开后一起从头重计。 */
+export function TtsCountdownRing() {
+  const theme = useUiTheme()
+  // 球直径 32，环内缩贴边：r=14.5 + stroke 2 → 外缘 15 < 16（留 1px 不被 overflow 裁）
+  const r = 14.5
+  const c = 2 * Math.PI * r
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: "absolute",
+        inset: 0,
+        width: "100%",
+        height: "100%",
+        pointerEvents: "none"
+      }}>
+      <style>{`
+        @keyframes tts-countdown {
+          from { stroke-dashoffset: 0; }
+          to { stroke-dashoffset: ${c}; }
+        }
+      `}</style>
+      <svg
+        width="32"
+        height="32"
+        viewBox="0 0 32 32"
+        style={{ display: "block", transform: "rotate(-90deg)" }}>
+        {/* 轨道 */}
+        <circle cx="16" cy="16" r={r} fill="none" stroke={theme.border.default} strokeWidth="2" opacity="0.6" />
+        {/* 进度：满环 → 无（倒计时归零时退场动画接管） */}
+        <circle
+          cx="16"
+          cy="16"
+          r={r}
+          fill="none"
+          stroke={theme.brand.primary}
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={0}
+          style={{
+            animation: `tts-countdown ${ISLAND_METRICS.ttsDismissMs}ms linear forwards`
+          }}
+        />
+      </svg>
+    </div>
+  )
 }
 
 /** 灵动岛展开态的 TTS 完整控制条 */

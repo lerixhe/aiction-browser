@@ -10,7 +10,7 @@ import ChatIslandPanel, {
   deriveChatPhase,
   type ChatIslandPhase
 } from "@/entrypoints/content/components/ChatIslandPanel"
-import { ISLAND_METRICS } from "@/entrypoints/content/components/islandMetrics"
+import { ISLAND_METRICS, dualAnchorFor } from "@/entrypoints/content/components/islandMetrics"
 import { useChatState } from "@/entrypoints/content/hooks/useChatState"
 import { useIslandCoordinator } from "@/entrypoints/content/hooks/useIslandCoordinator"
 import { useToolbarState } from "@/entrypoints/content/hooks/useToolbarState"
@@ -452,6 +452,7 @@ export function PdfViewerPage() {
           circleSize={ISLAND_METRICS.circle.size}
           pillWidth={chatActive ? ISLAND_METRICS.chatPill.width : ISLAND_METRICS.chatIdlePill.width}
           pillHeight={ISLAND_METRICS.chatPill.height}
+          dualAnchor={dualAnchorFor(chatActive ? ISLAND_METRICS.chatPill.width : ISLAND_METRICS.chatIdlePill.width)}
           expandedWidth={ISLAND_METRICS.chatPanel.width}
           expandedHeight={ISLAND_METRICS.chatPanel.height}
           ariaLabel={chatActive ? t("island.chat.label") : t("island.chat.ask")}

@@ -1,10 +1,10 @@
-import { createContext, useCallback, useEffect, useMemo, useRef } from "react"
+import { createContext, useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { useUiTheme } from "@/shared/ui/theme"
 import { uiLayer, uiMotion, uiRadius, uiTypography } from "@/shared/ui/tokens"
 import { ISLAND_METRICS } from "@/entrypoints/content/components/islandMetrics"
 
-/** 岛形态：副岛正圆 / 主岛胶囊 / 展开面板（同一时刻全页面至多一个 expanded） */
+/** 岛形态：圆球（朗读折叠） / 胶囊（聊天折叠） / 展开面板（同一时刻全页面至多一个 expanded） */
 export type IslandForm = "circle" | "pill" | "expanded"
 
 /**
@@ -24,7 +24,7 @@ const ISLAND_TOP = 12
 /** 宽高/圆角 morph 时长（spring 曲线，与 iOS 灵动岛手感一致） */
 const MORPH_MS = 380
 /** 锚定位置（wrapper left/transform）过渡时长：比尺寸 morph 略长，产生「滑向目标位」的生长感 */
-const MOVE_MS = 440
+export const MOVE_MS = 440
 
 /**
  * 岛入场动画样式（提取为模块常量：内联模板串在 JSX 中解析异常）。
@@ -35,6 +35,10 @@ const ISLAND_CSS = `
   @keyframes island-enter {
     from { opacity: 0; transform: scale(0.7); }
     to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes island-exit {
+    from { opacity: 1; transform: translateX(0) scale(1); }
+    to { opacity: 0; transform: translateX(calc(-1 * var(--island-exit-shift, 92px))) scale(0); }
   }
 `
 
@@ -48,7 +52,12 @@ interface Props {
   form: IslandForm
   /** 水平锚定：left=锁定左缘 / right=锁定右缘 / center=中心 */
   anchor: IslandAnchor
-  /** 副岛正圆直径 */
+  /**
+   * 双岛外缘锚点（到页面中线的距离）：两岛必须传同一个值，
+   * 由 dualAnchorFor(chatPillWidth) 算出使间距恒为 dualGap。
+   */
+  dualAnchor?: number
+  /** 朗读圆球直径 */
   circleSize: number
   /** 折叠胶囊尺寸 */
   pillWidth: number
@@ -57,13 +66,19 @@ interface Props {
   expandedWidth: number
   expandedHeight: number
   ariaLabel: string
-  /** 圆点层内容（副岛形态） */
+  /**
+   * 退场（吸收）动画：整体缩向页面中心并淡出，期间禁用交互。
+   * 右锚圆球的右缘在 50% + dualAnchor，transform-origin 为右缘——
+   * scale(0) 塌缩到右缘后再左移 dualAnchor，恰好落在页面中心被主岛吸收。
+   */
+  exiting?: boolean
+  /** 圆球层内容（朗读岛折叠形态） */
   circleContent: React.ReactNode
-  /** 胶囊层内容（主岛折叠形态） */
+  /** 胶囊层内容（聊天岛折叠形态） */
   pillContent: React.ReactNode
   /** 展开层内容（任务面板） */
   children: React.ReactNode
-  /** 鼠标进入 / 点击未展开的岛（展开与主副互换序列由状态机决定） */
+  /** 鼠标进入 / 点击未展开的岛（展开决策由状态机决定） */
   onActivate?: () => void
   /** 鼠标移出岛（岛内有文本焦点或 hold 抑制时不触发） */
   onDeactivate?: () => void
@@ -84,6 +99,7 @@ interface Props {
 export default function DynamicIsland({
   form,
   anchor,
+  dualAnchor = ISLAND_METRICS.dualAnchor,
   circleSize,
   pillWidth,
   pillHeight,
@@ -93,6 +109,7 @@ export default function DynamicIsland({
   circleContent,
   pillContent,
   children,
+  exiting = false,
   onActivate,
   onDeactivate,
   onCollapseRequest
@@ -105,6 +122,28 @@ export default function DynamicIsland({
   const pendingLeaveRef = useRef(false)
   /** 岛内最后获得焦点的元素（收起时 blur，避免键盘输入落进隐形面板） */
   const focusedElementRef = useRef<HTMLElement | null>(null)
+
+  // 小视口下展开面板按可用高度收缩（否则固定高度内容层会上下等量溢出被裁，
+  // 顶部标题栏/底部输入框被切掉）
+  const [viewportH, setViewportH] = useState(() => window.innerHeight)
+  useEffect(() => {
+    const handleResize = () => setViewportH(window.innerHeight)
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [])
+  const clampedExpandedH = Math.min(expandedHeight, viewportH - ISLAND_TOP * 2)
+
+  // 收起后保持高层级直到 morph 结束：宽度还没缩回去的面板若立即降层，
+  // 会从静态副岛底下穿过（ zIndex 竞态）；morph 完成后再降回折叠层
+  const [elevated, setElevated] = useState(form === "expanded")
+  useEffect(() => {
+    if (form === "expanded") {
+      setElevated(true)
+      return
+    }
+    const timer = window.setTimeout(() => setElevated(false), MOVE_MS)
+    return () => window.clearTimeout(timer)
+  }, [form])
 
   // 回调走 ref，让 document 级监听器不用随回调重建
   const onActivateRef = useRef(onActivate)
@@ -195,7 +234,16 @@ export default function DynamicIsland({
       ? { w: circleSize, h: circleSize, r: circleSize / 2 }
       : form === "pill"
         ? { w: pillWidth, h: pillHeight, r: uiRadius.pill }
-        : { w: expandedWidth, h: expandedHeight, r: ISLAND_METRICS.expandedRadius }
+        : { w: expandedWidth, h: clampedExpandedH, r: ISLAND_METRICS.expandedRadius }
+
+  /** 层级：展开 > 刚收起（morph 中） > 静态折叠；退场球再低一级，塌缩时钻到聊天岛底下被吸收 */
+  const zIndex = exiting
+    ? uiLayer.island - 1
+    : form === "expanded"
+      ? uiLayer.islandExpanded
+      : elevated
+        ? uiLayer.islandMorph
+        : uiLayer.island
 
   /**
    * 外层 wrapper 锚定样式：left + translateX 共同锁定一条边缘。
@@ -205,13 +253,13 @@ export default function DynamicIsland({
   const anchorStyle =
     anchor === "right"
       ? {
-          left: `calc(50% + ${ISLAND_METRICS.dualAnchor}px)`,
+          left: `calc(50% + ${dualAnchor}px)`,
           transform: "translateX(-100%)",
           origin: "right center"
         }
       : anchor === "left"
         ? {
-            left: `calc(50% - ${ISLAND_METRICS.dualAnchor}px)`,
+            left: `calc(50% - ${dualAnchor}px)`,
             transform: "translateX(0)",
             origin: "left center"
           }
@@ -225,7 +273,7 @@ export default function DynamicIsland({
   const layers: Array<{ key: string; active: boolean; w: number; h: number; content: React.ReactNode; interactive: boolean }> = [
     { key: "circle", active: form === "circle", w: circleSize, h: circleSize, content: circleContent, interactive: false },
     { key: "pill", active: form === "pill", w: pillWidth, h: pillHeight, content: pillContent, interactive: true },
-    { key: "expanded", active: form === "expanded", w: expandedWidth, h: expandedHeight, content: children, interactive: true }
+    { key: "expanded", active: form === "expanded", w: expandedWidth, h: clampedExpandedH, content: children, interactive: true }
   ]
 
   return (
@@ -235,7 +283,7 @@ export default function DynamicIsland({
         top: ISLAND_TOP,
         left: anchorStyle.left,
         transform: anchorStyle.transform,
-        zIndex: form === "expanded" ? uiLayer.islandExpanded : uiLayer.island,
+        zIndex,
         pointerEvents: "none",
         transition: `left ${MOVE_MS}ms ${uiMotion.easingSpringGentle}, transform ${MOVE_MS}ms ${uiMotion.easingSpringGentle}`
       }}>
@@ -258,18 +306,22 @@ export default function DynamicIsland({
           position: "relative",
           width: dims.w,
           height: dims.h,
+          // 退场吸收的位移量（island-exit keyframes 内 var 引用，跟随动态锚点而非写死）
+          ...({ ["--island-exit-shift"]: `${dualAnchor}px` } as React.CSSProperties),
           maxHeight: form === "expanded" ? "calc(100vh - 24px)" : undefined,
           borderRadius: dims.r,
           background: theme.bg.surface,
           border: `1px solid ${theme.border.default}`,
           boxShadow: surfaceShadow,
           overflow: "hidden",
-          pointerEvents: "auto",
           fontFamily: uiTypography.fontFamily,
           transformOrigin: anchorStyle.origin,
           transition: `width ${MORPH_MS}ms ${uiMotion.easingSpringGentle}, height ${MORPH_MS}ms ${uiMotion.easingSpringGentle}, border-radius ${MORPH_MS}ms ${uiMotion.easingSpringGentle}, border-color ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
           cursor: form === "expanded" ? "default" : "pointer",
-          animation: `island-enter 360ms ${uiMotion.easingSpringGentle} forwards`
+          animation: exiting
+            ? `island-exit ${MOVE_MS}ms ${uiMotion.easingSpringGentle} forwards`
+            : `island-enter 360ms ${uiMotion.easingSpringGentle} forwards`,
+          pointerEvents: exiting ? "none" : "auto"
         }}>
         <IslandHoldContext.Provider value={holdApi}>
           {layers.map((layer) => (

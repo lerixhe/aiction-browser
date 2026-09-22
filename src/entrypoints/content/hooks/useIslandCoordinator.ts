@@ -6,18 +6,22 @@ import type { IslandAnchor, IslandForm } from "@/entrypoints/content/components/
 export type IslandId = "chat" | "tts"
 export type { IslandAnchor, IslandForm } from "@/entrypoints/content/components/DynamicIsland"
 
-/** 副岛 hover 后先长成胶囊、停顿再自动展开的间隔（等 circle→pill morph 基本完成） */
-const PILL_PAUSE_MS = 320
 /** 鼠标移出展开面板后自动收回的延迟 */
 const HOVER_COLLAPSE_MS = 300
-/** 流式首个 token 后自动展开的延迟（等岛入场动画结束） */
+/** 流式首个 token 后自动自动展开的延迟（等岛入场动画结束） */
 const AUTO_EXPAND_DELAY_MS = 400
 /** 对话完成/取消后无交互自动清空、回到笑脸 idle 态的时长 */
 const CHAT_IDLE_RESET_MS = 8000
 
 interface Options {
-  /** TTS 是否激活（朗读岛存在） */
+  /** 朗读是否激活（朗读岛存在） */
   ttsActive: boolean
+  /** 朗读退场动画进行中：球播放吸收动画，聊天岛同时回中 */
+  ttsExiting?: boolean
+  /** 朗读播放完毕（finished 态），闲置退场计时开始 */
+  ttsFinished?: boolean
+  /** finished 闲置到期：由 App 启动退场动画（随后 stop 卸载） */
+  onTtsDismiss?: () => void
   /** 聊天是否处于「完成/取消」终态（终态闲置一段时间后自动清空对话） */
   chatSettled: boolean
   /** 闲置清空回调（清空本轮对话，岛回到笑脸 idle 态） */
@@ -25,25 +29,30 @@ interface Options {
 }
 
 /**
- * 双灵动岛协调器：跨岛的主副关系、展开唯一性与 hover 交互序列都集中在这里。
+ * 双灵动岛协调器：展开唯一性与 hover 交互序列集中在这里。
  *
- * 形态规则（仿 iOS 灵动岛）：
- * - 展开的岛至多一个，展开者占据视觉中心（left → 50%）并遮盖另一个岛
- * - 双岛并存时只有主岛可以是胶囊，副岛缩小为圆点；后触发者成为主岛
- * - 聊天岛永远在左（锁左缘）、朗读岛永远在右（锁右缘）；单岛时回到页面正中
+ * 形态固定（无主副互换）：
+ * - 聊天岛常驻，只在 pill（折叠）⇄ expanded（面板）之间切换
+ * - 朗读岛按需出现，只在 circle（圆球）⇄ expanded（控制条）之间切换
+ * - 双岛并存时聊天岛锁定左缘、朗读岛锁定右缘；单岛与展开态锚定页面正中
  *
- * hover 序列：
- * - 悬停主岛 → 直接展开；移出展开区 300ms 后还原为双岛
- * - 悬停副岛 → 副岛先长成胶囊（主副互换、原主岛缩为圆点），停顿后自动展开
+ * hover 序列：悬停任一岛直接展开；移出展开区 300ms 后还原。
+ *
+ * 朗读退场：finished 后闲置 5s（未悬停、未展开）触发 onTtsDismiss，
+ * App 播放吸收动画（球缩小左移淡出、聊天岛回中）后 stop 卸载。
  */
-export function useIslandCoordinator({ ttsActive, chatSettled, onChatIdleReset }: Options) {
-  const [primaryIsland, setPrimaryIsland] = useState<IslandId>("chat")
+export function useIslandCoordinator({
+  ttsActive,
+  ttsExiting,
+  ttsFinished,
+  onTtsDismiss,
+  chatSettled,
+  onChatIdleReset
+}: Options) {
   const [expandedIsland, setExpandedIsland] = useState<IslandId | null>(null)
   /** 鼠标当前悬停的岛（取消「完成态闲置清空」计时） */
   const [hoveringIsland, setHoveringIsland] = useState<IslandId | null>(null)
 
-  const primaryRef = useRef(primaryIsland)
-  primaryRef.current = primaryIsland
   const expandedRef = useRef(expandedIsland)
   expandedRef.current = expandedIsland
 
@@ -69,50 +78,33 @@ export function useIslandCoordinator({ ttsActive, chatSettled, onChatIdleReset }
     }
   }, [])
 
-  /** 排定一次展开：到点时若已有岛展开（期间用户悬停了别的岛）则让位 */
+  /** 排定一次延迟展开（自动展开用）：到点时若已有岛展开则让位 */
   const scheduleExpand = useCallback(
     (id: IslandId, delay: number) => {
       clearExpandTimer()
       expandTimerRef.current = window.setTimeout(() => {
         expandTimerRef.current = null
         if (expandedRef.current != null) return
-        setPrimaryIsland(id)
         setExpandedIsland(id)
       }, delay)
     },
     [clearExpandTimer]
   )
 
-  /** 鼠标进入 / 点击某个岛 */
+  /** 鼠标进入 / 点击某个岛：直接展开（形态固定，无主副互换序列） */
   const activateIsland = useCallback(
     (id: IslandId) => {
       setHoveringIsland(id)
       clearCollapseTimer()
       clearExpandTimer()
       if (expandedRef.current === id) return
-
-      if (expandedRef.current != null) {
-        // 另一个岛正展开：立即收回它（expanded → circle 直接 morph），本岛接管主位
-        setExpandedIsland(null)
-        setPrimaryIsland(id)
-        scheduleExpand(id, PILL_PAUSE_MS)
-        return
-      }
-
-      if (primaryRef.current !== id) {
-        // 副岛：circle → pill（主副互换，原主岛缩为圆点）→ 停顿 → 自动展开
-        setPrimaryIsland(id)
-        scheduleExpand(id, PILL_PAUSE_MS)
-        return
-      }
-
-      // 主岛：直接展开
+      // 展开唯一：另一岛若正展开，本次 set 同时收回它（两个岛独立 morph）
       setExpandedIsland(id)
     },
-    [clearCollapseTimer, clearExpandTimer, scheduleExpand]
+    [clearCollapseTimer, clearExpandTimer]
   )
 
-  /** 鼠标移出某个岛（取消排定的展开序列；展开中的岛延迟收回） */
+  /** 鼠标移出某个岛（取消排定的展开；展开中的岛延迟收回） */
   const deactivateIsland = useCallback(
     (id: IslandId) => {
       setHoveringIsland(null)
@@ -138,7 +130,7 @@ export function useIslandCoordinator({ ttsActive, chatSettled, onChatIdleReset }
       setExpandedIsland(null)
       if (id === "chat") suppressAutoExpandRef.current = true
     },
-    [clearCollapseTimer, clearExpandTimer]
+    [clearExpandTimer, clearCollapseTimer]
   )
 
   /** 流式首个 token 到达：自动展开一次（用户收起过则本轮忽略；已有展开让位） */
@@ -152,20 +144,33 @@ export function useIslandCoordinator({ ttsActive, chatSettled, onChatIdleReset }
     [scheduleExpand]
   )
 
-  /** 新请求触发（发起对话 / 开始朗读）：后触发者成为主岛，重置自动展开窗口 */
-  const markIslandTriggered = useCallback((id: IslandId) => {
-    suppressAutoExpandRef.current = false
-    autoExpandedRef.current = false
-    setPrimaryIsland(id)
-  }, [])
+  /** 新请求触发（发起对话 / 开始朗读）：重置自动展开窗口，并收起另一岛的展开态 */
+  const markIslandTriggered = useCallback(
+    (id: IslandId) => {
+      clearExpandTimer()
+      clearCollapseTimer()
+      suppressAutoExpandRef.current = false
+      autoExpandedRef.current = false
+      // 新任务反馈不能被对方的展开面板遮住：收起非本岛的展开
+      setExpandedIsland((prev) => (prev === id ? prev : null))
+    },
+    [clearExpandTimer, clearCollapseTimer]
+  )
 
-  // TTS 结束：收回朗读岛展开态、主岛归还聊天（聊天是常驻岛，必须能回到胶囊）
+  // 朗读退场动画开始：收回朗读岛展开态（吸收动画在圆球形态下播放）
+  useEffect(() => {
+    if (!ttsExiting) return
+    clearExpandTimer()
+    clearCollapseTimer()
+    setExpandedIsland((prev) => (prev === "tts" ? null : prev))
+  }, [ttsExiting, clearExpandTimer, clearCollapseTimer])
+
+  // 朗读彻底结束（idle）：兜底收回展开态，避免残留到下一次朗读
   useEffect(() => {
     if (ttsActive) return
     clearExpandTimer()
     clearCollapseTimer()
     setExpandedIsland((prev) => (prev === "tts" ? null : prev))
-    setPrimaryIsland((prev) => (prev === "tts" ? "chat" : prev))
   }, [ttsActive, clearExpandTimer, clearCollapseTimer])
 
   // 卸载时清理计时器
@@ -175,6 +180,21 @@ export function useIslandCoordinator({ ttsActive, chatSettled, onChatIdleReset }
       if (collapseTimerRef.current != null) window.clearTimeout(collapseTimerRef.current)
     }
   }, [])
+
+  /**
+   * 朗读退场倒计时是否在跑（finished 且未悬停/未展开/未退场中）。
+   * 圆环进度条的唯一计时事实来源：与下方退场 setTimeout 同帧启停——
+   * 悬停/展开时同时暂停（清 timer + 卸载环），移开后同时从头重新计 5s。
+   */
+  const ttsDismissCounting =
+    !!ttsFinished && !!onTtsDismiss && !ttsExiting && expandedIsland !== "tts" && hoveringIsland !== "tts"
+
+  // 朗读完毕闲置：finished 后一段时间无交互（未展开、未悬停）触发退场
+  useEffect(() => {
+    if (!ttsDismissCounting) return
+    const timer = window.setTimeout(onTtsDismiss!, ISLAND_METRICS.ttsDismissMs)
+    return () => window.clearTimeout(timer)
+  }, [ttsDismissCounting, onTtsDismiss])
 
   // 完成态闲置：done/cancelled 后一段时间无交互（未展开、未悬停）自动清空对话
   useEffect(() => {
@@ -186,30 +206,28 @@ export function useIslandCoordinator({ ttsActive, chatSettled, onChatIdleReset }
 
   // ---------- 形态与锚定推导 ----------
 
-  const chatForm: IslandForm = expandedIsland === "chat"
-    ? "expanded"
-    : ttsActive && primaryIsland !== "chat"
-      ? "circle"
-      : "pill"
+  // 聊天岛：pill ⇄ expanded（永不做圆点）
+  const chatForm: IslandForm = expandedIsland === "chat" ? "expanded" : "pill"
 
+  // 朗读岛：circle ⇄ expanded（永不做胶囊）；退场动画强制收成圆球
   const ttsForm: IslandForm | null = !ttsActive
     ? null
-    : expandedIsland === "tts"
-      ? "expanded"
-      : primaryIsland === "tts"
-        ? "pill"
-        : "circle"
+    : ttsExiting || expandedIsland !== "tts"
+      ? "circle"
+      : "expanded"
 
   /**
-   * 水平锚定：双岛时聊天岛锁定左缘、朗读岛锁定右缘（morph 期间外缘纹丝不动，
-   * 近端边缘在间隙里此消彼长）；单岛与展开态锚定中心。
+   * 水平锚定：双岛时聊天岛锁定左缘、朗读岛锁定右缘（外缘纹丝不动）；
+   * 单岛与展开态锚定中心。退场瞬间（ttsExiting）聊天岛即回中，
+   * 与朗读球的吸收动画同帧开始。
    */
-  const chatAnchor: IslandAnchor = ttsActive && chatForm !== "expanded" ? "left" : "center"
-  const ttsAnchor: IslandAnchor = ttsActive && ttsForm !== "expanded" ? "right" : "center"
+  const dualLayout = ttsActive && !ttsExiting
+  const chatAnchor: IslandAnchor = dualLayout && chatForm !== "expanded" ? "left" : "center"
+  const ttsAnchor: IslandAnchor = ttsForm !== "expanded" ? "right" : "center"
 
   return {
-    primaryIsland,
     expandedIsland,
+    ttsDismissCounting,
     chatForm,
     ttsForm,
     chatAnchor,

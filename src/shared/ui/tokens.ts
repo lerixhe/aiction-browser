@@ -210,8 +210,10 @@ export const uiLayer = {
   overlay: 2147483647,
   /** 展开中的灵动岛（遮盖副岛，低于工具栏） */
   islandExpanded: 2147483646,
+  /** 刚收起、morph 进行中的岛（高于静态折叠岛，避免宽面板从副岛底下穿过） */
+  islandMorph: 2147483645,
   /** 折叠态灵动岛（圆点/胶囊） */
-  island: 2147483645
+  island: 2147483644
 } as const
 
 export const uiLayout = {
