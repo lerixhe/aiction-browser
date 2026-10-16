@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SmileyFace 简笔预览 — 三态摇/思/说</title>
+<style>
+  body { margin: 0; font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; background: #EDEFF2; color: #1A1A2E; padding: 40px 24px; }
+  h1 { font-size: 18px; margin: 0 0 6px; }
+  p.tip { font-size: 13px; color: #6B7280; margin: 0 0 28px; }
+  .board { border-radius: 20px; padding: 36px 40px; max-width: 760px; margin: 0 auto 24px; box-shadow: 0 10px 30px rgba(0,0,0,.08); }
+  .board.light { background: linear-gradient(180deg, #FFFFFF, #F1F3F5); }
+  .board.dark { background: linear-gradient(180deg, #1C2127, #101418); color: #E5E7EB; }
+  .board h2 { font-size: 14px; font-weight: 600; margin: 0 0 24px; opacity: .75; }
+  .row { display: flex; align-items: center; gap: 48px; flex-wrap: wrap; margin-bottom: 28px; }
+  .row:last-child { margin-bottom: 0; }
+  .cell { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .cell .label { font-size: 12px; opacity: .55; }
+  .pill { display: inline-flex; align-items: center; justify-content: center; height: 32px; padding: 0 14px; border-radius: 16px; background: rgba(13,148,136,.10); }
+  .dark .pill { background: rgba(45,212,191,.12); }
+</style>
+</head>
+<body>
+<h1>SmileyFace 简笔预览（最早设计 + 三态扩展，临时文件看完可删）</h1>
+<p class="tip">简笔线条：描边圆 + 豆眼 + 线条嘴，随主题品牌色（此处以 teal 近似）。结构与动画与 <code>SmileyFace.tsx</code> 自动保持镜像。另有 <code>design/smiley/</code> 存档黄豆人与蜜桃奶油团子两个完整设计。</p>
+<div class="board light">
+  <h2>Light 背板</h2>
+  <div class="row"><div class="cell pill" data-demo="idle-21"></div><div class="cell pill" data-demo="think-17"></div><div class="cell pill" data-demo="speak-16"></div></div>
+  <div class="row"><div class="cell" data-demo="idle-110"></div><div class="cell" data-demo="think-110"></div><div class="cell" data-demo="speak-110"></div></div>
+</div>
+<div class="board dark">
+  <h2>Dark 背板</h2>
+  <div class="row"><div class="cell pill" data-demo="idle-21"></div><div class="cell pill" data-demo="think-17"></div></div>
+  <div class="row"><div class="cell" data-demo="idle-110"></div><div class="cell" data-demo="think-110"></div></div>
+</div>
+<script>
+const SMILEY_CSS = "@keyframes smiley-blink{0%,91%,100%{transform:scaleY(1)}94%,96.5%{transform:scaleY(0.12)}}\n@keyframes smiley-bob{0%,100%{transform:translateY(0) rotate(0deg)}28%{transform:translateY(-0.7px) rotate(-3deg)}62%{transform:translateY(0.5px) rotate(2.2deg)}}\n@keyframes smiley-tilt{0%,100%{transform:translateY(0) rotate(-6deg)}50%{transform:translateY(-0.3px) rotate(-3.2deg)}}\n@keyframes smiley-nod{0%,100%{transform:translateY(0) rotate(0deg)}30%{transform:translateY(-0.55px) rotate(-2.5deg)}65%{transform:translateY(0.35px) rotate(2deg)}}\n@keyframes smiley-dots{0%,100%{opacity:.15}50%{opacity:1}}\n@keyframes smiley-talk{0%,100%{transform:scaleY(0.2)}18%{transform:scaleY(1)}40%{transform:scaleY(0.3)}58%{transform:scaleY(0.85)}78%{transform:scaleY(0.25)}}\n.aiction-smiley-eyes,.aiction-smiley-body,.aiction-smiley-mouth,.aiction-smiley-dot{transform-box:fill-box;transform-origin:center}\n.aiction-smiley-body{animation:smiley-bob 3.4s ease-in-out infinite}\nsvg[data-aiction-mood=thinking] .aiction-smiley-body{animation:smiley-tilt 2.6s ease-in-out infinite}\nsvg[data-aiction-mood=speaking] .aiction-smiley-body{animation:smiley-nod .72s ease-in-out infinite}\n.aiction-smiley-eyes{animation:smiley-blink 4.2s ease-in-out infinite}\nsvg[data-aiction-mood=speaking] .aiction-smiley-mouth{animation:smiley-talk .72s ease-in-out infinite}\n.aiction-smiley-dot-1{animation:smiley-dots 1.6s ease-in-out infinite}\n.aiction-smiley-dot-2{animation:smiley-dots 1.6s ease-in-out .4s infinite}\n.aiction-smiley-dot-3{animation:smiley-dots 1.6s ease-in-out .8s infinite}"
+const SMILE_MOUTH = "M8 13.9c1.05 1.5 2.4 2.3 4 2.3s2.95-.8 4-2.3";
+const THINK_MOUTH = "M10.3 15.3q1.7 0.75 3.4 0";
+const THINK_EYE_R = "M13.7 10.9q1.6 -1.7 3.2 0";
+const THINK_DOTS = [[18.2, 6.4, 0.5], [20.2, 4.4, 0.65], [21.9, 2.5, 0.8]];
+let uid = 0
+
+function smileySVG({ size, mood, label, doc }) {
+  const isThinking = mood === "thinking"
+  const isSpeaking = mood === "speaking"
+  const NS = "http://www.w3.org/2000/svg"
+  const el = (t, attrs) => { const n = document.createElementNS(NS, t); for (const k in attrs) n.setAttribute(k, attrs[k]); return n }
+  // 主题品牌色近似：light = teal-500 / dark = teal-400
+  const stroke = doc.classList.contains("light") ? "#14B8A6" : "#2DD4BF"
+
+  const cell = document.createElement("div")
+  cell.className = "cell"
+  const svg = el("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", "data-aiction-mood": mood, style: "overflow: visible" })
+  const style = document.createElement("style")
+  style.textContent = SMILEY_CSS
+  svg.appendChild(style)
+
+  const body = el("g", { class: "aiction-smiley-body" })
+  body.appendChild(el("circle", { cx: 12, cy: 12, r: 9.1, stroke, "stroke-width": "1.7" }))
+  if (isThinking) {
+    for (let i = 0; i < THINK_DOTS.length; i++) {
+      const [cx, cy, r] = THINK_DOTS[i]
+      body.appendChild(el("circle", { class: "aiction-smiley-dot aiction-smiley-dot-" + (i + 1), cx, cy, r, fill: stroke }))
+    }
+  }
+  const eyes = el("g", { class: "aiction-smiley-eyes" })
+  eyes.appendChild(el("circle", { cx: 8.7, cy: 10.1, r: 1.15, fill: stroke }))
+  if (isThinking) {
+    eyes.appendChild(el("path", { d: THINK_EYE_R, stroke, "stroke-width": "1.7", "stroke-linecap": "round" }))
+  } else {
+    eyes.appendChild(el("circle", { cx: 15.3, cy: 10.1, r: 1.15, fill: stroke }))
+  }
+  body.appendChild(eyes)
+  if (isSpeaking) {
+    body.appendChild(el("circle", { class: "aiction-smiley-mouth", cx: 12, cy: 15.1, r: 1.5, stroke, "stroke-width": "1.7" }))
+  } else {
+    body.appendChild(el("path", { class: "aiction-smiley-mouth", d: isThinking ? THINK_MOUTH : SMILE_MOUTH, stroke, "stroke-width": "1.7", "stroke-linecap": "round" }))
+  }
+  svg.appendChild(body)
+  cell.appendChild(svg)
+  const lab = document.createElement("div")
+  lab.className = "label"
+  lab.textContent = label
+  cell.appendChild(lab)
+  return cell
+}
+
+document.querySelectorAll("[data-demo]").forEach(el => {
+  const [kind, sizeStr] = el.dataset.demo.split("-")
+  const size = Number(sizeStr)
+  const board = el.closest(".board")
+  const mood = kind === "idle" ? "idle" : kind === "think" ? "thinking" : "speaking"
+  const label = mood + " " + size + "px"
+  el.replaceWith(smileySVG({ size, mood, label, doc: board }))
+})
+</script>
+</body>
+</html>
