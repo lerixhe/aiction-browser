@@ -79,8 +79,8 @@ const INITIAL_STATE: SpeechPlayerState = {
  * 朗读播放器状态机（content script）。
  *
  * - 统一管理系统语音（speechSynthesis 分句播放）与 Edge 在线语音（background 合成 + <audio>）
- * - 向 SpeechPlayer 组件（灵动岛）暴露播放/暂停/进度/语音/语速控制
- * - 播放结束进入 finished 常驻态，灵动岛不自动消失，由用户手动关闭（stop）
+ * - 向 SpeechPlayer 组件（悬浮朗读控件）暴露播放/暂停/进度/语音/语速控制
+ * - 播放结束进入 finished 常驻态，控件不自动消失，由用户手动关闭（stop）或闲置退场
  * - 播放中调整语音或语速时，Edge 引擎按当前进度比例重新合成并续播；
  *   finished 态下则从头播放；系统语音从当前句按新参数续播（句级粒度）
  * - 用户在控制条的调整会写回设置（edgeVoice / rate），作为之后的默认值
@@ -148,7 +148,7 @@ export function useSpeechPlayer() {
 
   // ---------- 系统语音 ----------
 
-  /** 播放结束：进入 finished 常驻态（灵动岛不自动消失，进度打满） */
+  /** 播放结束：进入 finished 常驻态（控件不自动消失，进度打满） */
   const finish = useCallback(() => {
     const session = sessionRef.current
     if (session && session.engine === "edge") {
@@ -305,7 +305,7 @@ export function useSpeechPlayer() {
 
   // ---------- 对外 API ----------
 
-  /** 开始朗读一段文本（灵动岛固定在页面顶部中央，无锚点） */
+  /** 开始朗读一段文本（悬浮控件由 App 锚定到工具栏落位，这里无定位逻辑） */
   const start = useCallback(
     (text: string) => {
       const trimmed = text.trim()
@@ -365,7 +365,7 @@ export function useSpeechPlayer() {
     [cancelPlayback, patchState, speakFrom, startEdge]
   )
 
-  /** 停止播放并关闭灵动岛 */
+  /** 停止播放并关闭朗读控件 */
   const stop = useCallback(() => {
     cancelPlayback()
     sessionRef.current = null

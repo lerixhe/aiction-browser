@@ -206,14 +206,10 @@ export const uiMotion = {
 } as const
 
 export const uiLayer = {
-  /** 最高层：划词工具栏（优先于岛可见） */
+  /** 最高层：划词工具栏（优先于悬浮面板可见） */
   overlay: 2147483647,
-  /** 展开中的灵动岛（遮盖副岛，低于工具栏） */
-  islandExpanded: 2147483646,
-  /** 刚收起、morph 进行中的岛（高于静态折叠岛，避免宽面板从副岛底下穿过） */
-  islandMorph: 2147483645,
-  /** 折叠态灵动岛（圆点/胶囊） */
-  island: 2147483644
+  /** 悬浮面板（对话窗 / 朗读控件），位于工具栏之下 */
+  panel: 2147483646
 } as const
 
 export const uiLayout = {

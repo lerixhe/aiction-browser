@@ -5,6 +5,7 @@ import { useUiTheme } from "@/shared/ui/theme"
 import { uiLayer, uiMotion, uiRadius, uiTypography } from "@/shared/ui/tokens"
 import { ActionIcon } from "@/shared/ui/iconify"
 import { useI18n } from "@/shared/i18n/context"
+import type { AnchorRect } from "@/entrypoints/content/components/floating"
 import type { ActionTemplate, QuickAction, SelectionAnchor } from "@/shared/types"
 
 interface SelectionStart {
@@ -28,6 +29,8 @@ interface Props {
   onAction: (template: string, text: string) => void
   onQuickAction: (action: QuickAction) => void
   onClose: () => void
+  /** 工具栏实际落位变化（文档坐标矩形），供悬浮面板锚定 */
+  onRectChange?: (rect: AnchorRect) => void
 }
 
 const CURSOR_CLEARANCE = 20
@@ -79,13 +82,31 @@ export default function SelectionToolbar({
   quickActions,
   onAction,
   onQuickAction,
-  onClose
+  onClose,
+  onRectChange
 }: Props) {
   const theme = useUiTheme()
   const { t } = useI18n()
   const toolbarRef = useRef<HTMLDivElement>(null)
   const posRef = useRef<{ x: number; y: number } | null>(null)
   const directionRef = useRef<SelectionDirection>(SelectionDirection.BOTTOM_RIGHT)
+
+  // 回调走 ref，让位置更新逻辑不随回调重建
+  const onRectChangeRef = useRef(onRectChange)
+  onRectChangeRef.current = onRectChange
+
+  /** 上报工具栏当前落位（文档坐标），悬浮面板据此锚定 */
+  const reportRect = useCallback(() => {
+    const el = toolbarRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    onRectChangeRef.current?.({
+      x: rect.left + window.scrollX,
+      y: rect.top + window.scrollY,
+      width: rect.width,
+      height: rect.height
+    })
+  }, [])
 
   const isDraggingRef = useRef(false)
   const dragOffsetRef = useRef({ x: 0, y: 0 })
@@ -110,7 +131,8 @@ export default function SelectionToolbar({
 
     toolbarRef.current.style.top = `${y}px`
     toolbarRef.current.style.left = `${x}px`
-  }, [visible])
+    reportRect()
+  }, [visible, reportRect])
 
   useLayoutEffect(() => {
     if (!visible || !anchor) return
@@ -149,12 +171,14 @@ export default function SelectionToolbar({
       posRef.current = { x: newX, y: newY }
       toolbarRef.current.style.top = `${newY}px`
       toolbarRef.current.style.left = `${newX}px`
+      reportRect()
     }
 
     const handleMouseUp = () => {
       if (!isDraggingRef.current) return
       isDraggingRef.current = false
       setIsDragging(false)
+      reportRect()
     }
 
     document.addEventListener("mousemove", handleMouseMove, { passive: true })
@@ -164,7 +188,7 @@ export default function SelectionToolbar({
       document.removeEventListener("mousemove", handleMouseMove)
       document.removeEventListener("mouseup", handleMouseUp)
     }
-  }, [])
+  }, [reportRect])
 
   const handleDragStart = useCallback((event: React.MouseEvent) => {
     event.preventDefault()
@@ -181,7 +205,8 @@ export default function SelectionToolbar({
   }, [])
 
   const handleActionClick = (action: ActionTemplate) => {
-    window.getSelection()?.removeAllRanges()
+    // 触发动作后保留选区与工具栏（对话窗/朗读控件锚定在工具栏下方）；
+    // 工具栏由用户另行选区/点击页面空白处时自然关闭
     onAction(action.template, "")
   }
 

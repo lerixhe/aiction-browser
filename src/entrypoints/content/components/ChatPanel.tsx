@@ -1,51 +1,22 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 
-import SmileyFace from "@/entrypoints/content/components/SmileyFace"
 import { MarkdownRenderer } from "@/shared/ui/markdown"
 import { useUiTheme } from "@/shared/ui/theme"
-import { uiMotion, uiRadius, uiSpace, uiShadow, uiTypography } from "@/shared/ui/tokens"
+import {
+  EDGE_INSET,
+  placeNearAnchor,
+  viewportBottomY,
+  type AnchorRect
+} from "@/entrypoints/content/components/floating"
+import { uiLayer, uiMotion, uiRadius, uiSpace, uiShadow, uiTypography } from "@/shared/ui/tokens"
 import { createButtonStyle, createFocusRing, createInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
 import { useI18n } from "@/shared/i18n/context"
 import type { ChatMessage, ChatRequestState } from "@/shared/types"
 
-/** 聊天任务的胶囊相位 */
-export type ChatIslandPhase = "thinking" | "streaming" | "done" | "cancelled" | "failed"
-
-/** 由请求状态 + 消息推导胶囊相位（idle 且无消息视为等待响应的空窗期） */
-export function deriveChatPhase(
-  requestState: ChatRequestState,
-  messages: ChatMessage[]
-): ChatIslandPhase {
-  if (requestState.status === "failed") return "failed"
-  if (requestState.status === "cancelled") return "cancelled"
-  if (requestState.status === "streaming") {
-    const last = messages[messages.length - 1]
-    return last?.role === "assistant" && last.content ? "streaming" : "thinking"
-  }
-  return messages.length > 0 ? "done" : "thinking"
-}
-
-interface Props {
-  capturedText: string
-  messages: ChatMessage[]
-  requestState: ChatRequestState["status"]
-  modelName?: string
-  onCapturedTextChange: (text: string) => void
-  onSend: (input: string) => void
-  onStop: () => void
-  /** 收起为胶囊（岛保留，对话保留） */
-  onCollapse: () => void
-  /** 彻底关闭对话（岛消失） */
-  onClose: () => void
-}
-
-function ChevronDownIcon({ size, color }: { size: number; color: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M3.5 6L8 10.5L12.5 6" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
+/** 对话窗宽度 */
+const PANEL_WIDTH = 340
+/** 对话窗理想高度（超高视口按可用高度收缩） */
+const PANEL_MAX_HEIGHT = 560
 
 function CloseIcon({ size, color }: { size: number; color: string }) {
   return (
@@ -69,196 +40,6 @@ function ThinkingDot({ color }: { color: string }) {
       }}
       aria-hidden="true"
     />
-  )
-}
-
-/** 流式生成中的打字光标 */
-function TypingCursor({ color }: { color: string }) {
-  return (
-    <span
-      style={{
-        width: 2.5,
-        height: 13,
-        borderRadius: 1,
-        background: color,
-        animation: "island-caret-blink 0.9s steps(1) infinite",
-        display: "inline-block"
-      }}
-      aria-hidden="true"
-    />
-  )
-}
-
-/** 取消/停止的短横图标 */
-function CancelledGlyph({ color }: { color: string }) {
-  return (
-    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="5.5" y="5.5" width="13" height="13" rx="2" stroke={color} strokeWidth={2} />
-    </svg>
-  )
-}
-
-/**
- * 聊天岛 idle 态胶囊：笑脸 +「询问」，邀请用户发起对话。
- */
-export function ChatIdlePill({ speaking = false }: { speaking?: boolean }) {
-  const theme = useUiTheme()
-  const { t } = useI18n()
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 7,
-        width: "100%",
-        padding: "0 10px"
-      }}>
-      {/* 朗读进行中：笑脸同步开合说话，文字跟变为「朗读中」 */}
-      <SmileyFace size={21} mood={speaking ? "speaking" : "idle"} />
-      <span
-        style={{
-          fontSize: 12.5,
-          fontWeight: uiTypography.fontWeight.medium,
-          color: theme.text.primary,
-          whiteSpace: "nowrap"
-        }}>
-        {speaking ? t("island.chat.speaking") : t("island.chat.ask")}
-      </span>
-    </div>
-  )
-}
-
-/** 聊天岛圆球层内容（当前形态固定为胶囊，此层不激活；保留供单岛场景） */
-export function ChatCircleContent({ phase }: { phase: ChatIslandPhase | "idle" }) {
-  const theme = useUiTheme()
-
-  if (phase === "idle") return <SmileyFace size={18} animated={false} />
-  if (phase === "thinking") return <SmileyFace size={18} mood="thinking" />
-  if (phase === "streaming") return <TypingCursor color={theme.brand.primary} />
-  if (phase === "cancelled") return <CancelledGlyph color={theme.text.secondary} />
-  if (phase === "done") {
-    return (
-      <svg
-        width={12}
-        height={12}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke={theme.state.success}
-        strokeWidth={2.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true">
-        <path d="M5 12.5l4.5 4.5L19 7.5" />
-      </svg>
-    )
-  }
-  return (
-    <svg
-      width={12}
-      height={12}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={theme.state.error}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true">
-      <path d="M12 8v5" />
-      <path d="M12 16.5h.01" />
-      <circle cx="12" cy="12" r="9" />
-    </svg>
-  )
-}
-
-/**
- * 灵动岛胶囊态的聊天状态内容（图标 + 文案 + hover 关闭按钮）。
- */
-export function ChatPillContent({
-  phase,
-  onDismiss
-}: {
-  phase: ChatIslandPhase
-  onDismiss: () => void
-}) {
-  const theme = useUiTheme()
-  const { t } = useI18n()
-  const [hovered, setHovered] = useState(false)
-
-  const label =
-    phase === "thinking"
-      ? t("chat.thinking")
-      : phase === "streaming"
-        ? t("island.chat.generating")
-        : phase === "done"
-          ? t("island.chat.done")
-          : phase === "cancelled"
-            ? t("island.chat.cancelled")
-            : t("island.chat.failed")
-
-  const color =
-    phase === "done"
-      ? theme.state.success
-      : phase === "failed"
-        ? theme.state.error
-        : phase === "cancelled"
-          ? theme.text.secondary
-          : theme.text.primary
-
-  const icon =
-    phase === "thinking" ? (
-      <SmileyFace size={17} mood="thinking" />
-    ) : phase === "streaming" ? (
-      <TypingCursor color={theme.brand.primary} />
-    ) : phase === "done" ? (
-      <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" style={{ color }} aria-hidden="true">
-        <path d="M5 12.5l4.5 4.5L19 7.5" />
-      </svg>
-    ) : phase === "cancelled" ? (
-      <CancelledGlyph color={color} />
-    ) : (
-      <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ color }} aria-hidden="true">
-        <path d="M12 8v5" />
-        <path d="M12 16.5h.01" />
-        <circle cx="12" cy="12" r="9" />
-      </svg>
-    )
-
-  return (
-    <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{ display: "flex", alignItems: "center", gap: 6 }}>
-      {icon}
-      <span style={{ fontSize: 12, fontWeight: uiTypography.fontWeight.medium, color }}>{label}</span>
-      {hovered && (
-        <button
-          onClick={(event) => {
-            event.stopPropagation()
-            onDismiss()
-          }}
-          onMouseDown={(event) => event.stopPropagation()}
-          aria-label={t("chat.closePanel")}
-          title={t("chat.closePanel")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 16,
-            height: 16,
-            borderRadius: "50%",
-            border: "none",
-            background: theme.bg.surfaceMuted,
-            cursor: "pointer",
-            padding: 0,
-            flexShrink: 0,
-            animation: `island-pill-fade 120ms ${uiMotion.easingStandard}`
-          }}>
-          <CloseIcon size={9} color={theme.text.secondary} />
-        </button>
-      )}
-    </div>
   )
 }
 
@@ -403,7 +184,29 @@ const MessageBubble = memo(function MessageBubble({ item, isStreaming, theme }: 
   )
 })
 
-export default function ChatIslandPanel({
+interface Props {
+  /** 对话窗是否可见（触发动作时自动打开） */
+  open: boolean
+  /** 锚定矩形（工具栏落位，文档坐标）；null 时回退到视口上方居中 */
+  anchor: AnchorRect | null
+  capturedText: string
+  messages: ChatMessage[]
+  requestState: ChatRequestState["status"]
+  modelName?: string
+  onCapturedTextChange: (text: string) => void
+  onSend: (input: string) => void
+  onStop: () => void
+  /** 关闭对话窗（清空本轮对话） */
+  onClose: () => void
+}
+
+/**
+ * 悬浮对话窗：触发 AI 动作后自动浮现在划词工具栏下方（下方放不下自动翻转到上方）。
+ * 自带关闭交互（Esc / 点击窗外 / 头部 ×）；点击窗外不包含扩展 UI 内部的点击。
+ */
+export default function ChatPanel({
+  open,
+  anchor,
   capturedText,
   messages,
   requestState,
@@ -411,7 +214,6 @@ export default function ChatIslandPanel({
   onCapturedTextChange,
   onSend,
   onStop,
-  onCollapse,
   onClose
 }: Props) {
   const theme = useUiTheme()
@@ -422,6 +224,69 @@ export default function ChatIslandPanel({
   const [capturedTagHovered, setCapturedTagHovered] = useState(false)
   const [sendPressed, setSendPressed] = useState(false)
   const messagesContainerRef = useRef<HTMLDivElement | null>(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
+
+  /** 收起路径回调走 ref，document 级监听不随回调重建 */
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
+  // ---------- 落位：工具栏下方，放不下翻转上方，最后收敛回视口 ----------
+
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
+
+  const computePosition = useCallback(() => {
+    if (!open) return
+    const height = Math.min(PANEL_MAX_HEIGHT, window.innerHeight - EDGE_INSET * 2)
+    const rect =
+      anchor ??
+      ({ x: window.scrollX + window.innerWidth / 2, y: window.scrollY + 80, width: 0, height: 0 } satisfies AnchorRect)
+    const placed = placeNearAnchor(rect, PANEL_WIDTH, height)
+    setPos({ left: placed.left, top: placed.top })
+  }, [open, anchor])
+
+  useLayoutEffect(() => {
+    computePosition()
+  }, [computePosition])
+
+  // 视口尺寸变化时重新收敛（仅贴边时需要）
+  useEffect(() => {
+    if (!open) return
+    const handleResize = () => computePosition()
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [open, computePosition])
+
+  // ---------- 关闭交互：Esc / 点击窗外 ----------
+
+  useEffect(() => {
+    if (!open) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return
+      event.preventDefault()
+      event.stopPropagation()
+      onCloseRef.current()
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const path = event.composedPath()
+      if (panelRef.current && path.includes(panelRef.current)) return
+      // 点击扩展 UI 内部（划词工具栏 / 朗读控件等）不关闭对话窗：
+      // 面板开着时工具栏也保持可见，需要支持从工具栏连续触发其他动作
+      const insideExtension = path.some(
+        (el) => el instanceof Element && (el as Element).closest('[data-aiction-root="true"]') != null
+      )
+      if (insideExtension) return
+      onCloseRef.current()
+    }
+
+    document.addEventListener("keydown", handleKeyDown, true)
+    document.addEventListener("mousedown", handlePointerDown, true)
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown, true)
+      document.removeEventListener("mousedown", handlePointerDown, true)
+    }
+  }, [open])
 
   const isStreaming = requestState === "streaming"
   const sendDisabled = isStreaming || !input.trim()
@@ -447,14 +312,31 @@ export default function ChatIslandPanel({
   const focusRing = (state: string | null, target: string) =>
     focused === target ? createFocusRing(theme.accent.primary) : "none"
 
+  if (!open) return null
+
   return (
     <div
+      ref={panelRef}
+      data-aiction-chat-panel="true"
+      role="dialog"
+      aria-label={t("chat.inputLabel")}
       style={{
+        position: "absolute",
+        left: pos?.left ?? -9999,
+        top: pos?.top ?? -9999,
+        width: PANEL_WIDTH,
+        height: Math.min(PANEL_MAX_HEIGHT, window.innerHeight - EDGE_INSET * 2),
+        zIndex: uiLayer.panel,
+        pointerEvents: "auto",
         display: "flex",
         flexDirection: "column",
-        height: "100%",
+        borderRadius: uiRadius.xl,
         background: theme.bg.surface,
-        fontFamily: uiTypography.fontFamily
+        border: `1px solid ${theme.border.default}`,
+        boxShadow: uiShadow.lg,
+        overflow: "hidden",
+        fontFamily: uiTypography.fontFamily,
+        animation: `floating-enter 220ms ${uiMotion.easingDecelerate} both`
       }}>
       <style>{`
         @keyframes message-enter {
@@ -467,13 +349,15 @@ export default function ChatIslandPanel({
             transform: translateY(0);
           }
         }
-        @keyframes island-caret-blink {
-          0%, 55% { opacity: 1; }
-          56%, 100% { opacity: 0.15; }
-        }
-        @keyframes island-pill-fade {
-          from { opacity: 0; transform: scale(0.8); }
-          to { opacity: 1; transform: scale(1); }
+        @keyframes floating-enter {
+          from {
+            opacity: 0;
+            transform: translateY(6px) scale(0.97);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
         }
         @keyframes thinking-pulse {
           0%, 100% { opacity: 0.4; }
@@ -494,7 +378,7 @@ export default function ChatIslandPanel({
         }
       `}</style>
 
-      {/* 岛头：模型名 + 收起/关闭 */}
+      {/* 头部：模型名 + 关闭 */}
       <div
         style={{
           display: "flex",
@@ -535,30 +419,6 @@ export default function ChatIslandPanel({
 
         <div style={{ flex: 1 }} />
 
-        <button
-          onClick={onCollapse}
-          onMouseEnter={() => setHovered("collapse")}
-          onMouseLeave={() => setHovered(null)}
-          onFocus={() => setFocused("collapse")}
-          onBlur={() => setFocused(null)}
-          aria-label={t("island.chat.collapse")}
-          title={t("island.chat.collapse")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 22,
-            height: 22,
-            borderRadius: "50%",
-            border: "none",
-            background: hovered === "collapse" ? theme.bg.surfaceMuted : "transparent",
-            cursor: "pointer",
-            padding: 0,
-            flexShrink: 0,
-            boxShadow: focused === "collapse" ? createFocusRing(theme.accent.primary) : "none"
-          }}>
-          <ChevronDownIcon size={12} color={theme.text.secondary} />
-        </button>
         <button
           onClick={onClose}
           onMouseEnter={() => setHovered("close")}

@@ -1,17 +1,18 @@
 import { useContext, useRef, useState } from "react"
 
 import type { useSpeechPlayer } from "@/entrypoints/content/hooks/useSpeechPlayer"
-import { IslandHoldContext } from "@/entrypoints/content/components/DynamicIsland"
-import { ISLAND_METRICS } from "@/entrypoints/content/components/islandMetrics"
+import { HoldContext } from "@/entrypoints/content/components/SpeechWidget"
 import { EDGE_TTS_VOICE_GROUPS, isKnownEdgeTtsVoice } from "@/shared/edge-tts-voices"
 import { useI18n } from "@/shared/i18n/context"
 import { useUiTheme } from "@/shared/ui/theme"
-import { uiMotion, uiRadius, uiSpace, uiTypography } from "@/shared/ui/tokens"
+import { uiRadius, uiTypography } from "@/shared/ui/tokens"
 
 type SpeechPlayerInstance = ReturnType<typeof useSpeechPlayer>
 
 const PROGRESS_STEPS = 1000
 const RATE_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+/** 播放完毕后闲置退场等待时长（与 SpeechWidget 的计时器保持一致） */
+const TTS_DISMISS_MS = 5000
 
 /** TTS 动画关键帧（keyframes 在 shadow root 内全局生效；两个控制条都输出，保证任意挂载场景下动画可用） */
 const TTS_ANIMATION_CSS = `
@@ -138,65 +139,7 @@ function formatTime(seconds: number): string {
   return `${minutes}:${String(secs).padStart(2, "0")}`
 }
 
-/** 按播放状态取胶囊图标 */
-function useTtsStatusIcon(player: SpeechPlayerInstance) {
-  const theme = useUiTheme()
-  const { state } = player
-  if (state.status === "loading") return <Spinner color={theme.brand.primary} />
-  if (state.status === "failed") return <AlertGlyph color={theme.state.error} />
-  if (state.status === "finished") return <DoneGlyph color={theme.state.success} />
-  if (state.status === "paused") return <PauseGlyph size={12} color={theme.brand.primary} />
-  return <WaveBars color={theme.brand.primary} />
-}
-
-/** 按播放状态取胶囊文案 */
-function useTtsStatusLabel(player: SpeechPlayerInstance) {
-  const { t } = useI18n()
-  const { state } = player
-  switch (state.status) {
-    case "loading":
-      return t("ui.tts.preparing")
-    case "failed":
-      return t("ui.tts.failed")
-    case "finished":
-      return t("ui.tts.finished")
-    case "paused":
-      return t("ui.tts.paused")
-    default:
-      return t("ui.tts.speaking")
-  }
-}
-
-/**
- * 灵动岛胶囊态的 TTS 状态内容（图标 + 文案）。
- * mini 模式只显示图标，用于与聊天状态同岛分区显示。
- */
-export function TtsPillContent({ player, mini = false }: { player: SpeechPlayerInstance; mini?: boolean }) {
-  const theme = useUiTheme()
-  const { t } = useI18n()
-  const { state } = player
-  const label = useTtsStatusLabel(player)
-  const failed = state.status === "failed"
-  const finished = state.status === "finished"
-
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }} aria-label={label}>
-      {useTtsStatusIcon(player)}
-      {!mini && (
-        <span
-          style={{
-            fontSize: 12,
-            fontWeight: uiTypography.fontWeight.medium,
-            color: failed ? theme.state.error : finished ? theme.state.success : theme.text.primary
-          }}>
-          {label}
-        </span>
-      )}
-    </div>
-  )
-}
-
-/** 朗读岛圆球内容（迷你状态图标） */
+/** 悬浮控件圆球态的内容（迷你状态图标） */
 export function TtsCircleContent({ player }: { player: SpeechPlayerInstance }) {
   const theme = useUiTheme()
   const { state } = player
@@ -251,7 +194,7 @@ export function TtsCountdownRing() {
           strokeDasharray={c}
           strokeDashoffset={0}
           style={{
-            animation: `tts-countdown ${ISLAND_METRICS.ttsDismissMs}ms linear forwards`
+            animation: `tts-countdown ${TTS_DISMISS_MS}ms linear forwards`
           }}
         />
       </svg>
@@ -259,12 +202,12 @@ export function TtsCountdownRing() {
   )
 }
 
-/** 灵动岛展开态的 TTS 完整控制条 */
+/** 朗读悬浮控件展开态的完整控制条 */
 export function TtsControlBar({ player }: { player: SpeechPlayerInstance }) {
   const { state } = player
   const theme = useUiTheme()
   const { t } = useI18n()
-  const islandHold = useContext(IslandHoldContext)
+  const hold = useContext(HoldContext)
   const [dragRatio, setDragRatio] = useState<number | null>(null)
   const dragRatioRef = useRef<number | null>(null)
 
@@ -278,7 +221,7 @@ export function TtsControlBar({ player }: { player: SpeechPlayerInstance }) {
     if (ratio == null) return
     dragRatioRef.current = null
     setDragRatio(null)
-    islandHold?.release()
+    hold?.release()
     player.seekRatio(ratio)
   }
 
@@ -355,8 +298,8 @@ export function TtsControlBar({ player }: { player: SpeechPlayerInstance }) {
         disabled={isLoading}
         value={Math.round((dragRatio ?? state.progress) * PROGRESS_STEPS)}
         onChange={(e) => {
-          // 拖动中鼠标可能移出岛：hold 抑制自动收回，commitSeek/onBlur 时 release
-          if (dragRatioRef.current == null) islandHold?.hold()
+          // 拖动中鼠标可能移出控件：hold 抑制自动收起，commitSeek/onBlur 时 release
+          if (dragRatioRef.current == null) hold?.hold()
           const ratio = Number(e.target.value) / PROGRESS_STEPS
           dragRatioRef.current = ratio
           setDragRatio(ratio)
@@ -364,7 +307,7 @@ export function TtsControlBar({ player }: { player: SpeechPlayerInstance }) {
         onPointerUp={commitSeek}
         onKeyUp={commitSeek}
         onBlur={() => {
-          if (dragRatioRef.current != null) islandHold?.release()
+          if (dragRatioRef.current != null) hold?.release()
           dragRatioRef.current = null
           setDragRatio(null)
         }}
@@ -424,120 +367,6 @@ export function TtsControlBar({ player }: { player: SpeechPlayerInstance }) {
       <style>{`
         ${TTS_ANIMATION_CSS}
         .aiction-speech-iconbtn:hover:not(:disabled) {
-          background: ${theme.bg.surfaceMuted};
-        }
-      `}</style>
-    </div>
-  )
-}
-
-/**
- * 聊天面板展开时内嵌的 TTS 迷你控制条（次要任务不喧宾夺主）：
- * 状态图标 + 时间 + 细进度条 + 播放/暂停 + 停止
- */
-export function TtsMiniBar({ player }: { player: SpeechPlayerInstance }) {
-  const { state } = player
-  const theme = useUiTheme()
-  const { t } = useI18n()
-
-  const isEdge = state.engine === "edge"
-  const isPlaying = state.status === "playing"
-  const isLoading = state.status === "loading"
-
-  const timeStyle = {
-    fontSize: 10,
-    color: theme.text.secondary,
-    fontVariantNumeric: "tabular-nums" as const,
-    userSelect: "none" as const,
-    flexShrink: 0
-  }
-
-  const iconBtnStyle = {
-    width: 20,
-    height: 20,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    border: "none",
-    background: "transparent",
-    color: theme.text.primary,
-    borderRadius: uiRadius.pill,
-    cursor: "pointer",
-    padding: 0,
-    flexShrink: 0
-  }
-
-  return (
-    <div
-      data-aiction-tts-minibar="true"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: uiSpace[8],
-        padding: `${uiSpace[4]}px ${uiSpace[12]}px`,
-        borderBottom: `0.5px solid ${theme.border.hairline}`,
-        background: theme.bg.surfaceAlt,
-        flexShrink: 0
-      }}>
-      {isLoading ? (
-        <Spinner color={theme.brand.primary} />
-      ) : isPlaying ? (
-        <WaveBars color={theme.brand.primary} barHeight={9} />
-      ) : state.status === "failed" ? (
-        <AlertGlyph size={12} color={theme.state.error} />
-      ) : state.status === "finished" ? (
-        <DoneGlyph size={12} color={theme.state.success} />
-      ) : (
-        <PauseGlyph size={12} color={theme.brand.primary} />
-      )}
-
-      <span style={timeStyle}>{isEdge ? formatTime(state.currentTime) : `${state.chunkIndex}/${state.chunkCount}`}</span>
-
-      <div
-        style={{
-          flex: 1,
-          height: 3,
-          borderRadius: 2,
-          background: theme.bg.surfaceMuted,
-          overflow: "hidden",
-          minWidth: 0
-        }}>
-        <div
-          style={{
-            width: `${Math.round(state.progress * 100)}%`,
-            height: "100%",
-            background: theme.brand.primary,
-            transition: `width 200ms linear`
-          }}
-        />
-      </div>
-
-      <span style={timeStyle}>{isEdge ? formatTime(state.duration) : ""}</span>
-
-      <button
-        type="button"
-        aria-label={state.status === "paused" ? t("ui.tts.play") : t("ui.tts.pause")}
-        title={state.status === "paused" ? t("ui.tts.play") : t("ui.tts.pause")}
-        className="aiction-tts-mini-iconbtn"
-        onClick={() => player.togglePause()}
-        disabled={isLoading}
-        style={{ ...iconBtnStyle, opacity: isLoading ? 0.4 : 1 }}>
-        {isPlaying ? <PauseGlyph size={11} color={theme.brand.primary} /> : <PlayGlyph size={11} color={theme.brand.primary} />}
-      </button>
-
-      <button
-        type="button"
-        aria-label={t("ui.tts.stop")}
-        title={t("ui.tts.stop")}
-        className="aiction-tts-mini-iconbtn"
-        onClick={() => player.stop()}
-        style={iconBtnStyle}>
-        <StopGlyph size={10} color={theme.text.secondary} />
-      </button>
-
-      <style>{`
-        ${TTS_ANIMATION_CSS}
-        .aiction-tts-mini-iconbtn:hover:not(:disabled) {
           background: ${theme.bg.surfaceMuted};
         }
       `}</style>

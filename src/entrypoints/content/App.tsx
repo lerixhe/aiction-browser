@@ -1,19 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import SelectionToolbar from "@/entrypoints/content/components/SelectionToolbar"
-import DynamicIsland from "@/entrypoints/content/components/DynamicIsland"
-import ChatIslandPanel, {
-  ChatCircleContent,
-  ChatIdlePill,
-  ChatPillContent,
-  deriveChatPhase,
-  type ChatIslandPhase
-} from "@/entrypoints/content/components/ChatIslandPanel"
-import { TtsCircleContent, TtsCountdownRing, TtsPillContent, TtsControlBar } from "@/entrypoints/content/components/SpeechPlayer"
-import { ISLAND_METRICS, dualAnchorFor } from "@/entrypoints/content/components/islandMetrics"
+import ChatPanel from "@/entrypoints/content/components/ChatPanel"
+import SpeechWidget from "@/entrypoints/content/components/SpeechWidget"
+import { fallbackAnchor, type AnchorRect } from "@/entrypoints/content/components/floating"
 import { useChatState } from "@/entrypoints/content/hooks/useChatState"
-import { useIslandCoordinator } from "@/entrypoints/content/hooks/useIslandCoordinator"
-import { MOVE_MS } from "@/entrypoints/content/components/DynamicIsland"
 import { useSelectionDetection } from "@/entrypoints/content/hooks/useSelectionDetection"
 import type { SelectionStart } from "@/entrypoints/content/hooks/useSelectionDetection"
 import { useSpeechPlayer } from "@/entrypoints/content/hooks/useSpeechPlayer"
@@ -21,7 +12,6 @@ import { useToolbarState } from "@/entrypoints/content/hooks/useToolbarState"
 import { initContentScriptAnalytics, trackEvent } from "@/shared/analytics"
 import { resolveActionTemplate, formatFreeInputPrompt } from "@/shared/prompt"
 import { getSettings } from "@/shared/storage"
-import { useI18n } from "@/shared/i18n/context"
 import type { SelectionAnchor, SelectionContext, QuickAction } from "@/shared/types"
 
 export default function App() {
@@ -29,7 +19,6 @@ export default function App() {
   const [selectionStart, setSelectionStart] = useState<SelectionStart | null>(null)
 
   const speechPlayer = useSpeechPlayer()
-  const { t } = useI18n()
 
   useEffect(() => {
     void initContentScriptAnalytics()
@@ -58,69 +47,39 @@ export default function App() {
     stopStreaming,
     clearChat,
     resetMessages,
-    modelName
+    modelName,
+    panelOpen,
+    setPanelOpen
   } = useChatState()
 
-  // ---------- 灵动岛状态机（双岛：聊天左 / 朗读右） ----------
+  // ---------- 悬浮面板锚点（触发时刻的工具栏落位；工具栏随后关闭，位置保持不变） ----------
 
+  /** 工具栏实时落位（SelectionToolbar 上报），触发动作时快照给各悬浮面板 */
+  const toolbarRectRef = useRef<AnchorRect | null>(null)
+  const handleToolbarRectChange = useCallback((rect: AnchorRect) => {
+    toolbarRectRef.current = rect
+  }, [])
+
+  /** 取当前工具栏落位快照（无上报记录时用选区锚点兜底） */
+  const takeToolbarAnchor = useCallback((): AnchorRect | null => {
+    if (toolbarRectRef.current) return { ...toolbarRectRef.current }
+    return fallbackAnchor(toolbarAnchor)
+  }, [toolbarAnchor])
+
+  const [chatAnchor, setChatAnchor] = useState<AnchorRect | null>(null)
+  const [ttsAnchor, setTtsAnchor] = useState<AnchorRect | null>(null)
+
+  /** 朗读是否激活（朗读控件挂载中） */
   const ttsActive = speechPlayer.state.status !== "idle"
-  const ttsFinished = speechPlayer.state.status === "finished"
-  /** 朗读退场中：球播吸收动画（缩向页面中心），聊天岛同时回中；动画完 stop 卸载 */
-  const [ttsExiting, setTtsExiting] = useState(false)
-  /** 启动朗读退场（引用稳定：否则每次渲染重建退场计时器，5s 永远到不了点） */
-  const handleTtsDismiss = useCallback(() => setTtsExiting(true), [])
-  /** 对话是否活跃（岛胶囊显示任务状态而非笑脸「询问」） */
-  const chatActive = requestState.status !== "idle" || messages.length > 0
-  /** 聊天岛折叠胶囊宽度（idle 92 / 任务 148） */
-  const chatPillWidth = chatActive ? ISLAND_METRICS.chatPill.width : ISLAND_METRICS.chatIdlePill.width
-  /** 双岛外缘锚点：随胶囊宽度推导，使双岛间距恒为 dualGap（两岛必须同值） */
-  const dualAnchor = dualAnchorFor(chatPillWidth)
-  const chatPhase: ChatIslandPhase | "idle" = chatActive ? deriveChatPhase(requestState, messages) : "idle"
-  /** 完成/取消态闲置一段时间后自动清空，回到笑脸 idle 态 */
-  const chatSettled = chatPhase === "done" || chatPhase === "cancelled"
 
-  /** 清空本轮对话（岛保留，回到笑脸「询问」态） */
-  const clearConversation = useCallback(() => {
+  /** 关闭对话窗：清空本轮对话与选区上下文 */
+  const closeConversation = useCallback(() => {
     clearChat()
     setContext(null)
-  }, [clearChat, setContext])
+    setPanelOpen(false)
+  }, [clearChat, setContext, setPanelOpen])
 
-  const island = useIslandCoordinator({
-    ttsActive,
-    ttsExiting,
-    ttsFinished,
-    onTtsDismiss: handleTtsDismiss,
-    chatSettled,
-    onChatIdleReset: clearConversation
-  })
-
-  // 退场动画（island-exit）播完 → 真正停止朗读、卸载朗读岛并复位退场标记
-  useEffect(() => {
-    if (!ttsExiting) return
-    const timer = window.setTimeout(() => {
-      speechPlayer.stop()
-      setTtsExiting(false)
-    }, MOVE_MS + 40)
-    return () => window.clearTimeout(timer)
-  }, [ttsExiting, speechPlayer.stop])
-
-  // 退场期间用户重新发起朗读（loading/playing 等）→ 取消退场，岛回到正常态
-  useEffect(() => {
-    if (!ttsExiting) return
-    const status = speechPlayer.state.status
-    if (status !== "finished" && status !== "idle") setTtsExiting(false)
-  }, [ttsExiting, speechPlayer.state.status])
-
-  // 流式首个 token 到达时自动展开一次（用户收起过则本轮不再打扰）
-  useEffect(() => {
-    if (requestState.status !== "streaming") return
-    const last = messages[messages.length - 1]
-    if (last && last.role === "assistant" && last.content.length > 0) {
-      island.requestAutoExpand("chat")
-    }
-  }, [messages, requestState.status, island.requestAutoExpand])
-
-  // ---------- 划词工具栏（聊天岛常驻后不再相互抑制） ----------
+  // ---------- 划词工具栏 ----------
 
   const handleSelectionChange = useCallback(
     (context: SelectionContext | null, anchor: SelectionAnchor | null, start: SelectionStart | null) => {
@@ -149,22 +108,22 @@ export default function App() {
     [sendPrompt]
   )
 
-  // Open unified panel with selection text and fire action
+  // Open chat panel below the toolbar with selection text and fire action
+  // （触发后工具栏保持可见、选区不清空：可连续换动作；工具栏随用户新选区/点击空白自然关闭）
   const openPanelWithAction = useCallback(
     async (text: string, prompt: string) => {
       setCapturedText(text)
-      closeToolbar()
       resetMessages()
-      // 新任务触发：重置自动展开窗口并收起另一岛（markIslandTriggered）
-      island.markIslandTriggered("chat")
 
       if (selectionContext) {
         const ctx = { ...selectionContext, text }
         setContext(ctx)
+        setChatAnchor(takeToolbarAnchor())
+        setPanelOpen(true)
         await runWithSelectionContext(prompt, ctx)
       }
     },
-    [selectionContext, setCapturedText, closeToolbar, setContext, runWithSelectionContext, resetMessages, island.markIslandTriggered]
+    [selectionContext, setCapturedText, setContext, setPanelOpen, takeToolbarAnchor, runWithSelectionContext, resetMessages]
   )
 
   // Handle action
@@ -219,15 +178,14 @@ export default function App() {
         const trimmed = text.trim()
         if (!trimmed) return
 
-        // 朗读触发：朗读岛出现在右侧（形态固定，无主副互换）
-        closeToolbar()
-        island.markIslandTriggered("tts")
+        // 朗读触发：朗读控件出现在工具栏落位下方（工具栏保持可见，随后控件自动收起为小圆球）
+        setTtsAnchor(takeToolbarAnchor())
         speechPlayer.start(trimmed)
       }
 
       void trackEvent("quick_action_clicked", { action_type: action.type })
     },
-    [selectionContext, closeToolbar, island.markIslandTriggered, speechPlayer.start]
+    [selectionContext, closeToolbar, takeToolbarAnchor, speechPlayer.start]
   )
 
   // Handle free submit from panel captured text
@@ -249,23 +207,10 @@ export default function App() {
   const handleFollowupSend = useCallback(
     async (input: string) => {
       void trackEvent("followup_sent", { input_length: input.length, message_count: messages.length })
-      island.markIslandTriggered("chat")
       await sendPrompt(input)
     },
-    [sendPrompt, messages.length, island.markIslandTriggered]
+    [sendPrompt, messages.length]
   )
-
-  // ---------- 岛内容组装 ----------
-
-  const chatPillContent = chatActive ? (
-    <ChatPillContent phase={chatPhase as ChatIslandPhase} onDismiss={clearConversation} />
-  ) : (
-    <ChatIdlePill speaking={speechPlayer.state.status === "playing"} />
-  )
-
-  const chatCircleContent = <ChatCircleContent phase={chatPhase} />
-
-  const chatAriaLabel = chatActive ? t("island.chat.label") : t("island.chat.ask")
 
   return (
     <div ref={extensionRootRef} data-aiction-root="true" style={{ pointerEvents: "none" }}>
@@ -284,68 +229,27 @@ export default function App() {
         onClose={() => {
           closeToolbar()
         }}
+        onRectChange={handleToolbarRectChange}
       />
 
-      {/* 聊天岛：常驻（单岛居中，双岛时锁定左缘） */}
-      <DynamicIsland
-        form={island.chatForm}
-        anchor={island.chatAnchor}
-        circleSize={ISLAND_METRICS.circle.size}
-        pillWidth={chatPillWidth}
-        pillHeight={ISLAND_METRICS.chatPill.height}
-        dualAnchor={dualAnchor}
-        expandedWidth={ISLAND_METRICS.chatPanel.width}
-        expandedHeight={ISLAND_METRICS.chatPanel.height}
-        ariaLabel={chatAriaLabel}
-        circleContent={chatCircleContent}
-        pillContent={chatPillContent}
-        onActivate={() => island.activateIsland("chat")}
-        onDeactivate={() => island.deactivateIsland("chat")}
-        onCollapseRequest={() => island.collapseIsland("chat")}>
-        <ChatIslandPanel
-          capturedText={capturedText}
-          messages={messages}
-          requestState={requestState.status}
-          modelName={modelName}
-          onCapturedTextChange={setCapturedText}
-          onSend={(input) => {
-            void handleFollowupSend(input)
-          }}
-          onStop={stopStreaming}
-          onCollapse={() => island.collapseIsland("chat")}
-          onClose={clearConversation}
-        />
-      </DynamicIsland>
+      {/* 对话窗：触发动作后浮现于工具栏下方（安全区自动翻转） */}
+      <ChatPanel
+        open={panelOpen}
+        anchor={chatAnchor}
+        capturedText={capturedText}
+        messages={messages}
+        requestState={requestState.status}
+        modelName={modelName}
+        onCapturedTextChange={setCapturedText}
+        onSend={(input) => {
+          void handleFollowupSend(input)
+        }}
+        onStop={stopStreaming}
+        onClose={closeConversation}
+      />
 
-      {/* 朗读岛：朗读激活时出现在右侧 */}
-      {ttsActive && (
-        <DynamicIsland
-          form={island.ttsForm ?? "circle"}
-          anchor={island.ttsAnchor}
-          circleSize={ISLAND_METRICS.circle.size}
-          pillWidth={ISLAND_METRICS.ttsPill.width}
-          pillHeight={ISLAND_METRICS.ttsPill.height}
-          dualAnchor={dualAnchor}
-          expandedWidth={ISLAND_METRICS.ttsBar.width}
-          expandedHeight={ISLAND_METRICS.ttsBar.height}
-          ariaLabel={t("ui.tts.speaking")}
-          circleContent={
-            <div style={{ position: "relative", width: ISLAND_METRICS.circle.size, height: ISLAND_METRICS.circle.size }}>
-              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <TtsCircleContent player={speechPlayer} />
-              </div>
-              {/* 退场倒计时：与退场计时器同帧启停（悬停/展开暂停，移开重计） */}
-              {island.ttsDismissCounting && <TtsCountdownRing />}
-            </div>
-          }
-          pillContent={<TtsPillContent player={speechPlayer} />}
-          exiting={ttsExiting}
-          onActivate={() => island.activateIsland("tts")}
-          onDeactivate={() => island.deactivateIsland("tts")}
-          onCollapseRequest={() => island.collapseIsland("tts")}>
-          <TtsControlBar player={speechPlayer} />
-        </DynamicIsland>
-      )}
+      {/* 朗读控件：触发朗读后浮现于工具栏下方，闲置自动收起为小圆球 */}
+      {ttsActive && <SpeechWidget player={speechPlayer} anchor={ttsAnchor} />}
     </div>
   )
 }

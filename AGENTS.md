@@ -46,7 +46,7 @@ const items = (() => {
 5. 添加 i18n 翻译
 6. 运行 `npm run typecheck` 和 `npm run build`
 
-### 灵动岛重构调试经验
+### JSX “幽灵报错”：少一个 `}` 的定位方法（灵动岛重构期间沉淀，适用于任意 JSX 浮层）
 
 **JSX “幽灵报错”：少一个 `}` 的定位方法**
 `style={{...}}>` 误写成 `}>`（丢一个 `}`）时，TS 报「JSX element 'div' has no corresponding closing tag」，但报错位置在 JSX 开头且报错行号下的代码看起来完全正常，肉眼数括号几乎无法定位。对象字面量未闭合会让解析器吞掉半个文件。
@@ -109,9 +109,9 @@ Shared logic in `src/shared/*`: `types.ts`, `selection.ts`, `prompt.ts`, `messag
 
 Shared UI in `src/shared/ui/`: `tokens.ts`, `styles.ts`, `theme.ts`, `icons.tsx`, `iconify.tsx`, `markdown.tsx`, `toggle-switch.tsx`, `avatar.ts`, `bundled-icons.ts`, `icon-library.ts`.
 
-Content script hooks in `src/entrypoints/content/hooks/`: `useChatState.ts`, `useDraggable.ts`, `useSelectionDetection.ts`, `useToolbarState.ts`.
+Content script hooks in `src/entrypoints/content/hooks/`: `useChatState.ts`, `useSelectionDetection.ts`, `useToolbarState.ts`, `useSpeechPlayer.ts`.
 
-Content script components in `src/entrypoints/content/components/`: `SelectionToolbar.tsx`, `DynamicIsland.tsx` (通用灵动岛容器), `ChatIslandPanel.tsx` (聊天岛面板 + 胶囊状态), `SpeechPlayer.tsx` (TTS 内容件: `TtsPillContent` / `TtsControlBar` / `TtsMiniBar`), `ToolbarActionMenu.tsx`, `islandMetrics.ts` (共享尺寸常量).
+Content script components in `src/entrypoints/content/components/`: `SelectionToolbar.tsx`（划词工具栏，通过 `onRectChange` 上报落位）, `floating.ts`（悬浮面板公共锚定/安全区逻辑）, `ChatPanel.tsx`（悬浮对话窗）, `SpeechWidget.tsx`（悬浮朗读控件：控制条 ⇄ 小圆球）, `SpeechPlayer.tsx`（TTS 内容件：`TtsControlBar` / `TtsCircleContent` / `TtsCountdownRing`）, `ToolbarActionMenu.tsx`.
 
 Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (deep active element traversal, extension root checks, selection helpers).
 
@@ -145,41 +145,50 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
 - Do not let transient page-selection loss during focus transfer into extension inputs hide the toolbar. Preserve that state during extension-internal interaction.
 - When debugging selection bugs, reload the extension and refresh the target tab before assuming logic is wrong. Stale injected code is a common cause.
 
-## Dynamic Island (灵动岛)
+## Floating Panels (悬浮面板：对话窗 / 朗读控件)
 
-聊天与朗读各自一个岛，顶部并排（仿 iOS 双岛）。跨岛状态机在 `useIslandCoordinator.ts`
-（App 与 PdfViewer 共用），岛容器 `DynamicIsland.tsx` 是受控的「上报制」组件。
+灵动岛方案已移除。触发动作后划词工具栏**保持可见、选区不清空**
+（`SelectionToolbar.handleActionClick` 不再 `removeAllRanges`；copy 快捷动作除外），
+用户可在工具栏上连续触发不同动作；工具栏在新选区/点击页面空白/copy 时自然关闭。
+所有面板统一锚定在触发时刻快照的工具栏落位矩形上（页面滚动时随文档一起滚动，
+不跟随此后的工具栏拖拽）。
 
-- **聊天岛常驻**：idle 态胶囊 = 笑脸动画 +「询问」（`ChatIdlePill` + `SmileyFace`），hover 直接展开聊天面板；对话进行中胶囊显示任务状态（`ChatPillContent`）
-- **朗读岛按需出现**：朗读激活时挂载于右侧（`TtsCircleContent` / `TtsControlBar`）
-- 形态固定（无主副互换）：聊天岛只在胶囊 `pill` ⇄ 展开 `expanded` 间切换；朗读岛只在圆球 `circle` ⇄ 展开 `expanded` 间切换。双岛时恒为「聊天胶囊（左） + 朗读圆球（右）」
-- 布局：聊天岛锁定左缘（50% - anchor）、朗读岛锁定右缘（50% + anchor）；单岛与展开态回到页面正中。锚点由 `dualAnchorFor(chatPillWidth)` 随聊天胶囊宽度动态推导，使双岛间距恒为 `dualGap`（16px，idle/任务两态一致）；两岛必须传同一个 anchor（App 里算一次同时传两岛）。全岛统一基础高度 32（圆球直径 = 胶囊高度，morph 时高度恒定只变宽度）
-- 展开的岛至多一个，滑向页面中央并遮盖另一个岛；hover 任一岛直接展开，移出 300ms 还原
-- **朗读退场（吸收动画）**：finished 后闲置 5s（未悬停、未展开）触发 → 聊天岛同帧 `left → center` 右移回中，朗读球播 `island-exit`（塌到右缘后左移 anchor——经 `--island-exit-shift` CSS 变量跟随动态锚点，恰好落到页面中心，被聊天岛 zIndex 更低地吸收）→ 动画完 `stop()` 卸载；退场期间重新发起朗读则取消退场
-- **退场倒计时圆环**：等待的 5s 内朗读球边缘显示环形进度（`TtsCountdownRing`，linear 收圈）。计时的唯一事实来源是 coordinator 的 `ttsDismissCounting`（= 退场 setTimeout 的启停条件）：悬停/展开时环与计时器同帧暂停，移开后一起从头重计；时长取 `ISLAND_METRICS.ttsDismissMs`，改一处即可
-- 完成态（done/cancelled）闲置 8s 无交互自动清空对话回到笑脸；failed 保留待用户处理
-- 流式首个 token 自动展开一次；用户收起后本轮不再自动展开（`markIslandTriggered` 新请求时重置；新任务触发会收起另一岛的展开态，避免反馈被遮挡）
-- 划词工具栏与岛互不抑制（聊天面板展开时划词工具栏照常出现）
-
-### 设计要点
-- morph 动画：宽高/圆角/left 全 spring 过渡（left 比尺寸略慢产生「滑向目标位」生长感）；三层内容独立固定尺寸居中，opacity/scale 交叉过渡（iOS 手法，morph 中内容不被重排挤压）
-- 容器只上报 hover/点击/Esc/点外事件，展开决策集中在 `useIslandCoordinator`（跨岛协调无法在单岛容器内完成）
-- 拖进度条等瞬时操作通过 `IslandHoldContext` 的 hold/release 抑制自动收回（release 后补发被抑制的 leave）
-- 输入框打字时鼠标滑出不收回（仅文本输入焦点抑制，`isTextEntryElement`；按钮残留焦点不抑制）
-- 展开层常挂载（仅 opacity 切换）避免流式更新下 remount 掉帧；收起路径统一 blur 岛内焦点（焦点残留会让按键落入虚空）
+- **公共定位**：`components/floating.ts`。`SelectionToolbar` 通过 `onRectChange`
+  上报自身落位（文档坐标矩形 `AnchorRect`）；App 在触发动作时快照一份传给面板。
+  `placeNearAnchor()`：下方放不下自动翻转到上方，两边都放不下收敛回视口，
+  水平方向钳制在文档安全区内。`fallbackAnchor()` 用选区锚点兜底。
+- **对话窗 `ChatPanel.tsx`**：触发 AI 动作后自动浮现在工具栏下方。自带关闭交互
+  （Esc / 点击窗外 / 头部 ×），× = 关闭并清空本轮对话；`panelOpen` 状态由
+  `useChatState` 管理（`clearChat` 会同步关闭）。
+- **朗读控件 `SpeechWidget.tsx`**：触发朗读后浮现于工具栏落位下方，默认展开为
+  控制条；鼠标移出 300ms（或触发后 4s 一直未交互）自动收起为 32px 小圆球，
+  悬停/点击圆球再次展开；morph 时用 `translateX` 补偿宽度变化使中心不动。
+- **朗读退场**：finished 且处于圆球态闲置 5s（未悬停、未展开）自动 `stop()` 卸载；
+  倒计时圆环 `TtsCountdownRing` 与退场计时器同帧启停（悬停/展开暂停，移开重计），
+  时长常量为 `TTS_DISMISS_MS`（SpeechPlayer 与 SpeechWidget 各定义一次，需同步改）。
+- **收起抑制**：拖动进度条通过 `HoldContext`（hold/release 配对）抑制自动收起
+  （release 后补发被抑制的收起）；焦点在文本输入类控件（textarea/input/select/
+  contentEditable）时鼠标滑出不收起。
+- 划词工具栏与各面板互不抑制（面板开着时划词工具栏照常出现）。
+- 悬浮面板的锚点是触发时刻快照的工具栏落位——不要依赖 `toolbarAnchor` 的实时值。
+- 对话窗「点外关闭」必须忽略扩展 UI 内部的点击（composedPath 里有
+  `[data-aiction-root="true"]` 祖先即忽略）：面板开着时还在点工具栏换动作是常态。
 
 ### 不变量
-- 岛固定顶部中央，聊天岛不做拖拽/resize（身份特征，去掉后大幅简化）
-- 展开态点击岛外 = 收起（岛保留、对话保留）；清空对话用面板 × 按钮
-- TTS 结束（idle）后朗读岛卸载；退场动画依赖 `ttsExiting` 标记（动画期间 status 仍是 finished，stop 后才真正卸载）
-- 内容层 `pointerEvents` 必须按 active 切换；写死 `none` 会让胶囊内按钮永远无法点击
-- 输入框 Enter 发送必须检查 `event.nativeEvent.isComposing`（IME 组合确认不是发送）
+- 面板定位是 absolute + 文档坐标（不是 fixed），随页面滚动；重新定位只发生在
+  anchor/resize 变化时。
+- 面板的点外关闭监听必须用 `event.composedPath()` 穿透 Shadow DOM；
+  层级：工具栏 `uiLayer.overlay` > 面板 `uiLayer.panel`。
+- 输入框 Enter 发送必须检查 `event.nativeEvent.isComposing`（IME 组合确认不是发送）。
+- 对话为单轮场景内存态：关闭面板 = 清空本轮对话（clearChat）；新动作触发先
+  `resetMessages()`。
+- copy 快捷动作仍会关闭工具栏（复制后选区即被消费，属预期行为）。
 
 ### 待优化清单
-- [ ] compact 单行预览态（三段式的中间层：流式时不用展开也能瞇一眼最新回复）
-- [ ] 无障碍：状态变化无 `aria-live` 播报；胶囊无键盘入口（Tab 不可达）
-- [ ] 代码打磨：`useTtsStatusIcon` 改纯函数（现为 JSX 内调用的 hook 风格）；`iconBtnStyle` 在控制条/迷你条重复定义可工厂化；消息区滚动条颜色 hardcoded 未适配 dark 模式；`TtsMiniBar` 已无消费者（双岛分离后不再内嵌）可移除
-- [ ] 双岛外缘锚点（`ISLAND_METRICS.dualAnchor = 92`，最贴状态 4px）与笑脸动画节奏需实测微调
+- [ ] 无障碍：状态变化无 `aria-live` 播报；面板/圆球无键盘入口（Tab 不可达）
+- [ ] 代码打磨：消息区滚动条颜色 hardcoded 未适配 dark 模式；朗读控件收起动画与
+      小圆球悬停展开手感需实测微调
+- [ ] 对话窗暂不支持拖拽/resize（如需可复用历史 `useDraggable` 思路）
 
 ## Manual Verification
 - After `npm run build`, load `.output/chrome-mv3` in `chrome://extensions` as an unpacked extension.

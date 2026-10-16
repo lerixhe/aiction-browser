@@ -2,17 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import * as pdfjsLib from "pdfjs-dist"
 
 import SelectionToolbar from "@/entrypoints/content/components/SelectionToolbar"
-import DynamicIsland from "@/entrypoints/content/components/DynamicIsland"
-import ChatIslandPanel, {
-  ChatCircleContent,
-  ChatIdlePill,
-  ChatPillContent,
-  deriveChatPhase,
-  type ChatIslandPhase
-} from "@/entrypoints/content/components/ChatIslandPanel"
-import { ISLAND_METRICS, dualAnchorFor } from "@/entrypoints/content/components/islandMetrics"
+import ChatPanel from "@/entrypoints/content/components/ChatPanel"
+import { fallbackAnchor, type AnchorRect } from "@/entrypoints/content/components/floating"
 import { useChatState } from "@/entrypoints/content/hooks/useChatState"
-import { useIslandCoordinator } from "@/entrypoints/content/hooks/useIslandCoordinator"
 import { useToolbarState } from "@/entrypoints/content/hooks/useToolbarState"
 import { initContentScriptAnalytics, trackEvent } from "@/shared/analytics"
 import { resolveActionTemplate, formatFreeInputPrompt } from "@/shared/prompt"
@@ -205,41 +197,33 @@ export function PdfViewerPage() {
     sendPrompt,
     stopStreaming,
     clearChat,
-    resetMessages
+    resetMessages,
+    panelOpen,
+    setPanelOpen
   } = useChatState()
 
-  // ---------- 灵动岛状态机（PDF 页无朗读岛，聊天岛常驻居中） ----------
+  // ---------- 悬浮对话窗锚点（触发时刻的工具栏落位） ----------
 
-  const chatActive = requestState.status !== "idle" || messages.length > 0
-  const chatPhase: ChatIslandPhase | "idle" = chatActive ? deriveChatPhase(requestState, messages) : "idle"
-  const chatSettled = chatPhase === "done" || chatPhase === "cancelled"
+  /** 工具栏实时落位（SelectionToolbar 上报），触发动作时快照给对话窗 */
+  const toolbarRectRef = useRef<AnchorRect | null>(null)
+  const handleToolbarRectChange = useCallback((rect: AnchorRect) => {
+    toolbarRectRef.current = rect
+  }, [])
 
-  /** 清空本轮对话（岛保留，回到笑脸「询问」态） */
-  const clearConversation = useCallback(() => {
-    clearChat()
-    setContext(null)
-  }, [clearChat, setContext])
+  const [chatAnchor, setChatAnchor] = useState<AnchorRect | null>(null)
 
-  const island = useIslandCoordinator({
-    ttsActive: false,
-    chatSettled,
-    onChatIdleReset: clearConversation
-  })
+  /** 取当前工具栏落位快照（无上报记录时用选区锚点兜底） */
+  const takeToolbarAnchor = useCallback((): AnchorRect | null => {
+    if (toolbarRectRef.current) return { ...toolbarRectRef.current }
+    return fallbackAnchor(toolbarAnchor)
+  }, [toolbarAnchor])
 
-  // 流式首个 token 到达时自动展开一次（用户收起过则本轮不再打扰）
-  useEffect(() => {
-    if (requestState.status !== "streaming") return
-    const last = messages[messages.length - 1]
-    if (last && last.role === "assistant" && last.content.length > 0) {
-      island.requestAutoExpand("chat")
-    }
-  }, [messages, requestState.status, island.requestAutoExpand])
-
-  // 彻底关闭对话（岛保留，回到笑脸 idle 态；消息按约定留在内存，下次动作时重置）
+  /** 关闭对话窗：清空本轮对话与选区上下文 */
   const closeConversation = useCallback(() => {
     clearChat()
     setContext(null)
-  }, [clearChat, setContext])
+    setPanelOpen(false)
+  }, [clearChat, setContext, setPanelOpen])
 
   // Custom selection detection for PDF text layer
   useEffect(() => {
@@ -311,20 +295,21 @@ export function PdfViewerPage() {
   )
 
   // Open unified panel with selection text and fire action
+  // （触发后工具栏保持可见、选区不清空：可连续换动作）
   const openPanelWithAction = useCallback(
     async (text: string, prompt: string) => {
       setCapturedText(text)
-      closeToolbar()
       resetMessages()
-      island.markIslandTriggered("chat")
 
       if (selectionContext) {
         const ctx = { ...selectionContext, text }
         setContext(ctx)
+        setChatAnchor(takeToolbarAnchor())
+        setPanelOpen(true)
         await runWithSelectionContext(prompt, ctx)
       }
     },
-    [selectionContext, setCapturedText, closeToolbar, setContext, runWithSelectionContext, resetMessages, island.markIslandTriggered]
+    [selectionContext, setCapturedText, setContext, setPanelOpen, takeToolbarAnchor, runWithSelectionContext, resetMessages]
   )
 
   // Handle action
@@ -400,10 +385,9 @@ export function PdfViewerPage() {
   const handleFollowupSend = useCallback(
     async (input: string) => {
       void trackEvent("followup_sent", { input_length: input.length, message_count: messages.length })
-      island.markIslandTriggered("chat")
       await sendPrompt(input)
     },
-    [sendPrompt, messages.length, island.markIslandTriggered]
+    [sendPrompt, messages.length]
   )
 
   if (loading) {
@@ -443,43 +427,23 @@ export function PdfViewerPage() {
           onClose={() => {
             closeToolbar()
           }}
+          onRectChange={handleToolbarRectChange}
         />
 
-        {/* 聊天岛：常驻（无朗读岛，始终居中） */}
-        <DynamicIsland
-          form={island.chatForm}
-          anchor={island.chatAnchor}
-          circleSize={ISLAND_METRICS.circle.size}
-          pillWidth={chatActive ? ISLAND_METRICS.chatPill.width : ISLAND_METRICS.chatIdlePill.width}
-          pillHeight={ISLAND_METRICS.chatPill.height}
-          dualAnchor={dualAnchorFor(chatActive ? ISLAND_METRICS.chatPill.width : ISLAND_METRICS.chatIdlePill.width)}
-          expandedWidth={ISLAND_METRICS.chatPanel.width}
-          expandedHeight={ISLAND_METRICS.chatPanel.height}
-          ariaLabel={chatActive ? t("island.chat.label") : t("island.chat.ask")}
-          circleContent={<ChatCircleContent phase={chatPhase} />}
-          pillContent={
-            chatActive ? (
-              <ChatPillContent phase={chatPhase as ChatIslandPhase} onDismiss={clearConversation} />
-            ) : (
-              <ChatIdlePill />
-            )
-          }
-          onActivate={() => island.activateIsland("chat")}
-          onDeactivate={() => island.deactivateIsland("chat")}
-          onCollapseRequest={() => island.collapseIsland("chat")}>
-          <ChatIslandPanel
-            capturedText={capturedText}
-            messages={messages}
-            requestState={requestState.status}
-            onCapturedTextChange={setCapturedText}
-            onSend={(input) => {
-              void handleFollowupSend(input)
-            }}
-            onStop={stopStreaming}
-            onCollapse={() => island.collapseIsland("chat")}
-            onClose={clearConversation}
-          />
-        </DynamicIsland>
+        {/* 对话窗：触发动作后浮现于工具栏下方（安全区自动翻转） */}
+        <ChatPanel
+          open={panelOpen}
+          anchor={chatAnchor}
+          capturedText={capturedText}
+          messages={messages}
+          requestState={requestState.status}
+          onCapturedTextChange={setCapturedText}
+          onSend={(input) => {
+            void handleFollowupSend(input)
+          }}
+          onStop={stopStreaming}
+          onClose={closeConversation}
+        />
       </div>
 
       <div
