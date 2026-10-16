@@ -13,9 +13,11 @@ import { useI18n } from "@/shared/i18n/context"
 import type { ChatMessage, ChatRequestState } from "@/shared/types"
 
 /** 对话窗宽度 */
-const PANEL_WIDTH = 340
+const PANEL_WIDTH = 480
 /** 对话窗理想高度（超高视口按可用高度收缩） */
-const PANEL_MAX_HEIGHT = 560
+const PANEL_MAX_HEIGHT = 640
+/** 卡片态落位时的假设高度（实际高度随内容自适应，仅参与翻转/钳制计算） */
+const CARD_ASSUME_HEIGHT = 200
 
 function CloseIcon({ size, color }: { size: number; color: string }) {
   return (
@@ -68,6 +70,31 @@ function PinIcon({ size, color, pinned }: { size: number; color: string; pinned:
         strokeLinejoin="round"
       />
       <path d="M8 8v5.5" stroke={color} strokeWidth={1.4} strokeLinecap="round" />
+    </svg>
+  )
+}
+
+/** 收起图标（聊天态 → 卡片态）：向下人字形 */
+function CollapseIcon({ size, color }: { size: number; color: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M4 6.5L8 10.5L12 6.5"
+        stroke={color}
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/** 展开图标（卡片态 → 聊天态的「追问」按钮）：对话气泡 */
+function ExpandChatIcon({ size, color }: { size: number; color: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="3" y="3" width="10" height="8" rx="2" stroke={color} strokeWidth="1.3" />
+      <path d="M6 11v2.6L8.8 11" stroke={color} strokeWidth="1.3" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -184,27 +211,40 @@ interface MessageBubbleProps {
   item: ChatMessage
   isStreaming: boolean
   theme: ReturnType<typeof useUiTheme>
+  /** 呈现形态：chat = 常规气泡／card = 卡片态铺满（无气泡框，内容直铺） */
+  variant?: "chat" | "card"
+  /** card 形态下多条 assistant 内容之间的分隔（非末条时渲染底部 hairline） */
+  cardSeparated?: boolean
 }
 
-const MessageBubble = memo(function MessageBubble({ item, isStreaming, theme }: MessageBubbleProps) {
+const MessageBubble = memo(function MessageBubble({
+  item,
+  isStreaming,
+  theme,
+  variant = "chat",
+  cardSeparated = false
+}: MessageBubbleProps) {
+  const isCard = variant === "card"
   return (
     <div
       style={{
         display: "block",
         marginLeft: item.role === "user" ? "auto" : undefined,
-        maxWidth: "85%",
-        marginBottom: uiSpace[8],
-        borderRadius: uiRadius.md,
+        maxWidth: isCard ? "none" : "85%",
+        marginBottom: isCard ? (cardSeparated ? uiSpace[10] : 0) : uiSpace[8],
+        borderRadius: isCard ? 0 : uiRadius.md,
         lineHeight: 1.4,
         fontSize: uiTypography.fontSize.sm,
         whiteSpace: item.role === "user" ? "pre-wrap" : "normal",
         wordBreak: "break-word",
-        background: item.role === "user" ? theme.accent.primary : theme.bg.surfaceMuted,
+        background: item.role === "user" ? theme.accent.primary : isCard ? "transparent" : theme.bg.surfaceMuted,
         color: item.role === "user" ? theme.text.inverse : theme.text.primary,
-        border: item.role === "user" ? "none" : `0.5px solid ${theme.border.hairline}`,
-        boxShadow: item.role === "user" ? uiShadow.sm : uiShadow.sm,
+        border: item.role === "user" || isCard ? "none" : `0.5px solid ${theme.border.hairline}`,
+        boxShadow: isCard ? "none" : uiShadow.sm,
         animation: `message-enter 300ms ${uiMotion.easingDecelerate} forwards`,
-        overflow: "hidden"
+        overflow: "hidden",
+        borderBottom: isCard && cardSeparated ? `0.5px solid ${theme.border.hairline}` : undefined,
+        paddingBottom: isCard && cardSeparated ? uiSpace[10] : undefined
       }}>
       {item.role === "assistant" && item.reasoning_content ? (
         <ThinkingBlock
@@ -216,7 +256,8 @@ const MessageBubble = memo(function MessageBubble({ item, isStreaming, theme }: 
       {item.content ? (
         <div
           style={{
-            padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
+            // 卡片态消息区容器统一提供舒适内边距，内容本身不再套气泡内边距
+            padding: isCard ? undefined : `${uiSpace[8]}px ${uiSpace[10]}px`,
             overflowWrap: "break-word",
             wordBreak: "break-word"
           }}>
@@ -269,6 +310,8 @@ export default function ChatPanel({
 }: Props) {
   const theme = useUiTheme()
   const { t } = useI18n()
+  /** 面板形态：card = 卡片态（仅 AI 生成内容）/ chat = 完整聊天态（消息 + 输入框）。新会话默认卡片态 */
+  const [mode, setMode] = useState<"card" | "chat">("card")
   const [input, setInput] = useState("")
   const [focused, setFocused] = useState<string | null>(null)
   const [hovered, setHovered] = useState<string | null>(null)
@@ -279,6 +322,7 @@ export default function ChatPanel({
   /** 拖拽进行中（头部 cursor 态） */
   const [dragging, setDragging] = useState(false)
   const messagesContainerRef = useRef<HTMLDivElement | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
 
   /** 收起路径回调走 ref，document 级监听不随回调重建 */
@@ -314,13 +358,17 @@ export default function ChatPanel({
       setPos((prev) => (prev ? clampPanelPos(prev) : prev))
       return
     }
-    const height = Math.min(PANEL_MAX_HEIGHT, window.innerHeight - EDGE_INSET * 2)
+    const isCard = mode === "card"
+    // 卡片态实际高度随内容自适应，翻转/钳制计算用较小的假设高度，避免误判为「下方放不下」而错误翻转到上方
+    const height = isCard
+      ? CARD_ASSUME_HEIGHT
+      : Math.min(PANEL_MAX_HEIGHT, window.innerHeight - EDGE_INSET * 2)
     const rect =
       anchor ??
       ({ x: window.scrollX + window.innerWidth / 2, y: window.scrollY + 80, width: 0, height: 0 } satisfies AnchorRect)
     const placed = placeNearAnchor(rect, PANEL_WIDTH, height)
     setPos({ left: placed.left, top: placed.top })
-  }, [open, anchor, clampPanelPos])
+  }, [open, anchor, clampPanelPos, mode])
 
   useLayoutEffect(() => {
     computePosition()
@@ -402,6 +450,20 @@ export default function ChatPanel({
   const isStreaming = requestState === "streaming"
   const sendDisabled = isStreaming || !input.trim()
   const hasCapturedText = capturedText.length > 0
+  /** 卡片态只呈现 AI 生成的内容（隐藏用户气泡与输入框）；聊天态保持全部消息 */
+  const visibleMessages = mode === "card" ? messages.filter((item) => item.role === "assistant") : messages
+
+  /** 卡片态 → 聊天态：展开后聚焦输入框，方便直接追问 */
+  const handleExpand = useCallback(() => {
+    setMode("chat")
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }, [])
+
+  /** 聊天态 → 卡片态：收起时释放输入框残留焦点，避免后续按键落入已隐藏的输入框 */
+  const handleCollapse = useCallback(() => {
+    setMode("card")
+    inputRef.current?.blur()
+  }, [])
   /** 用户是否停在消息区底部附近（流式期间仅贴底时才自动跟随滚动） */
   const isNearBottomRef = useRef(true)
 
@@ -436,7 +498,8 @@ export default function ChatPanel({
         left: pos?.left ?? -9999,
         top: pos?.top ?? -9999,
         width: PANEL_WIDTH,
-        height: Math.min(PANEL_MAX_HEIGHT, window.innerHeight - EDGE_INSET * 2),
+        height: mode === "card" ? "auto" : Math.min(PANEL_MAX_HEIGHT, window.innerHeight - EDGE_INSET * 2),
+        maxHeight: Math.min(PANEL_MAX_HEIGHT, window.innerHeight - EDGE_INSET * 2),
         zIndex: uiLayer.panel,
         pointerEvents: "auto",
         display: "flex",
@@ -534,6 +597,33 @@ export default function ChatPanel({
 
         <div style={{ flex: 1, alignSelf: "stretch" }} />
 
+        {mode === "chat" ? (
+          <button
+            onClick={handleCollapse}
+            onMouseEnter={() => setHovered("collapse")}
+            onMouseLeave={() => setHovered(null)}
+            onFocus={() => setFocused("collapse")}
+            onBlur={() => setFocused(null)}
+            aria-label={t("chat.collapsePanel")}
+            title={t("chat.collapsePanel")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 22,
+              height: 22,
+              borderRadius: "50%",
+              border: "none",
+              background: hovered === "collapse" ? theme.bg.surfaceMuted : "transparent",
+              cursor: "pointer",
+              padding: 0,
+              flexShrink: 0,
+              boxShadow: focused === "collapse" ? createFocusRing(theme.accent.primary) : "none"
+            }}>
+            <CollapseIcon size={12} color={theme.text.secondary} />
+          </button>
+        ) : null}
+
         <button
           onClick={() => onPinChange(!pinned)}
           onMouseEnter={() => setHovered("pin")}
@@ -600,12 +690,12 @@ export default function ChatPanel({
           flex: 1,
           overflowY: "auto",
           overscrollBehavior: "contain",
-          padding: uiSpace[6],
+          padding: mode === "card" ? `${uiSpace[10]}px ${uiSpace[14]}px` : uiSpace[6],
           display: "block",
           background: theme.bg.surfaceAlt,
           minHeight: 0
         }}>
-        {messages.length === 0 ? (
+        {visibleMessages.length === 0 && !isStreaming ? (
           <div
             style={{
               ...createStatusMessageStyle(theme, "info"),
@@ -622,12 +712,14 @@ export default function ChatPanel({
           </div>
         ) : null}
 
-        {messages.map((item) => (
+        {visibleMessages.map((item, index) => (
           <MessageBubble
             key={item.id}
             item={item}
             isStreaming={isStreaming}
             theme={theme}
+            variant={mode}
+            cardSeparated={mode === "card" && index < visibleMessages.length - 1}
           />
         ))}
 
@@ -646,7 +738,47 @@ export default function ChatPanel({
         ) : null}
       </div>
 
-      {/* Input area */}
+      {/* 卡片态底部：仅一个「追问」按钮，点击展开为完整聊天态 */}
+      {mode === "card" ? (
+        <div
+          style={{
+            flexShrink: 0,
+            padding: `${uiSpace[6]}px ${uiSpace[8]}px`,
+            borderTop: `0.5px solid ${theme.border.hairline}`,
+            background: theme.bg.surface
+          }}>
+          <button
+            onClick={handleExpand}
+            onMouseEnter={() => setHovered("expand")}
+            onMouseLeave={() => setHovered(null)}
+            onFocus={() => setFocused("expand")}
+            onBlur={() => setFocused(null)}
+            aria-label={t("chat.expandChat")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: uiSpace[6],
+              width: "100%",
+              padding: `${uiSpace[6]}px ${uiSpace[10]}px`,
+              borderRadius: uiRadius.sm,
+              border: "none",
+              background: hovered === "expand" ? theme.bg.surfaceMuted : "transparent",
+              color: theme.text.primary,
+              cursor: "pointer",
+              fontFamily: uiTypography.fontFamily,
+              fontSize: uiTypography.fontSize.sm,
+              fontWeight: uiTypography.fontWeight.medium,
+              boxShadow: focused === "expand" ? createFocusRing(theme.accent.primary) : "none"
+            }}>
+            <ExpandChatIcon size={13} color={theme.text.secondary} />
+            {t("chat.expandChat")}
+          </button>
+        </div>
+      ) : null}
+
+      {/* 聊天态：消息区下方保留完整输入区 */}
+      {mode === "chat" ? (
       <div
         style={{
           display: "grid",
@@ -750,6 +882,7 @@ export default function ChatPanel({
           {isStreaming ? t("chat.stop") : t("chat.send")}
         </button>
       </div>
+      ) : null}
     </div>
   )
 }

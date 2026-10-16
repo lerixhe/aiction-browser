@@ -44,6 +44,8 @@ export default {
   "chat.modelLabel": "Model",
   "chat.pinPanel": "Pin conversation panel (won't close on outside clicks)",
   "chat.unpinPanel": "Unpin conversation panel",
+  "chat.expandChat": "Follow up",
+  "chat.collapsePanel": "Collapse to card",
   "options.nav.appearance": "Appearance",
   "options.nav.connection": "API Providers",
   "options.nav.actions": "AI Actions",

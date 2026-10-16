@@ -44,6 +44,8 @@ export default {
   "chat.modelLabel": "模型",
   "chat.pinPanel": "钉住对话面板（不会因点击外部而消失）",
   "chat.unpinPanel": "取消钉住对话面板",
+  "chat.expandChat": "追问",
+  "chat.collapsePanel": "收起为卡片",
   "options.nav.appearance": "外观",
   "options.nav.connection": "API提供商",
   "options.nav.actions": "AI Actions",
