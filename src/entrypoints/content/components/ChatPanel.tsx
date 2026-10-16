@@ -60,7 +60,8 @@ function ThinkingBlock({
   theme: ThinkingTheme
 }) {
   const { t } = useI18n()
-  const [expanded, setExpanded] = useState(true)
+  // 通用方案：思考块默认折叠（不依赖模型是否支持关闭思考），点击标题可展开查看
+  const [expanded, setExpanded] = useState(false)
   const prevStreamingRef = useRef(isStreaming)
 
   useEffect(() => {

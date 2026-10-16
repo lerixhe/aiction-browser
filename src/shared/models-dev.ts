@@ -12,6 +12,7 @@ export interface ModelsDevModel {
   tool_call?: boolean
   attachment?: boolean
   temperature?: boolean
+  structured_output?: boolean
   limit?: { context?: number; input?: number; output?: number }
   cost?: { input?: number; output?: number; reasoning?: number }
   status?: string
@@ -126,12 +127,34 @@ export function getAllProviders(data: ModelsDevData): ModelsDevProviderInfo[] {
 
 export interface ModelParamSupport {
   maxTokens: boolean
-  temperature: boolean
-  topP: boolean
-  presencePenalty: boolean
-  frequencyPenalty: boolean
+  contextSize: boolean
+  reasoning: boolean
+  reasoningEffort: boolean
+  structuredOutputs: boolean
 }
 
+export const ALL_PARAMS_UNSUPPORTED: ModelParamSupport = {
+  maxTokens: false,
+  contextSize: false,
+  reasoning: false,
+  reasoningEffort: false,
+  structuredOutputs: false
+}
+
+export const ALL_PARAMS_UNKNOWN: ModelParamSupport = {
+  maxTokens: true,
+  contextSize: true,
+  reasoning: true,
+  reasoningEffort: true,
+  structuredOutputs: true
+}
+
+/**
+ * 模型参数支持性判定（数据源：models.dev）。
+ * - 模型元数据未知 → 视为全部支持（让用户自行决定）
+ * - 嵌入模型 → 全部不支持
+ * - contextSize 恒为 true（输入裁剪与应用层实现，不依赖模型能力）
+ */
 export function getModelParamSupport(
   data: ModelsDevData,
   providerId: string,
@@ -139,27 +162,23 @@ export function getModelParamSupport(
 ): ModelParamSupport {
   const model = getModelMeta(data, providerId, modelId)
   if (!model) {
-    return { maxTokens: true, temperature: true, topP: true, presencePenalty: true, frequencyPenalty: true }
+    return ALL_PARAMS_UNKNOWN
+  }
+
+  const isEmbeddingModel = modelId.toLowerCase().includes("embed")
+
+  if (isEmbeddingModel) {
+    return ALL_PARAMS_UNSUPPORTED
   }
 
   const isReasoningModel = model.reasoning === true
-  const isEmbeddingModel = modelId.toLowerCase().includes("embed")
-  const temperatureSupported = model.temperature !== false
-
-  if (isEmbeddingModel) {
-    return { maxTokens: false, temperature: false, topP: false, presencePenalty: false, frequencyPenalty: false }
-  }
-
-  if (isReasoningModel) {
-    return { maxTokens: true, temperature: false, topP: false, presencePenalty: false, frequencyPenalty: false }
-  }
 
   return {
     maxTokens: true,
-    temperature: temperatureSupported,
-    topP: temperatureSupported,
-    presencePenalty: temperatureSupported,
-    frequencyPenalty: temperatureSupported
+    contextSize: true,
+    reasoning: isReasoningModel,
+    reasoningEffort: isReasoningModel,
+    structuredOutputs: model.structured_output === true
   }
 }
 

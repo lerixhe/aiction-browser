@@ -180,9 +180,13 @@ export default function OptionsPage() {
             modelSearchQuery={providerManager.modelSearchQuery}
             paramSupport={providerManager.paramSupport}
             modelOutputLimit={providerManager.modelOutputLimit}
+            modelContextLimit={providerManager.modelContextLimit}
+            smartFilling={providerManager.smartFilling}
+            smartFillStatus={providerManager.smartFillStatus}
             onFieldChange={providerManager.updateProviderField}
-            onModelChange={(model) => providerManager.updateProviderField("model", model)}
+            onModelChange={providerManager.updateProviderModel}
             onFetchModels={providerManager.handleFetchModels}
+            onSmartFillParams={() => void providerManager.handleSmartFillParams()}
             onClearFetchedModels={() => providerManager.setModels([])}
             onSearchQueryChange={providerManager.setModelSearchQuery}
             onParamChange={providerManager.updateProviderModelParam}

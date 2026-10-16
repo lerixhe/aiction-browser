@@ -5,6 +5,7 @@ import type {
   ApiTestRequest,
   ApiTestResponse,
   ModelsDevResponse,
+  OpenRouterModelsResponse,
   TtsSynthesizeRequest,
   TtsSynthesizeResponse
 } from "@/shared/types"
@@ -14,7 +15,15 @@ import { formatApiError, getErrorMessage, isAbortError } from "@/shared/errors"
 import { getActiveProvider, getSettings } from "@/shared/storage"
 import { DEFAULT_TTS_SETTINGS } from "@/shared/defaults"
 import { resolveLanguageModel } from "@/shared/model-provider"
-import { fetchModelsDev, getModelParamSupport } from "@/shared/models-dev"
+import { buildProviderOptions, truncateMessagesToContext } from "@/shared/model-params"
+import { fetchModelsDev } from "@/shared/models-dev"
+import { fetchOpenRouterModels } from "@/shared/openrouter"
+
+/** 端点明确拒绝 Reasoning 参数（不支持禁用思考的模型）时，去掉参数重试一次 */
+function shouldRetryWithoutReasoningOptions(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return /reasoning/i.test(message) && /does not support|not supported|invalid option/i.test(message)
+}
 import {
   trackBackgroundEvent,
   startBackgroundBatching,
@@ -46,59 +55,65 @@ async function streamChat(
   const modelsDevData = await fetchModelsDev()
   const model = resolveLanguageModel(activeService, modelsDevData)
 
-  const paramSupport = getModelParamSupport(
-    modelsDevData,
-    activeService.modelsDevId ?? "",
-    activeService.model
-  )
-  const params = activeService.modelParams
+  const params = activeService.modelParams ?? {}
+
+  // 只发送用户显式填充的参数；未填充 = 忽略（跟随模型默认）
+  const finalMessages =
+    typeof params.contextSize === "number" && params.contextSize > 0
+      ? truncateMessagesToContext(messages, params.contextSize)
+      : messages
 
   const streamParams: Parameters<typeof streamText>[0] = {
     model,
-    messages,
+    messages: finalMessages,
     abortSignal: signal,
   }
 
-  if (paramSupport.maxTokens && params.maxTokens >= 1) {
+  if (typeof params.maxTokens === "number" && params.maxTokens >= 1) {
     streamParams.maxOutputTokens = params.maxTokens
   }
 
-  if (paramSupport.temperature) {
-    streamParams.temperature = params.temperature
+  const providerOptions = buildProviderOptions(activeService, modelsDevData, params)
+  if (providerOptions) {
+    streamParams.providerOptions = providerOptions
   }
-
-  if (paramSupport.topP && params.topP > 0) {
-    streamParams.topP = params.topP
-  }
-
-  if (paramSupport.presencePenalty) {
-    streamParams.presencePenalty = params.presencePenalty
-  }
-
-  if (paramSupport.frequencyPenalty) {
-    streamParams.frequencyPenalty = params.frequencyPenalty
-  }
-
-  const result = streamText(streamParams)
 
   let hasContent = false
 
-  for await (const part of result.fullStream) {
-    if (signal.aborted) {
-      throw new DOMException("aborted", "AbortError")
-    }
+  const consumeStream = async (): Promise<void> => {
+    const result = streamText(streamParams)
 
-    switch (part.type) {
-      case "text-delta":
-        hasContent = true
-        onEvent({ type: "chunk", content: part.text })
-        break
-      case "reasoning-delta":
-        hasContent = true
-        onEvent({ type: "chunk", content: "", reasoning_content: part.text })
-        break
-      case "error":
-        throw part.error
+    for await (const part of result.fullStream) {
+      if (signal.aborted) {
+        throw new DOMException("aborted", "AbortError")
+      }
+
+      switch (part.type) {
+        case "text-delta":
+          hasContent = true
+          onEvent({ type: "chunk", content: part.text })
+          break
+        case "reasoning-delta":
+          hasContent = true
+          onEvent({ type: "chunk", content: "", reasoning_content: part.text })
+          break
+        case "error":
+          throw part.error
+      }
+    }
+  }
+
+  try {
+    await consumeStream()
+  } catch (error) {
+    // 部分模型不支持关闭思考（如 "Model X does not support reasoning_effort off"）。
+    // 尚未产出任何内容时，去掉 Reasoning 参数重试一次，让请求成功（思考跟随模型默认）。
+    if (!hasContent && shouldRetryWithoutReasoningOptions(error)) {
+      console.warn("[aiction] reasoning option rejected by provider, retrying without it:", error)
+      delete streamParams.providerOptions
+      await consumeStream()
+    } else {
+      throw error
     }
   }
 
@@ -267,6 +282,25 @@ export default defineBackground(() => {
     return true
   })
 
+  chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+    if (request?.type !== MESSAGE_TYPES.OPENROUTER_MODELS_REQUEST) {
+      return false
+    }
+
+    fetchOpenRouterModels()
+      .then((models) => {
+        sendResponse({ success: true, models } satisfies OpenRouterModelsResponse)
+      })
+      .catch((error: unknown) => {
+        sendResponse({
+          success: false,
+          error: getErrorMessage(error)
+        } satisfies OpenRouterModelsResponse)
+      })
+
+    return true
+  })
+
   chrome.runtime.onMessage.addListener((request: ApiTestRequest, _sender, sendResponse) => {
     if (request?.type !== MESSAGE_TYPES.API_TEST_REQUEST) {
       return false
@@ -293,7 +327,7 @@ export default defineBackground(() => {
           apiKey: apiKey.trim(),
           model: model.trim(),
           apiBaseUrl: apiBaseUrl?.trim() || undefined,
-          modelParams: { maxTokens: 5, temperature: 0, topP: 1, presencePenalty: 0, frequencyPenalty: 0 },
+          modelParams: {},
           modelsDevId: request.payload.modelsDevId,
         }
         const resolvedModel = resolveLanguageModel(service, modelsDevData)

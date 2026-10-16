@@ -4,6 +4,14 @@ import { createButtonStyle, createInputStyle, createStatusMessageStyle } from "@
 import type { ModelsDevModel } from "@/shared/models-dev"
 import { useI18n } from "@/shared/i18n/context"
 
+function SparkleIcon({ size, color }: { size: number; color: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M8 1.5L9.3 6.7L14.5 8L9.3 9.3L8 14.5L6.7 9.3L1.5 8L6.7 6.7L8 1.5Z" stroke={color} strokeWidth={1.1} strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 function RefreshIcon({ size, color }: { size: number; color: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -22,8 +30,11 @@ interface ModelPickerProps {
   fetchError: string | null
   modelSearchQuery: string
   focusedField: string | null
+  smartFilling: boolean
+  smartFillStatus: { count: number; notice?: string | null } | null
   onModelChange: (model: string) => void
   onFetchModels: () => void
+  onSmartFillParams: () => void
   onClearFetchedModels: () => void
   onSearchQueryChange: (query: string) => void
   onFocusField: (field: string) => void
@@ -40,8 +51,11 @@ export function ModelPicker({
   fetchError,
   modelSearchQuery,
   focusedField,
+  smartFilling,
+  smartFillStatus,
   onModelChange,
   onFetchModels,
+  onSmartFillParams,
   onClearFetchedModels,
   onSearchQueryChange,
   onFocusField,
@@ -72,23 +86,41 @@ export function ModelPicker({
         <label htmlFor="provider-model" style={{ marginBottom: 0 }}>
           {t("options.connection.model")}
         </label>
-        {!hasModelsDevId ? (
+        <div style={{ display: "flex", gap: uiSpace[8], alignItems: "center" }}>
+          {!hasModelsDevId ? (
+            <button
+              type="button"
+              onClick={onFetchModels}
+              disabled={fetchingModels}
+              style={{
+                ...secondaryBtnStyle,
+                display: "flex",
+                alignItems: "center",
+                gap: uiSpace[4],
+                opacity: fetchingModels ? 0.5 : 1,
+                cursor: fetchingModels ? "not-allowed" : "pointer"
+              }}>
+              <RefreshIcon size={14} color={theme.text.primary} />
+              {fetchingModels ? t("options.connection.fetching") : t("options.connection.fetchModels")}
+            </button>
+          ) : null}
+          {/* 智能填充参数：永远存在，点击后提示「成功补充 X 个」 */}
           <button
             type="button"
-            onClick={onFetchModels}
-            disabled={fetchingModels}
+            onClick={onSmartFillParams}
+            disabled={smartFilling}
             style={{
               ...secondaryBtnStyle,
               display: "flex",
               alignItems: "center",
               gap: uiSpace[4],
-              opacity: fetchingModels ? 0.5 : 1,
-              cursor: fetchingModels ? "not-allowed" : "pointer"
+              opacity: smartFilling ? 0.5 : 1,
+              cursor: smartFilling ? "not-allowed" : "pointer"
             }}>
-            <RefreshIcon size={14} color={theme.text.primary} />
-            {fetchingModels ? t("options.connection.fetching") : t("options.connection.fetchModels")}
+            <SparkleIcon size={14} color={theme.text.primary} />
+            {smartFilling ? t("options.connection.smartFilling") : t("options.connection.smartFillParams")}
           </button>
-        ) : null}
+        </div>
       </div>
 
       {!hasModelsDevId && fetchedModels.length > 0 ? (
@@ -258,6 +290,22 @@ export function ModelPicker({
           aria-live="polite"
           style={{ marginTop: uiSpace[8], ...createStatusMessageStyle(theme, "error") }}>
           {fetchError}
+        </div>
+      ) : null}
+
+      {smartFillStatus ? (
+        <div style={{ marginTop: uiSpace[8], display: "flex", flexDirection: "column", gap: uiSpace[4] }}>
+          <div
+            role="status"
+            aria-live="polite"
+            style={{ ...createStatusMessageStyle(theme, "success"), fontSize: uiTypography.fontSize.xs }}>
+            {t("options.connection.smartFillSuccess", [String(smartFillStatus.count)])}
+          </div>
+          {smartFillStatus.notice ? (
+            <div style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary }}>
+              {t("options.connection.smartFillNotice", [smartFillStatus.notice])}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

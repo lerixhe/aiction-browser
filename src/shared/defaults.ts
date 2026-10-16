@@ -39,13 +39,8 @@ export const DEFAULT_TTS_SETTINGS: TtsSettings = {
   autoLocale: true
 }
 
-export const DEFAULT_MODEL_PARAMS: ModelParams = {
-  maxTokens: 0,
-  temperature: 0,
-  topP: 0.9,
-  presencePenalty: 0,
-  frequencyPenalty: 0
-}
+/** 模型参数默认值：所有项均未填充（undefined = 忽略，不随请求发送） */
+export const DEFAULT_MODEL_PARAMS: ModelParams = {}
 
 export const DEFAULT_CUSTOM_MODEL_PROVIDER: ProviderConfig = {
   id: "",

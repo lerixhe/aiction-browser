@@ -32,12 +32,22 @@ export interface TtsSettings {
   autoLocale: boolean
 }
 
+/**
+ * 模型参数：所有项初始为 undefined（未填充）。
+ * - 未填充的参数在请求时不发送（忽略，跟随模型默认）
+ * - 用户显式填充后按填写值发送，系统不覆盖
+ */
 export interface ModelParams {
-  maxTokens: number
-  temperature: number
-  topP: number
-  presencePenalty: number
-  frequencyPenalty: number
+  /** 最大输出 token 数 */
+  maxTokens?: number
+  /** 上下文窗口上限（字符数）：输入总长超出时自动裁剪，未填充 = 不裁剪 */
+  contextSize?: number
+  /** 思考模式：true = 启用；false = 禁用；未填充 = 跟随模型默认 */
+  reasoning?: boolean
+  /** 思考力度档位（随请求发送 reasoning_effort） */
+  reasoningEffort?: "low" | "medium" | "high"
+  /** 结构化输出：true = 启用；未填充 = 忽略 */
+  structuredOutputs?: boolean
 }
 
 export interface ProviderConfig {
@@ -217,5 +227,25 @@ export interface ModelsDevRequest {
 export interface ModelsDevResponse {
   success: boolean
   data?: Record<string, unknown>
+  error?: string
+}
+
+// OpenRouter models list request/response（智能填充参数的数据源之一）
+export interface OpenRouterModelInfo {
+  id: string
+  name: string
+  contextLength?: number
+  /** top_provider.max_completion_tokens：该模型最大输出 token 数 */
+  maxCompletionTokens?: number
+  supportedParameters: string[]
+}
+
+export interface OpenRouterModelsRequest {
+  type: "AICTION_OPENROUTER_MODELS_REQUEST"
+}
+
+export interface OpenRouterModelsResponse {
+  success: boolean
+  models?: OpenRouterModelInfo[]
   error?: string
 }

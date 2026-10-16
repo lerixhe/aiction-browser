@@ -65,19 +65,31 @@ function normalizeTts(value: unknown): TtsSettings {
 function validateModelParams(value: unknown): ModelParams {
   const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {}
 
-  return {
-    maxTokens: typeof record.maxTokens === "number" && Number.isFinite(record.maxTokens) ? record.maxTokens : DEFAULT_CUSTOM_MODEL_PROVIDER.modelParams.maxTokens,
-    temperature: typeof record.temperature === "number" && Number.isFinite(record.temperature) ? record.temperature : DEFAULT_CUSTOM_MODEL_PROVIDER.modelParams.temperature,
-    topP: typeof record.topP === "number" && Number.isFinite(record.topP) ? record.topP : DEFAULT_CUSTOM_MODEL_PROVIDER.modelParams.topP,
-    presencePenalty:
-      typeof record.presencePenalty === "number" && Number.isFinite(record.presencePenalty)
-        ? record.presencePenalty
-        : DEFAULT_CUSTOM_MODEL_PROVIDER.modelParams.presencePenalty,
-    frequencyPenalty:
-      typeof record.frequencyPenalty === "number" && Number.isFinite(record.frequencyPenalty)
-        ? record.frequencyPenalty
-        : DEFAULT_CUSTOM_MODEL_PROVIDER.modelParams.frequencyPenalty
+  // 一次性迁移：只丢弃旧版参数键（temperature/topP/presencePenalty/frequencyPenalty），
+  // 新格式的已填充项全部保留——否则每次刷新都会把填充值重置
+  const params: ModelParams = {}
+
+  if (typeof record.maxTokens === "number" && Number.isFinite(record.maxTokens)) {
+    params.maxTokens = record.maxTokens
   }
+  if (typeof record.contextSize === "number" && Number.isFinite(record.contextSize)) {
+    params.contextSize = record.contextSize
+  }
+  if (typeof record.reasoning === "boolean") {
+    params.reasoning = record.reasoning
+  }
+  if (
+    record.reasoningEffort === "low" ||
+    record.reasoningEffort === "medium" ||
+    record.reasoningEffort === "high"
+  ) {
+    params.reasoningEffort = record.reasoningEffort
+  }
+  if (typeof record.structuredOutputs === "boolean") {
+    params.structuredOutputs = record.structuredOutputs
+  }
+
+  return params
 }
 
 function validateProviders(items: unknown[]): ProviderConfig[] {

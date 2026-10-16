@@ -9,17 +9,20 @@ import {
   getModelsForProvider,
   getAllProviders,
   getModelParamSupport,
+  ALL_PARAMS_UNKNOWN,
   type ModelsDevData,
   type ModelsDevProviderInfo,
   type ModelParamSupport
 } from "@/shared/models-dev"
+import { requestOpenRouterModels, findOpenRouterModel } from "@/shared/openrouter"
 import { MESSAGE_TYPES } from "@/shared/constants"
 import type {
   ExtensionSettings,
   ProviderConfig,
   ModelParams,
   ApiTestResponse,
-  FetchModelsResponse
+  FetchModelsResponse,
+  OpenRouterModelInfo
 } from "@/shared/types"
 import { useI18n } from "@/shared/i18n/context"
 
@@ -52,6 +55,8 @@ export function useProviderManager(
   const [models, setModels] = useState<string[]>([])
   const [fetchingModels, setFetchingModels] = useState(false)
   const [fetchError, setFetchError] = useState<string | null>(null)
+  const [smartFilling, setSmartFilling] = useState(false)
+  const [smartFillStatus, setSmartFillStatus] = useState<{ count: number; notice?: string | null } | null>(null)
 
   // --- Debounced save ---
   const debouncedSaveSettings = useDebouncedCallback(
@@ -216,8 +221,27 @@ export function useProviderManager(
     [selectedProviderId, saveSettingsDebounced]
   )
 
+  /** 模型参数与模型绑定：切换/修改模型时清空已填充参数 */
+  const updateProviderModel = useCallback(
+    (model: string) => {
+      if (!selectedProviderId) return
+
+      setProviderDraft((current) => ({ ...current, model, modelParams: {} }))
+
+      saveSettingsDebounced((current) => ({
+        ...current,
+        providers: current.providers.map((provider) =>
+          provider.id === selectedProviderId
+            ? { ...provider, model, modelParams: {} }
+            : provider
+        )
+      }))
+    },
+    [selectedProviderId, saveSettingsDebounced]
+  )
+
   const updateProviderModelParam = useCallback(
-    (key: keyof ModelParams, value: number) => {
+    (key: keyof ModelParams, value: ModelParams[keyof ModelParams]) => {
       if (!selectedProviderId) return
 
       setProviderDraft((current) => ({
@@ -279,6 +303,96 @@ export function useProviderManager(
     },
     [settings.providers, saveSettingsNow]
   )
+
+  // --- 智能填充参数 ---
+  // 数据源优先级：models.dev（有 modelsDevId 时）> OpenRouter /models
+  // 只填充「未填充」的项，用户已填的永不覆盖；点击后永远提示「成功补充 X 个」(X>=0)
+  const handleSmartFillParams = useCallback(async () => {
+    if (smartFilling) return
+    setSmartFilling(true)
+    setSmartFillStatus(null)
+
+    try {
+      const modelId = providerDraft.model.trim()
+      if (!modelId) {
+        setSmartFillStatus({ count: 0, notice: t("options.connection.smartFillNoModel") })
+        return
+      }
+
+      // 1) models.dev 元数据（优先）
+      const devModel = providerDraft.modelsDevId
+        ? modelsDevData?.[providerDraft.modelsDevId]?.models[modelId]
+        : undefined
+
+      // 2) OpenRouter 兜底（仅当 models.dev 无该模型时请求）
+      let orModel: OpenRouterModelInfo | undefined
+      let sourceError: string | null = null
+      if (!devModel) {
+        try {
+          const list = await requestOpenRouterModels()
+          orModel = findOpenRouterModel(list, modelId)
+        } catch (error) {
+          sourceError = String((error as Error)?.message ?? error)
+        }
+      }
+
+      if (!devModel && !orModel) {
+        setSmartFillStatus({
+          count: 0,
+          notice: sourceError ?? t("options.connection.smartFillNotFound")
+        })
+        return
+      }
+
+      const devKeyed = devModel as (typeof devModel & { structured_output?: boolean }) | undefined
+      const orParams = new Set(orModel?.supportedParameters ?? [])
+
+      const supported = {
+        maxTokens:
+          typeof devKeyed?.limit?.output === "number" ||
+          orParams.has("max_tokens") ||
+          // 未知的模型默认可填（用户自行决定）
+          (!devKeyed && !orModel),
+        contextSize: true, // 输入裁剪为应用层能力，恒可用
+        reasoning: devKeyed?.reasoning === true || orParams.has("reasoning"),
+        reasoningEffort: devKeyed?.reasoning === true || orParams.has("reasoning_effort")
+      }
+
+      const current = providerDraft.modelParams
+      const fills: Array<[keyof ModelParams, NonNullable<ModelParams[keyof ModelParams]>]> = []
+
+      // maxTokens：models.dev 的 limit.output 优先，OpenRouter 的 top_provider.max_completion_tokens 兑底
+      const maxTokensValue =
+        typeof devKeyed?.limit?.output === "number"
+          ? devKeyed.limit.output
+          : orModel?.maxCompletionTokens
+      if (typeof maxTokensValue === "number" && maxTokensValue > 0 && current.maxTokens === undefined) {
+        fills.push(["maxTokens", maxTokensValue])
+      }
+      if (current.contextSize === undefined) {
+        const contextSize =
+          typeof devKeyed?.limit?.context === "number" ? devKeyed.limit.context : orModel?.contextLength
+        if (typeof contextSize === "number" && contextSize > 0) {
+          fills.push(["contextSize", contextSize])
+        }
+      }
+      // Reasoning 填充为禁用；Reasoning Effort 默认填最低档位 low
+      if (supported.reasoning && current.reasoning === undefined) {
+        fills.push(["reasoning", false])
+      }
+      if (supported.reasoningEffort && current.reasoningEffort === undefined) {
+        fills.push(["reasoningEffort", "low" as const])
+      }
+
+      for (const [key, value] of fills) {
+        updateProviderModelParam(key, value)
+      }
+
+      setSmartFillStatus({ count: fills.length, notice: sourceError })
+    } finally {
+      setSmartFilling(false)
+    }
+  }, [providerDraft, modelsDevData, smartFilling, updateProviderModelParam, t])
 
   // --- Test connection ---
   const handleTestConnection = useCallback(() => {
@@ -365,7 +479,7 @@ export function useProviderManager(
           setModels(response.models)
           setFetchError(null)
           if (!providerDraft.model.trim() || !response.models.includes(providerDraft.model.trim())) {
-            setProviderDraft((current) => ({ ...current, model: response.models![0] }))
+            setProviderDraft((current) => ({ ...current, model: response.models![0], modelParams: {} }))
           }
         } else {
           setFetchError(response.error ?? t("options.connection.fetchModelsError"))
@@ -382,7 +496,7 @@ export function useProviderManager(
 
   const paramSupport = useMemo((): ModelParamSupport => {
     if (!modelsDevData || !providerDraft.modelsDevId) {
-      return { maxTokens: true, temperature: true, topP: true, presencePenalty: true, frequencyPenalty: true }
+      return ALL_PARAMS_UNKNOWN
     }
     return getModelParamSupport(modelsDevData, providerDraft.modelsDevId, providerDraft.model)
   }, [modelsDevData, providerDraft.modelsDevId, providerDraft.model])
@@ -391,6 +505,12 @@ export function useProviderManager(
     if (!modelsDevData || !providerDraft.modelsDevId) return undefined
     const model = modelsDevData[providerDraft.modelsDevId]?.models[providerDraft.model]
     return model?.limit?.output
+  }, [modelsDevData, providerDraft.modelsDevId, providerDraft.model])
+
+  const modelContextLimit = useMemo((): number | undefined => {
+    if (!modelsDevData || !providerDraft.modelsDevId) return undefined
+    const model = modelsDevData[providerDraft.modelsDevId]?.models[providerDraft.model]
+    return model?.limit?.context
   }, [modelsDevData, providerDraft.modelsDevId, providerDraft.model])
 
   return {
@@ -416,6 +536,9 @@ export function useProviderManager(
     devModels,
     paramSupport,
     modelOutputLimit,
+    modelContextLimit,
+    smartFilling,
+    smartFillStatus,
 
     // Setters
     setSelectedProviderId,
@@ -436,11 +559,13 @@ export function useProviderManager(
     selectProvider,
     saveProviderDraft,
     updateProviderField,
+    updateProviderModel,
     updateProviderModelParam,
     toggleProviderActive,
     deleteProvider,
     handleTestConnection,
     handleFetchModels,
+    handleSmartFillParams,
 
     // Save helpers (exposed for parent to reuse)
     saveSettingsNow,

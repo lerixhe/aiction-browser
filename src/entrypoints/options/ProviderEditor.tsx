@@ -21,12 +21,16 @@ interface ProviderEditorProps {
   modelSearchQuery: string
   paramSupport: ModelParamSupport
   modelOutputLimit?: number
+  modelContextLimit?: number
+  smartFilling: boolean
+  smartFillStatus: { count: number; notice?: string | null } | null
   onFieldChange: (field: string, value: string) => void
   onModelChange: (model: string) => void
   onFetchModels: () => void
+  onSmartFillParams: () => void
   onClearFetchedModels: () => void
   onSearchQueryChange: (query: string) => void
-  onParamChange: (key: keyof ModelParams, value: number) => void
+  onParamChange: (key: keyof ModelParams, value: ModelParams[keyof ModelParams]) => void
   onTestConnection: () => void
   onDelete: () => void
   onFocusField: (field: string) => void
@@ -46,9 +50,13 @@ export function ProviderEditor({
   modelSearchQuery,
   paramSupport,
   modelOutputLimit,
+  modelContextLimit,
+  smartFilling,
+  smartFillStatus,
   onFieldChange,
   onModelChange,
   onFetchModels,
+  onSmartFillParams,
   onClearFetchedModels,
   onSearchQueryChange,
   onParamChange,
@@ -178,8 +186,11 @@ export function ProviderEditor({
           fetchError={fetchError}
           modelSearchQuery={modelSearchQuery}
           focusedField={focusedField}
+          smartFilling={smartFilling}
+          smartFillStatus={smartFillStatus}
           onModelChange={onModelChange}
           onFetchModels={onFetchModels}
+          onSmartFillParams={onSmartFillParams}
           onClearFetchedModels={onClearFetchedModels}
           onSearchQueryChange={onSearchQueryChange}
           onFocusField={onFocusField}
@@ -237,6 +248,7 @@ export function ProviderEditor({
         modelParams={providerDraft.modelParams}
         paramSupport={paramSupport}
         modelOutputLimit={modelOutputLimit}
+        modelContextLimit={modelContextLimit}
         focusedField={focusedField}
         onParamChange={onParamChange}
         onFocusField={onFocusField}
