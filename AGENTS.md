@@ -111,7 +111,7 @@ Shared UI in `src/shared/ui/`: `tokens.ts`, `styles.ts`, `theme.ts`, `icons.tsx`
 
 Content script hooks in `src/entrypoints/content/hooks/`: `useChatState.ts`, `useSelectionDetection.ts`, `useToolbarState.ts`, `useSpeechPlayer.ts`.
 
-Content script components in `src/entrypoints/content/components/`: `SelectionToolbar.tsx`（划词工具栏，通过 `onRectChange` 上报落位）, `floating.ts`（悬浮面板公共锚定/安全区逻辑）, `ChatPanel.tsx`（悬浮对话窗）, `SpeechWidget.tsx`（悬浮朗读控件：控制条 ⇄ 小圆球）, `SpeechPlayer.tsx`（TTS 内容件：`TtsControlBar` / `TtsCircleContent` / `TtsCountdownRing`）, `ToolbarActionMenu.tsx`.
+Content script components in `src/entrypoints/content/components/`: `SelectionToolbar.tsx`（划词工具栏，通过 `onRectChange` 上报落位）, `floating.ts`（悬浮面板公共锚定/安全区逻辑）, `ChatSession.tsx`（单个对话会话实例：App/PdfViewer 每次触发以递增 id 作为 key 独立创建，关闭即销毁）, `ChatPanel.tsx`（悬浮对话窗内容件，由 ChatSession 渲染）, `SpeechWidget.tsx`（悬浮朗读控件：控制条 ⇄ 小圆球）, `SpeechPlayer.tsx`（TTS 内容件：`TtsControlBar` / `TtsCircleContent` / `TtsCountdownRing`）, `ToolbarActionMenu.tsx`.
 
 Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (deep active element traversal, extension root checks, selection helpers).
 
@@ -157,9 +157,12 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   上报自身落位（文档坐标矩形 `AnchorRect`）；App 在触发动作时快照一份传给面板。
   `placeNearAnchor()`：下方放不下自动翻转到上方，两边都放不下收敛回视口，
   水平方向钳制在文档安全区内。`fallbackAnchor()` 用选区锚点兜底。
-- **对话窗 `ChatPanel.tsx`**：触发 AI 动作后自动浮现在工具栏下方。自带关闭交互
-  （Esc / 点击窗外 / 头部 ×），× = 关闭并清空本轮对话；`panelOpen` 状态由
-  `useChatState` 管理（`clearChat` 会同步关闭）。
+- **对话会话 `ChatSession.tsx` / 内容件 `ChatPanel.tsx`**：触发 AI 动作后自动浮现在
+  工具栏下方。每次触发均创建**独立会话实例**（App/PdfViewer 以递增 id 作 React key，
+  挂载即发送动作解析出的首个 prompt），关闭（Esc / 点击窗外 / 头部 ×）即整体销毁
+  （卸载时中断流式并清理节流定时器）；`useChatState` 由 ChatSession 内部调用，
+  每实例持有独立的 messages / abort / 节流定时器。防抖：同一动作在同一选区上
+  （解析 prompt 相同）且会话仍开着时忽略重复点击，会话被关闭后才能重新触发。
 - **朗读控件 `SpeechWidget.tsx`**：触发朗读后浮现于工具栏落位下方，默认展开为
   控制条；鼠标移出 300ms（或触发后 4s 一直未交互）自动收起为 32px 小圆球，
   悬停/点击圆球再次展开；morph 时用 `translateX` 补偿宽度变化使中心不动。
@@ -180,8 +183,9 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
 - 面板的点外关闭监听必须用 `event.composedPath()` 穿透 Shadow DOM；
   层级：工具栏 `uiLayer.overlay` > 面板 `uiLayer.panel`。
 - 输入框 Enter 发送必须检查 `event.nativeEvent.isComposing`（IME 组合确认不是发送）。
-- 对话为单轮场景内存态：关闭面板 = 清空本轮对话（clearChat）；新动作触发先
-  `resetMessages()`。
+- 对话为单轮场景内存态：关闭面板 = 会话实例整体销毁；新动作触发（不同 action 或
+  选区内容变化）必创建全新实例，不复用旧 messages；同一动作同一选区重复点击被防抖
+  抑制（initialPrompt 相同且会话未关闭）。
 - copy 快捷动作仍会关闭工具栏（复制后选区即被消费，属预期行为）。
 
 ### 待优化清单

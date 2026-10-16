@@ -47,13 +47,13 @@ function updateMessageContent(
 }
 
 /**
- * Hook for managing chat state and streaming requests
+ * Hook for managing chat state and streaming requests.
+ * 由 ChatSession（单个对话会话实例）内部调用：每个实例持有独立的
+ * messages / 流式 abort / 节流定时器，实例卸载时一并中断与清理。
  */
 export function useChatState() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [requestState, setRequestState] = useState<ChatRequestState>({ status: "idle" })
-  const [panelOpen, setPanelOpen] = useState(false)
-  const [capturedText, setCapturedText] = useState("")
   const [context, setContext] = useState<SelectionContext | null>(null)
   const [modelName, setModelName] = useState<string>("")
 
@@ -69,9 +69,10 @@ export function useChatState() {
     setMessages(newMessages)
   }, [])
 
-  // Cleanup throttle timer on unmount
+  // Cleanup on unmount：中断流式请求，清理节流定时器（会话实例整体销毁的兜底）
   useEffect(() => {
     return () => {
+      activeStreamAbortRef.current?.abort()
       if (throttleTimerRef.current !== null) {
         clearTimeout(throttleTimerRef.current)
       }
@@ -288,43 +289,13 @@ export function useChatState() {
     [syncMessages, context]
   )
 
-  // Clear chat
-  const clearChat = useCallback(() => {
-    activeStreamAbortRef.current?.abort()
-    if (throttleTimerRef.current !== null) {
-      clearTimeout(throttleTimerRef.current)
-      throttleTimerRef.current = null
-    }
-    syncMessages([])
-    setRequestState({ status: "idle" })
-    setPanelOpen(false)
-    setCapturedText("")
-  }, [syncMessages])
-
-  // Reset messages only (keep panel open)
-  const resetMessages = useCallback(() => {
-    activeStreamAbortRef.current?.abort()
-    if (throttleTimerRef.current !== null) {
-      clearTimeout(throttleTimerRef.current)
-      throttleTimerRef.current = null
-    }
-    syncMessages([])
-    setRequestState({ status: "idle" })
-  }, [syncMessages])
-
   return {
     messages,
     requestState,
-    panelOpen,
-    setPanelOpen,
-    capturedText,
-    setCapturedText,
     context,
     setContext,
     sendPrompt,
     stopStreaming,
-    clearChat,
-    resetMessages,
     modelName
   }
 }
