@@ -5,7 +5,6 @@ import { useUiTheme } from "@/shared/ui/theme"
 import {
   EDGE_INSET,
   placeNearAnchor,
-  viewportBottomY,
   type AnchorRect
 } from "@/entrypoints/content/components/floating"
 import { uiLayer, uiMotion, uiRadius, uiSpace, uiShadow, uiTypography } from "@/shared/ui/tokens"
@@ -22,6 +21,53 @@ function CloseIcon({ size, color }: { size: number; color: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <path d="M4 4L12 12M12 4L4 12" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
+    </svg>
+  )
+}
+
+/** 模型图标（芯片造型）：替代原「模型：xxx」文本胶囊，悬停时 title 提示完整模型名 */
+function ModelIcon({ size, color }: { size: number; color: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect
+        x="4.5"
+        y="4.5"
+        width="7"
+        height="7"
+        rx="1.5"
+        stroke={color}
+        strokeWidth={1.2}
+      />
+      <rect x="6.75" y="6.75" width="2.5" height="2.5" rx="0.75" fill={color} opacity={0.55} />
+      <path
+        d="M6 2.2v2.3M10 2.2v2.3M6 11.5v2.3M10 11.5v2.3M2.2 6h2.3M2.2 10h2.3M11.5 6h2.3M11.5 10h2.3"
+        stroke={color}
+        strokeWidth={1.2}
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+/** 图钉图标：pinned 为实心（副色高亮），unpinned 为描边 */
+function PinIcon({ size, color, pinned }: { size: number; color: string; pinned: boolean }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      style={{ transform: pinned ? "rotate(45deg)" : "rotate(0deg)", transition: `transform ${uiMotion.durationFast} ${uiMotion.easingStandard}` }}
+    >
+      <path
+        d="M6.2 2.5h3.6v3.7l1.7 1.8H4.5l1.7-1.8z"
+        fill={pinned ? color : "none"}
+        stroke={color}
+        strokeWidth={1.2}
+        strokeLinejoin="round"
+      />
+      <path d="M8 8v5.5" stroke={color} strokeWidth={1.4} strokeLinecap="round" />
     </svg>
   )
 }
@@ -190,11 +236,14 @@ interface Props {
   open: boolean
   /** 锚定矩形（工具栏落位，文档坐标）；null 时回退到视口上方居中 */
   anchor: AnchorRect | null
+  /** 触发时的选区文本快照（目前仅用于空状态文案区分） */
   capturedText: string
   messages: ChatMessage[]
   requestState: ChatRequestState["status"]
   modelName?: string
-  onCapturedTextChange: (text: string) => void
+  /** 钉住状态由父级（ChatSession/App）持有：钉住后点击窗外不关闭，且父级可据此保护会话不被新触发替换 */
+  pinned: boolean
+  onPinChange: (pinned: boolean) => void
   onSend: (input: string) => void
   onStop: () => void
   /** 关闭对话窗（清空本轮对话） */
@@ -212,7 +261,8 @@ export default function ChatPanel({
   messages,
   requestState,
   modelName,
-  onCapturedTextChange,
+  pinned,
+  onPinChange,
   onSend,
   onStop,
   onClose
@@ -222,8 +272,12 @@ export default function ChatPanel({
   const [input, setInput] = useState("")
   const [focused, setFocused] = useState<string | null>(null)
   const [hovered, setHovered] = useState<string | null>(null)
-  const [capturedTagHovered, setCapturedTagHovered] = useState(false)
   const [sendPressed, setSendPressed] = useState(false)
+  /** 钉住状态（受控 props）：钉住后点击窗外不再关闭对话窗（Esc / × 仍可关闭） */
+  const pinnedRef = useRef(pinned)
+  pinnedRef.current = pinned
+  /** 拖拽进行中（头部 cursor 态） */
+  const [dragging, setDragging] = useState(false)
   const messagesContainerRef = useRef<HTMLDivElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
 
@@ -232,24 +286,47 @@ export default function ChatPanel({
   onCloseRef.current = onClose
 
   // ---------- 落位：工具栏下方，放不下翻转上方，最后收敛回视口 ----------
+  // 用户拖拽头部后位置改由用户接管：此后不再按锚点重算，仅在 resize 时收敛回视口
 
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
+  /** 用户是否已拖拽过位置（拖拽后位置归用户管） */
+  const draggedRef = useRef(false)
+
+  /** 把面板位置钳制回当前视口（拖拽中与 resize 后都用它防丢） */
+  const clampPanelPos = useCallback((p: { left: number; top: number }) => {
+    const height = Math.min(PANEL_MAX_HEIGHT, window.innerHeight - EDGE_INSET * 2)
+    const maxLeft = Math.max(
+      EDGE_INSET,
+      Math.max(document.documentElement.clientWidth, document.documentElement.scrollWidth) - PANEL_WIDTH - EDGE_INSET
+    )
+    const viewportTop = window.scrollY + EDGE_INSET
+    const viewportBottom = window.scrollY + window.innerHeight - EDGE_INSET - height
+    return {
+      left: Math.min(Math.max(p.left, EDGE_INSET), maxLeft),
+      top: Math.min(Math.max(p.top, viewportTop), Math.max(viewportTop, viewportBottom))
+    }
+  }, [])
 
   const computePosition = useCallback(() => {
     if (!open) return
+    // 用户拖拽过后位置归用户接管，resize 只需要钳制回视口，不再按锚点重算
+    if (draggedRef.current) {
+      setPos((prev) => (prev ? clampPanelPos(prev) : prev))
+      return
+    }
     const height = Math.min(PANEL_MAX_HEIGHT, window.innerHeight - EDGE_INSET * 2)
     const rect =
       anchor ??
       ({ x: window.scrollX + window.innerWidth / 2, y: window.scrollY + 80, width: 0, height: 0 } satisfies AnchorRect)
     const placed = placeNearAnchor(rect, PANEL_WIDTH, height)
     setPos({ left: placed.left, top: placed.top })
-  }, [open, anchor])
+  }, [open, anchor, clampPanelPos])
 
   useLayoutEffect(() => {
     computePosition()
   }, [computePosition])
 
-  // 视口尺寸变化时重新收敛（仅贴边时需要）
+  // 视口尺寸变化时重新钳制（仅贴边时需要；拖拽后钳制回当前视口）
   useEffect(() => {
     if (!open) return
     const handleResize = () => computePosition()
@@ -257,19 +334,54 @@ export default function ChatPanel({
     return () => window.removeEventListener("resize", handleResize)
   }, [open, computePosition])
 
-  // ---------- 关闭交互：Esc / 点击窗外 ----------
+  // ---------- 拖拽：按住头部空白处拖动整个对话窗（头部按钮不受影响） ----------
+
+  const handleHeaderPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return
+      // 头部上的功能按钮（模型图标 / 钉子 / 关闭）不触发拖拽
+      if ((event.target as HTMLElement).closest("button")) return
+      event.preventDefault()
+      if (!pos) return
+      const start = {
+        pointerX: event.clientX,
+        pointerY: event.clientY,
+        left: pos.left,
+        top: pos.top
+      }
+      draggedRef.current = true
+      setDragging(true)
+
+      const handleMove = (e: PointerEvent) => {
+        setPos(
+          clampPanelPos({
+            left: start.left + (e.clientX - start.pointerX),
+            top: start.top + (e.clientY - start.pointerY)
+          })
+        )
+      }
+      const handleUp = () => {
+        setDragging(false)
+        window.removeEventListener("pointermove", handleMove)
+        window.removeEventListener("pointerup", handleUp)
+        window.removeEventListener("pointercancel", handleUp)
+      }
+      window.addEventListener("pointermove", handleMove)
+      window.addEventListener("pointerup", handleUp)
+      window.addEventListener("pointercancel", handleUp)
+    },
+    [pos, clampPanelPos]
+  )
+
+  // ---------- 关闭交互：点击窗外（未钉住时）----------
+  // 注意：Esc 关闭已上移到 useChatSessions 统一监听（多实例并存时避免一次按键连环关关闭所有面板）
 
   useEffect(() => {
     if (!open) return
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return
-      event.preventDefault()
-      event.stopPropagation()
-      onCloseRef.current()
-    }
-
     const handlePointerDown = (event: MouseEvent) => {
+      // 钉住后点击窗外不关闭（Esc / × 仍可关闭）
+      if (pinnedRef.current) return
       const path = event.composedPath()
       if (panelRef.current && path.includes(panelRef.current)) return
       // 点击扩展 UI 内部（划词工具栏 / 朗读控件等）不关闭对话窗：
@@ -281,10 +393,8 @@ export default function ChatPanel({
       onCloseRef.current()
     }
 
-    document.addEventListener("keydown", handleKeyDown, true)
     document.addEventListener("mousedown", handlePointerDown, true)
     return () => {
-      document.removeEventListener("keydown", handleKeyDown, true)
       document.removeEventListener("mousedown", handlePointerDown, true)
     }
   }, [open])
@@ -379,34 +489,40 @@ export default function ChatPanel({
         }
       `}</style>
 
-      {/* 头部：模型名 + 关闭 */}
+      {/* 头部：拖拽手柄（模型图标左置，钉子 + 关闭右置；按钮不可拖拽） */}
       <div
+        onPointerDown={handleHeaderPointerDown}
         style={{
           display: "flex",
           alignItems: "center",
           gap: uiSpace[6],
-          padding: `${uiSpace[8]}px ${uiSpace[10]}px ${uiSpace[4]}px`,
-          flexShrink: 0
+          padding: `${uiSpace[6]}px ${uiSpace[10]}px ${uiSpace[4]}px`,
+          flexShrink: 0,
+          cursor: dragging ? "grabbing" : "grab",
+          userSelect: "none",
+          WebkitUserSelect: "none"
         }}>
         {modelName ? (
           <div
+            onMouseEnter={() => setHovered("model")}
+            onMouseLeave={() => setHovered(null)}
+            aria-label={`${t("chat.modelLabel")}: ${modelName}`}
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: uiSpace[4],
-              padding: `${uiSpace[2]}px ${uiSpace[6]}px`,
+              padding: `${uiSpace[2]}px ${uiSpace[6]}px ${uiSpace[2]}px`,
               borderRadius: uiRadius.sm,
-              background: theme.bg.surfaceMuted,
-              fontSize: uiTypography.fontSize.xs,
-              color: theme.text.secondary,
-              fontFamily: uiTypography.fontFamily,
+              flexShrink: 1,
               minWidth: 0,
-              overflow: "hidden"
+              overflow: "hidden",
+              background: hovered === "model" ? theme.bg.surfaceMuted : "transparent"
             }}>
-            <span style={{ opacity: 0.7, flexShrink: 0 }}>{t("chat.modelLabel")}:</span>
+            <ModelIcon size={14} color={theme.text.secondary} />
             <span
               style={{
-                fontWeight: uiTypography.fontWeight.medium,
+                fontSize: uiTypography.fontSize.xs,
+                color: theme.text.secondary,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap"
@@ -414,11 +530,40 @@ export default function ChatPanel({
               {modelName}
             </span>
           </div>
-        ) : (
-          <div style={{ flex: 1 }} />
-        )}
+        ) : null}
 
-        <div style={{ flex: 1 }} />
+        <div style={{ flex: 1, alignSelf: "stretch" }} />
+
+        <button
+          onClick={() => onPinChange(!pinned)}
+          onMouseEnter={() => setHovered("pin")}
+          onMouseLeave={() => setHovered(null)}
+          onFocus={() => setFocused("pin")}
+          onBlur={() => setFocused(null)}
+          aria-pressed={pinned}
+          aria-label={pinned ? t("chat.unpinPanel") : t("chat.pinPanel")}
+          title={pinned ? t("chat.unpinPanel") : t("chat.pinPanel")}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 22,
+            height: 22,
+            borderRadius: "50%",
+            border: "none",
+            background:
+              pinned || hovered === "pin" ? theme.bg.surfaceMuted : "transparent",
+            cursor: "pointer",
+            padding: 0,
+            flexShrink: 0,
+            boxShadow: focused === "pin" ? createFocusRing(theme.accent.primary) : "none"
+          }}>
+          <PinIcon
+            size={13}
+            color={pinned ? theme.accent.primary : theme.text.secondary}
+            pinned={pinned}
+          />
+        </button>
 
         <button
           onClick={onClose}
@@ -445,93 +590,6 @@ export default function ChatPanel({
           <CloseIcon size={11} color={theme.text.secondary} />
         </button>
       </div>
-
-      {/* Captured text capsule tag */}
-      {hasCapturedText && (
-        <div
-          style={{
-            padding: `${uiSpace[4]}px ${uiSpace[8]}px`,
-            borderBottom: `0.5px solid ${theme.border.hairline}`,
-            flexShrink: 0
-          }}>
-          <div
-            style={{
-              position: "relative",
-              display: "inline-flex"
-            }}
-            onMouseEnter={() => setCapturedTagHovered(true)}
-            onMouseLeave={() => setCapturedTagHovered(false)}
-          >
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: uiSpace[6],
-                padding: `${uiSpace[4]}px ${uiSpace[10]}px`,
-                borderRadius: 999,
-                background: theme.brand.secondary,
-                color: theme.text.primary,
-                fontSize: uiTypography.fontSize.xs,
-                fontWeight: uiTypography.fontWeight.medium,
-                cursor: "default",
-                transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
-                lineHeight: 1.4
-              }}
-            >
-              <span>{t("chat.selectedText")}</span>
-              {capturedTagHovered && (
-                <button
-                  onClick={() => onCapturedTextChange("")}
-                  onMouseDown={(event) => event.stopPropagation()}
-                  aria-label={t("chat.clearCapturedText")}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 16,
-                    height: 16,
-                    borderRadius: "50%",
-                    border: "none",
-                    background: theme.bg.surfaceMuted,
-                    cursor: "pointer",
-                    padding: 0,
-                    flexShrink: 0
-                  }}
-                >
-                  <CloseIcon size={10} color={theme.text.secondary} />
-                </button>
-              )}
-            </div>
-            {capturedTagHovered && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: "100%",
-                  left: 0,
-                  marginTop: uiSpace[4],
-                  padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
-                  borderRadius: uiRadius.md,
-                  background: theme.bg.surface,
-                  border: `1px solid ${theme.border.default}`,
-                  boxShadow: uiShadow.md,
-                  fontSize: uiTypography.fontSize.xs,
-                  color: theme.text.secondary,
-                  maxWidth: 280,
-                  maxHeight: 120,
-                  overflowY: "auto",
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                  zIndex: 10,
-                  lineHeight: 1.4,
-                  pointerEvents: "none"
-                }}
-              >
-                {capturedText}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Messages area */}
       <div

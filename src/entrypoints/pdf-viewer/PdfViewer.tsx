@@ -3,8 +3,8 @@ import * as pdfjsLib from "pdfjs-dist"
 
 import SelectionToolbar from "@/entrypoints/content/components/SelectionToolbar"
 import ChatSession from "@/entrypoints/content/components/ChatSession"
-import type { ChatSessionInit } from "@/entrypoints/content/components/ChatSession"
 import { fallbackAnchor, type AnchorRect } from "@/entrypoints/content/components/floating"
+import { useChatSessions } from "@/entrypoints/content/hooks/useChatSessions"
 import { useToolbarState } from "@/entrypoints/content/hooks/useToolbarState"
 import { initContentScriptAnalytics, trackEvent } from "@/shared/analytics"
 import { resolveActionTemplate, formatFreeInputPrompt } from "@/shared/prompt"
@@ -202,21 +202,10 @@ export function PdfViewerPage() {
   }, [toolbarAnchor])
 
   /**
-   * 当前对话会话（null = 无会话）。新触发总是创建全新实例：
-   * - 不同 action / 选区内容变化 → 新实例替换旧实例（key 变更强制卸载重建）
-   * - 同一动作 + 同一选区且会话仍开着（initialPrompt 相同）→ 防抖忽略，不重复响应；
-   *   只有会话被关闭（Esc / × / 点窗外）后才能重新触发
+   * 对话会话管理（多实例并存）：新触发总是追加全新实例，钉住的实例继续驻留；
+   * 关闭（× / 点外 / Esc）时按实例逐个销毁。Esc 在 hook 内统一监听，一次关一个。
    */
-  const [chatSession, setChatSession] = useState<ChatSessionInit | null>(null)
-  const nextSessionIdRef = useRef(1)
-
-  /** 创建全新对话会话实例（替换并销毁旧实例） */
-  const openChatSession = useCallback((session: Omit<ChatSessionInit, "id">) => {
-    setChatSession({ ...session, id: nextSessionIdRef.current++ })
-  }, [])
-
-  /** 关闭当前对话会话：实例销毁（卸载时中断流式并清理定时器） */
-  const closeChatSession = useCallback(() => setChatSession(null), [])
+  const { sessions, openSession, closeSession, setSessionPinned, hasSessionForPrompt } = useChatSessions()
 
   // Custom selection detection for PDF text layer
   useEffect(() => {
@@ -290,9 +279,9 @@ export function PdfViewerPage() {
       const context = { ...selectionContext, text }
       const prompt = resolveActionTemplate(template, context, settings)
 
-      // 防抖：同一 action（模板解析 prompt 相同，即选区内容未变）且对话会话
-      // 仍开着时忽略重复点击；会话被关闭后（chatSession 为 null 或已换新）才响应
-      if (chatSession?.initialPrompt === prompt) {
+      // 防抖：存在解析出相同 prompt 的未关闭会话（同动作同选区重复点击）时忽略；
+      // 相应会话被关闭后才重新响应；钉住的会话继续驻留，其它动作正常弹出新实例
+      if (hasSessionForPrompt(prompt)) {
         return
       }
 
@@ -306,15 +295,15 @@ export function PdfViewerPage() {
         custom_action_labels: customActions.map((a) => a.label).join(",")
       })
 
-      // 每次触发均创建独立会话实例（旧实例被整体销毁）
-      openChatSession({
+      // 每次触发均追加独立会话实例（与既有实例并存，钉住的不会被替换）
+      openSession({
         anchor: takeToolbarAnchor(),
         capturedText: text,
         context,
         initialPrompt: prompt
       })
     },
-    [selectionContext, chatSession, openChatSession, takeToolbarAnchor]
+    [selectionContext, hasSessionForPrompt, openSession, takeToolbarAnchor]
   )
 
   // Handle quick action
@@ -357,18 +346,20 @@ export function PdfViewerPage() {
 
       const context = { ...selectionContext, text }
       const prompt = formatFreeInputPrompt(input, text)
-      if (chatSession?.initialPrompt === prompt) {
+      // 防抖：与 handleAction 同规则（钉住的会话也不阻断新触发，仅同 prompt 忽略）
+      if (hasSessionForPrompt(prompt)) {
         return
       }
 
-      openChatSession({
+      // 多实例并存：钉住的会话不会被替换，自由输入也弹出新实例
+      openSession({
         anchor: takeToolbarAnchor(),
         capturedText: text,
         context,
         initialPrompt: prompt
       })
     },
-    [selectionContext, chatSession, openChatSession, takeToolbarAnchor]
+    [selectionContext, hasSessionForPrompt, openSession, takeToolbarAnchor]
   )
 
   if (loading) {
@@ -411,10 +402,16 @@ export function PdfViewerPage() {
           onRectChange={handleToolbarRectChange}
         />
 
-        {/* 对话会话：每个 action 触发独立创建实例，关闭即销毁（key 变更强制重建全新实例） */}
-        {chatSession ? (
-          <ChatSession key={chatSession.id} init={chatSession} onClose={closeChatSession} />
-        ) : null}
+        {/* 对话会话：多实例并存，逐个独立销毁（onClose/onPinnedChange 以 id 闭包捕获） */}
+        {sessions.map((session) => (
+          <ChatSession
+            key={session.id}
+            init={session}
+            pinned={session.pinned}
+            onPinnedChange={(pinned) => setSessionPinned(session.id, pinned)}
+            onClose={() => closeSession(session.id)}
+          />
+        ))}
       </div>
 
       <div

@@ -157,12 +157,21 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   上报自身落位（文档坐标矩形 `AnchorRect`）；App 在触发动作时快照一份传给面板。
   `placeNearAnchor()`：下方放不下自动翻转到上方，两边都放不下收敛回视口，
   水平方向钳制在文档安全区内。`fallbackAnchor()` 用选区锚点兜底。
-- **对话会话 `ChatSession.tsx` / 内容件 `ChatPanel.tsx`**：触发 AI 动作后自动浮现在
-  工具栏下方。每次触发均创建**独立会话实例**（App/PdfViewer 以递增 id 作 React key，
-  挂载即发送动作解析出的首个 prompt），关闭（Esc / 点击窗外 / 头部 ×）即整体销毁
-  （卸载时中断流式并清理节流定时器）；`useChatState` 由 ChatSession 内部调用，
-  每实例持有独立的 messages / abort / 节流定时器。防抖：同一动作在同一选区上
-  （解析 prompt 相同）且会话仍开着时忽略重复点击，会话被关闭后才能重新触发。
+- **对话会话 `ChatSession.tsx` / 内容件 `ChatPanel.tsx`**：触发 AI 动作后弹出新的
+  会话实例。**多实例并存**（`hooks/useChatSessions.ts`，App / PdfViewer 共用）：
+  每次触发均**追加**全新实例（递增 id 作 React key，挂载即发送动作解析出的首个
+  prompt），不替换既有实例；单个实例关闭（× / 点外 / Esc）只销毁自身（卸载时中断
+  流式并清理节流定时器）。Esc 由 hook 统一监听（逐面板监听会一次按键连环关闭所有
+  面板），每按一次销毁最新创建的一个；IME 组合中的 Esc 属输入法行为，忽略。
+  `useChatState` 由 ChatSession 内部调用，每实例持有独立的 messages / abort / 节流
+  定时器。防抖：存在解析 prompt 相同的未关闭会话（同动作同选区重复点击）时忽略
+  本次触发，相应会话被关闭后才能重新触发；其余动作不受已开会话（含钉住的）阻断。
+- **对话窗头部交互**：头部左侧为模型胶囊（芯片图标 + 模型名内联显示，可拖拽），
+  右侧为图钉钉住按钮、× 关闭；钉住（顶针图标填色 + 45° 旋转变实心）后点击窗外
+  不再关闭（Esc / × 仍可关闭），且在新触发时**继续驻留与其他实例并存**（钉住状态
+  由父级持有：ChatPanel 受控 props → ChatSession → useChatSessions 回写）。
+  头部整条为拖拽手柄（按钮除外），按住空白处可拖动整个对话窗：拖过一次后位置
+  归用户接管（`draggedRef`），resize 时只钳制回视口而不再按锚点重算。
 - **朗读控件 `SpeechWidget.tsx`**：触发朗读后浮现于工具栏落位下方，默认展开为
   控制条；鼠标移出 300ms（或触发后 4s 一直未交互）自动收起为 32px 小圆球，
   悬停/点击圆球再次展开；morph 时用 `translateX` 补偿宽度变化使中心不动。
@@ -183,16 +192,17 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
 - 面板的点外关闭监听必须用 `event.composedPath()` 穿透 Shadow DOM；
   层级：工具栏 `uiLayer.overlay` > 面板 `uiLayer.panel`。
 - 输入框 Enter 发送必须检查 `event.nativeEvent.isComposing`（IME 组合确认不是发送）。
-- 对话为单轮场景内存态：关闭面板 = 会话实例整体销毁；新动作触发（不同 action 或
-  选区内容变化）必创建全新实例，不复用旧 messages；同一动作同一选区重复点击被防抖
-  抑制（initialPrompt 相同且会话未关闭）。
+- 对话为单轮场景内存态：关闭面板 = 该会话实例整体销毁；新动作触发总是追加全新实例
+  （多实例并存，不复用旧 messages；钉住的实例不计入替换，而是驻留并存）；同一动作
+  同一选区重复点击被防抖抑制（存在 initialPrompt 相同的未关闭会话）。
+- 对话面板（ChatPanel）自身只管点外关闭与钉住；Esc 键统一在 useChatSessions 监听，
+  面板内不再另加 Esc 监听（避免多实例时一次按键连环关闭）。
 - copy 快捷动作仍会关闭工具栏（复制后选区即被消费，属预期行为）。
 
 ### 待优化清单
 - [ ] 无障碍：状态变化无 `aria-live` 播报；面板/圆球无键盘入口（Tab 不可达）
 - [ ] 代码打磨：消息区滚动条颜色 hardcoded 未适配 dark 模式；朗读控件收起动画与
-      小圆球悬停展开手感需实测微调
-- [ ] 对话窗暂不支持拖拽/resize（如需可复用历史 `useDraggable` 思路）
+      小圆球悬停展开手感需实测微调；对话窗已支持拖拽（头部手柄），暂不支持 resize
 
 ## Manual Verification
 - After `npm run build`, load `.output/chrome-mv3` in `chrome://extensions` as an unpacked extension.

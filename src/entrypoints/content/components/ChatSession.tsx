@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef } from "react"
 
 import ChatPanel from "@/entrypoints/content/components/ChatPanel"
 import type { AnchorRect } from "@/entrypoints/content/components/floating"
@@ -11,7 +11,7 @@ export interface ChatSessionInit {
   id: number
   /** 锚定矩形：触发时刻快照的工具栏落位（文档坐标） */
   anchor: AnchorRect | null
-  /** 触发时的选区文本（展示为胶囊标签） */
+  /** 触发时的选区文本（快照，目前仅用于空状态文案区分） */
   capturedText: string
   /** 选区上下文（用于 system prompt 与后续追问） */
   context: SelectionContext
@@ -26,6 +26,9 @@ export interface ChatSessionInit {
 
 interface Props {
   init: ChatSessionInit
+  /** 钉住状态（父级持有，跨渲染持久）；钉住后父级会保护本会话不被新触发替换 */
+  pinned: boolean
+  onPinnedChange: (pinned: boolean) => void
   /** 关闭会话（父级销毁本实例） */
   onClose: () => void
 }
@@ -35,9 +38,8 @@ interface Props {
  * 实例内部持有独立的 messages、流式请求 abort、输入框状态，
  * 互不与其它会话共享（卸载时中断流式并清理节流定时器）。
  */
-export default function ChatSession({ init, onClose }: Props) {
+export default function ChatSession({ init, pinned, onPinnedChange, onClose }: Props) {
   const chat = useChatState()
-  const [capturedText, setCapturedText] = useState(init.capturedText)
 
   /** 挂载即完成一次性初始化，防止意外重放（卸载后再挂载会是新实例，ref 自动归零） */
   const bootstrappedRef = useRef(false)
@@ -59,11 +61,12 @@ export default function ChatSession({ init, onClose }: Props) {
     <ChatPanel
       open
       anchor={init.anchor}
-      capturedText={capturedText}
+      capturedText={init.capturedText}
       messages={chat.messages}
       requestState={chat.requestState.status}
       modelName={chat.modelName}
-      onCapturedTextChange={setCapturedText}
+      pinned={pinned}
+      onPinChange={onPinnedChange}
       onSend={(input) => {
         void chat.sendPrompt(input)
       }}
