@@ -46,6 +46,7 @@ export default {
   "chat.modelLabel": "Model",
   "island.chat.generating": "Generating",
   "island.chat.ask": "Ask",
+  "island.chat.speaking": "Reading aloud",
   "island.chat.done": "Done",
   "island.chat.cancelled": "Cancelled",
   "island.chat.failed": "Generation failed",

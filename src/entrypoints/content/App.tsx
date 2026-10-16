@@ -260,7 +260,7 @@ export default function App() {
   const chatPillContent = chatActive ? (
     <ChatPillContent phase={chatPhase as ChatIslandPhase} onDismiss={clearConversation} />
   ) : (
-    <ChatIdlePill />
+    <ChatIdlePill speaking={speechPlayer.state.status === "playing"} />
   )
 
   const chatCircleContent = <ChatCircleContent phase={chatPhase} />

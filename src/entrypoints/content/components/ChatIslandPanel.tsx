@@ -101,7 +101,7 @@ function CancelledGlyph({ color }: { color: string }) {
 /**
  * 聊天岛 idle 态胶囊：笑脸 +「询问」，邀请用户发起对话。
  */
-export function ChatIdlePill() {
+export function ChatIdlePill({ speaking = false }: { speaking?: boolean }) {
   const theme = useUiTheme()
   const { t } = useI18n()
 
@@ -115,7 +115,8 @@ export function ChatIdlePill() {
         width: "100%",
         padding: "0 10px"
       }}>
-      <SmileyFace size={17} />
+      {/* 朗读进行中：笑脸同步开合说话，文字跟变为「朗读中」 */}
+      <SmileyFace size={21} mood={speaking ? "speaking" : "idle"} />
       <span
         style={{
           fontSize: 12.5,
@@ -123,7 +124,7 @@ export function ChatIdlePill() {
           color: theme.text.primary,
           whiteSpace: "nowrap"
         }}>
-        {t("island.chat.ask")}
+        {speaking ? t("island.chat.speaking") : t("island.chat.ask")}
       </span>
     </div>
   )
@@ -133,8 +134,8 @@ export function ChatIdlePill() {
 export function ChatCircleContent({ phase }: { phase: ChatIslandPhase | "idle" }) {
   const theme = useUiTheme()
 
-  if (phase === "idle") return <SmileyFace size={15} animated={false} />
-  if (phase === "thinking") return <SmileyFace size={15} mood="thinking" />
+  if (phase === "idle") return <SmileyFace size={18} animated={false} />
+  if (phase === "thinking") return <SmileyFace size={18} mood="thinking" />
   if (phase === "streaming") return <TypingCursor color={theme.brand.primary} />
   if (phase === "cancelled") return <CancelledGlyph color={theme.text.secondary} />
   if (phase === "done") {
@@ -207,7 +208,7 @@ export function ChatPillContent({
 
   const icon =
     phase === "thinking" ? (
-      <SmileyFace size={14} mood="thinking" />
+      <SmileyFace size={17} mood="thinking" />
     ) : phase === "streaming" ? (
       <TypingCursor color={theme.brand.primary} />
     ) : phase === "done" ? (

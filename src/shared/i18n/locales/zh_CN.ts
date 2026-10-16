@@ -46,6 +46,7 @@ export default {
   "chat.modelLabel": "模型",
   "island.chat.generating": "生成中",
   "island.chat.ask": "询问",
+  "island.chat.speaking": "朗读中",
   "island.chat.done": "完成",
   "island.chat.cancelled": "已取消",
   "island.chat.failed": "生成失败",
