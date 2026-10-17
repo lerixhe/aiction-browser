@@ -63,6 +63,7 @@ export default function SelectionToolbar({
   const userDraggedRef = useRef(false)
   const [isDragging, setIsDragging] = useState(false)
   const [hoveredQuickId, setHoveredQuickId] = useState<string | null>(null)
+  const [pressedQuickId, setPressedQuickId] = useState<string | null>(null)
 
   const updatePosition = useCallback(() => {
     if (!visible || !toolbarRef.current || !posRef.current) return
@@ -239,6 +240,7 @@ export default function SelectionToolbar({
         }}>
           {quickActions.map((action) => {
             const isHovered = hoveredQuickId === action.id
+            const isPressed = pressedQuickId === action.id
             const tooltip = t(`options.actions.quickAction.${action.type}` as never)
             return (
               <ToolbarTooltip key={action.id} label={tooltip}>
@@ -246,27 +248,33 @@ export default function SelectionToolbar({
                   type="button"
                   aria-label={tooltip}
                   onMouseEnter={() => setHoveredQuickId(action.id)}
-                  onMouseLeave={() => setHoveredQuickId(null)}
+                  onMouseLeave={() => {
+                    setHoveredQuickId(null)
+                    setPressedQuickId(null)
+                  }}
+                  onMouseDown={() => setPressedQuickId(action.id)}
+                  onMouseUp={() => setPressedQuickId(null)}
                   onClick={() => onQuickAction(action)}
                   style={{
                     width: BUTTON_HEIGHT,
                     height: BUTTON_HEIGHT,
                     borderRadius: uiRadius.sm,
                     border: "none",
-                    background: isHovered ? theme.accent.primary : "transparent",
-                    color: isHovered ? theme.text.inverse : theme.text.primary,
+                    // hover：仅图标变主题色；按下：立即填充主题色（不变换，松开淡出）
+                    background: isPressed ? theme.accent.primary : "transparent",
+                    color: isPressed ? theme.text.inverse : isHovered ? theme.accent.primary : theme.text.primary,
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     outline: "none",
                     padding: 0,
-                    transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}, color ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+                    transition: isPressed ? "none" : `background ${uiMotion.durationFast} ${uiMotion.easingStandard}, color ${uiMotion.durationFast} ${uiMotion.easingStandard}`
                   }}>
                   <ActionIcon
                     icon={action.icon}
                     size={16}
-                    color={isHovered ? theme.text.inverse : theme.text.primary}
+                    color={isPressed ? theme.text.inverse : isHovered ? theme.accent.primary : theme.text.primary}
                   />
                 </button>
               </ToolbarTooltip>
