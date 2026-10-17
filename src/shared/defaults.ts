@@ -77,9 +77,9 @@ export const DEFAULT_SYSTEM_PROMPT = `# 角色定义
 - 重要内容使用粗体强调
 
 # 语言偏好
-- 始终使用中文（简体）回答用户
+- 始终使用 {uiLanguage} 回答用户
 - 代码术语和技术名词保持原文
-- 代码注释使用中文
+- 代码注释使用 {uiLanguage}
 
 # 领域特定指导
 

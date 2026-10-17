@@ -18,7 +18,8 @@ const PLACEHOLDERS = [
   { token: "{pageTitle}", i18nKey: "options.systemPrompt.placeholder.pageTitle" },
   { token: "{pageUrl}", i18nKey: "options.systemPrompt.placeholder.pageUrl" },
   { token: "{metaDescription}", i18nKey: "options.systemPrompt.placeholder.metaDescription" },
-  { token: "{surround}", i18nKey: "options.systemPrompt.placeholder.surround" }
+  { token: "{surround}", i18nKey: "options.systemPrompt.placeholder.surround" },
+  { token: "{uiLanguage}", i18nKey: "options.systemPrompt.placeholder.uiLanguage" }
 ] as const
 
 interface SystemPromptSectionProps {
@@ -104,7 +105,12 @@ export function SystemPromptSection({ settings, saveSettingsNow }: SystemPromptS
           }}>
           {t("options.systemPrompt.placeholdersTitle")}
         </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: uiSpace[6] }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+            gap: uiSpace[6]
+          }}>
           {PLACEHOLDERS.map((placeholder) => (
             <button
               key={placeholder.token}
@@ -114,7 +120,9 @@ export function SystemPromptSection({ settings, saveSettingsNow }: SystemPromptS
               style={{
                 display: "inline-flex",
                 alignItems: "center",
+                justifyContent: "flex-start",
                 gap: uiSpace[6],
+                width: "100%",
                 padding: `${uiSpace[4]}px ${uiSpace[10]}px`,
                 borderRadius: uiRadius.sm,
                 border: `0.5px solid ${theme.border.hairline}`,

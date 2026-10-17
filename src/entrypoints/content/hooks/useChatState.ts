@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 
 import { ERROR_MESSAGES, UI_MESSAGES } from "@/shared/constants"
 import { streamChat } from "@/shared/messaging"
-import { buildContextSystemMessage } from "@/shared/prompt"
+import { buildContextSystemMessage, resolveUILanguageLabel } from "@/shared/prompt"
 import { trackEvent } from "@/shared/analytics"
 import { getSettings, getActiveProvider } from "@/shared/storage"
 import type { ChatMessage, ChatRequestState, ExtensionSettings, SelectionContext } from "@/shared/types"
@@ -133,7 +133,11 @@ export function useChatState() {
       // Build API messages with system context prepended
       let apiMessages = nextMessages
       if (ctx) {
-        const systemContent = buildContextSystemMessage(ctx, settings?.systemPrompt)
+        const systemContent = buildContextSystemMessage(
+          ctx,
+          settings?.systemPrompt,
+          resolveUILanguageLabel(settings?.language ?? null)
+        )
         const systemMessage = createMessage("system", systemContent)
         apiMessages = [systemMessage, ...nextMessages]
       }
