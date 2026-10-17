@@ -13,6 +13,52 @@ import { resolveActionTemplate, formatFreeInputPrompt } from "@/shared/prompt"
 import { getSettings } from "@/shared/storage"
 import type { SelectionAnchor, SelectionContext, QuickAction } from "@/shared/types"
 
+/**
+ * Clipboard API 被拒（非安全上下文 / 无用户手势等）时的兜底复制。
+ *
+ * 首选：直接对页面现有选区执行 `execCommand("copy")`——不创建、不聚焦任何节点，
+ * 因此不会触发 focusin / selectionchange 相关的选区重算（工具栏与选区保持原样）。
+ * 选区不可用时才退到离屏 textarea，并在复制后还原选区与焦点——
+ * 兜底路径同样不能让复制按钮成为「会关掉工具栏」的特例。
+ */
+function copyTextFallback(text: string) {
+  const selection = window.getSelection()
+
+  if (selection && !selection.isCollapsed) {
+    try {
+      if (document.execCommand("copy")) return
+    } catch {
+      // 继续走 textarea 方案
+    }
+  }
+
+  const ranges = selection
+    ? Array.from({ length: selection.rangeCount }, (_, i) => selection.getRangeAt(i).cloneRange())
+    : []
+  const previousActive = document.activeElement as HTMLElement | null
+
+  const textarea = document.createElement("textarea")
+  textarea.value = text
+  textarea.setAttribute("readonly", "")
+  textarea.style.position = "fixed"
+  textarea.style.top = "0"
+  textarea.style.left = "0"
+  textarea.style.opacity = "0"
+  textarea.style.pointerEvents = "none"
+  document.body.appendChild(textarea)
+  textarea.select()
+  document.execCommand("copy")
+  document.body.removeChild(textarea)
+
+  if (selection) {
+    selection.removeAllRanges()
+    ranges.forEach((range) => selection.addRange(range))
+  }
+  if (previousActive && previousActive !== document.body) {
+    previousActive.focus?.()
+  }
+}
+
 export default function App() {
   const extensionRootRef = useRef<HTMLDivElement | null>(null)
 
@@ -126,17 +172,10 @@ export default function App() {
         try {
           await navigator.clipboard.writeText(text)
         } catch {
-          // Fallback for contexts where clipboard API is blocked
-          const textarea = document.createElement("textarea")
-          textarea.value = text
-          textarea.style.position = "fixed"
-          textarea.style.opacity = "0"
-          document.body.appendChild(textarea)
-          textarea.select()
-          document.execCommand("copy")
-          document.body.removeChild(textarea)
+          copyTextFallback(text)
         }
-        closeToolbar()
+        // 复制属快捷动作，与其它动作一致：保留选区与工具栏，
+        // 由用户另行选区 / 点击页面空白时自然关闭
       } else if (action.type === "speakText") {
         const trimmed = text.trim()
         if (!trimmed) return
@@ -147,7 +186,7 @@ export default function App() {
 
       void trackEvent("quick_action_clicked", { action_type: action.type })
     },
-    [selectionContext, closeToolbar, speechPlayer.start]
+    [selectionContext, speechPlayer.start]
   )
 
   // Handle free submit from panel captured text

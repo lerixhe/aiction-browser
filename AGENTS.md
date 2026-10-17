@@ -148,8 +148,10 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
 ## Floating Panels (悬浮面板：对话窗 / 朗读控件)
 
 灵动岛方案已移除。触发动作后划词工具栏**保持可见、选区不清空**
-（`SelectionToolbar.handleActionClick` 不再 `removeAllRanges`；copy 快捷动作除外），
-用户可在工具栏上连续触发不同动作；工具栏在新选区/点击页面空白/copy 时自然关闭。
+（`SelectionToolbar.handleActionClick` 不再 `removeAllRanges`；copy 快捷动作同样如此——
+复制后不发 `closeToolbar()`，且 `copyTextFallback` 只在 Clipboard API 被拒时才
+临时借用页面选区并原样还原），
+用户可在工具栏上连续触发不同动作；工具栏只在新选区 / 点击页面空白 / 手动关闭时关闭。
 所有面板统一锚定在触发时刻快照的工具栏落位矩形上（页面滚动时随文档一起滚动，
 不跟随此后的工具栏拖拽）；**朗读控件是唯一例外**——它固定在视口顶部中间，
 不依赖锚点（见下方朗读控件条目）。
@@ -256,7 +258,10 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   同一选区重复点击被防抖抑制（存在 initialPrompt 相同的未关闭会话）。
 - 对话面板（ChatPanel）自身只管点外关闭与钉住；Esc 键统一在 useChatSessions 监听，
   面板内不再另加 Esc 监听（避免多实例时一次按键连环关闭）。
-- copy 快捷动作仍会关闭工具栏（复制后选区即被消费，属预期行为）。
+- **工具栏上的动作按钮一律不关闭工具栏**：普通动作（`handleAction`）、朗读
+  （`handleQuickAction` → speakText）与复制（copyToClipboard）都不调 `closeToolbar()`；
+  复制后也能继续在工具栏上触发别的动作。复制需要复制临时内容时（Clipboard API 被拒）
+  也必须在操作后还原选区与焦点，不能借“选区被消费”把复制变成例外。
 
 ### 待优化清单
 - [ ] 无障碍：状态变化无 `aria-live` 播报；面板/圆球无键盘入口（Tab 不可达）
@@ -276,7 +281,7 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
 - Launching macOS Google Chrome with `--load-extension=.output/chrome-mv3` may fail to load the unpacked extension in some local automation setups, even when DevTools shows unrelated extension targets. If `chrome-extension://<id>/options.html` opens `chrome-error://chromewebdata/` with `ERR_FILE_NOT_FOUND`, the ID is not AIction or the extension did not load.
 - For content-script UI smoke tests, a useful fallback is a synthetic page test: open a local HTTP page, stub the minimal `chrome.runtime` / `chrome.storage` APIs, inject the built `.output/chrome-mv3/content-scripts/content.js`, select text, and inspect the Shadow DOM. This verifies the built content bundle behavior, but it does not prove manifest-driven Chrome injection.
 - Selection toolbar tests should account for i18n. The quick copy button may have `aria-label="Copy to Clipboard"` or `aria-label="复制到剪贴板"` depending on the resolved UI language.
-- When verifying copy behavior, assert both outcomes: clipboard text equals the selected text, and the toolbar closes after the copy quick action.
+- When verifying copy behavior, assert both outcomes: clipboard text equals the selected text, and the toolbar **stays visible** after the copy quick action (only new selection / clicking blank page / manual close hides it).
 - Always remove temporary test scripts and stop local test servers / temporary Chrome profiles after browser automation.
 
 ## Icon Generation Workflow
