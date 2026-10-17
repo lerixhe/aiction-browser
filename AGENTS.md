@@ -160,11 +160,26 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
 - **卡片态（收缩态）与聊天态**：对话窗有两种形态（`ChatPanel` 内部 `mode`），新触发默认
   进入**卡片态**——同一锚点、同一宽度，高度随内容自适应（`maxHeight` 钳制，落位计算用
   `CARD_ASSUME_HEIGHT` 假设高度，避免误判为「下方放不下」而错误翻转到上方），内容区只渲染
-  assistant 消息（隐藏用户气泡）、无输入区，底部仅一个「追问」按钮；卡片态的 assistant
+  assistant 消息（隐藏用户气泡）、无输入区（头部专门有一个形态切换按钮承载展开入口）；卡片态的 assistant
   内容**去掉气泡框直铺铺满面板**（`MessageBubble` 的 `variant="card"`：透明背景、无边框
-  圆角阴影、`maxWidth` 100%，多条间用 hairline 分隔），展开为聊天态后回到常规气泡样式；点击追问展开为完整
-  **聊天态**（消息 + 输入区），并自动聚焦输入框；聊天态头部有收起按钮可回卡片态（收起时
-  blur 输入框，防止残留焦点落入已隐藏的 textarea）。两态共用同一会话实例：`useChatState`
+  圆角阴影、`maxWidth` 100%，多条间用 hairline 分隔），展开为聊天态后回到常规气泡样式。
+- **形态切换按钮（头部单按钮两态）**：卡片态 =「追问」（对话气泡图标 + 文案），聊天态 =「收起」
+  （人字箭头 + 文案），两态**同族同形**（同高度/同圆角/同图标尺寸/同 hover，仅图标与文案变），
+  点击展开为完整**聊天态**（消息 + 输入区）并自动聚焦输入框，或在聊天态点击回卡片态并 blur
+  输入框（防止残留焦点落入已隐藏的 textarea）。两态共用 `handleToggleMode`，`aria-expanded`
+  随态切换；`aria-label` / `title` 用描述性长文案 `chat.expandChat` / `chat.collapsePanel`，
+  可见文案用短文案 `chat.expandChat` / `chat.collapseShort`（「收起」/「Collapse」，两态宽度才接近）。
+  卡片态高度比聊天态矮一个底部栏，`CARD_ASSUME_HEIGHT` 据此取 170。
+- **头部控件统一样式族**：`ChatPanel.tsx` 模块级 `headerControlStyle(theme, {withLabel, hovered,
+  focused, active})` 是形态切换 / 钉住 / 关闭三个按钮的唯一样式来源（高 24、`uiRadius.pill`——
+  icon-only 呈正圆、带文案呈胶囊、图标统一 12、hover = surfaceMuted、focus ring 统一）。
+  `active` 用于开关已开启态（目前只有钉住）：主色 12% 淡底（`${theme.accent.primary}1F`）。
+  新增头部按钮时直接调它，不要再手写一份 style。
+  形态切换与钉住都带可见文案（`chat.expandChat` / `chat.collapseShort` / `chat.pinShort`），
+  关闭按钮保持纯图标（× 语义自明）；钉住是切换型按钮，可见文案**不随态变**（恒为「钉住」/
+  "Pin"，避免「钉住/取消钉住」宽度跳变），开关状态靠 `active` 淡底 + 填色图标 + `aria-pressed` 表达，
+  描述性长文案留在 `aria-label` / `title`（`chat.pinPanel` / `chat.unpinPanel`）。
+- 两态共用同一会话实例：`useChatState`
   的 messages/流式跨态持续进行，卡片态下流式生成照常渲染。
 - **对话会话 `ChatSession.tsx` / 内容件 `ChatPanel.tsx`**：触发 AI 动作后弹出新的
   会话实例。**多实例并存**（`hooks/useChatSessions.ts`，App / PdfViewer 共用）：

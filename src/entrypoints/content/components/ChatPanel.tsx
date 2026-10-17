@@ -17,7 +17,49 @@ const PANEL_WIDTH = 480
 /** 对话窗理想高度（超高视口按可用高度收缩） */
 const PANEL_MAX_HEIGHT = 640
 /** 卡片态落位时的假设高度（实际高度随内容自适应，仅参与翻转/钳制计算） */
-const CARD_ASSUME_HEIGHT = 200
+const CARD_ASSUME_HEIGHT = 170
+
+/**
+ * 头部控件统一样式族：icon-only 呈正圆、带文案呈胶囊，几何与交互完全一致。
+ * 形态切换 / 钉住 / 关闭三个按钮共用，避免各自手写样式而逐渐走形。
+ */
+function headerControlStyle(
+  theme: ReturnType<typeof useUiTheme>,
+  {
+    withLabel = false,
+    hovered = false,
+    focused = false,
+    active = false
+  }: { withLabel?: boolean; hovered?: boolean; focused?: boolean; active?: boolean } = {}
+): React.CSSProperties {
+  const size = 24
+  return {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: uiSpace[4],
+    height: size,
+    minWidth: size,
+    padding: withLabel ? `0 ${uiSpace[8]}px` : 0,
+    borderRadius: uiRadius.pill,
+    border: "none",
+    // active = 开关已开启（目前只有钉住）：主色 12% 淡底，与普通 hover 区分
+    background: active
+      ? `${theme.accent.primary}1F`
+      : hovered
+        ? theme.bg.surfaceMuted
+        : "transparent",
+    color: theme.text.secondary,
+    cursor: "pointer",
+    flexShrink: 0,
+    fontFamily: uiTypography.fontFamily,
+    fontSize: uiTypography.fontSize.xs,
+    lineHeight: 1,
+    whiteSpace: "nowrap",
+    boxShadow: focused ? createFocusRing(theme.accent.primary) : "none",
+    transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+  }
+}
 
 function CloseIcon({ size, color }: { size: number; color: string }) {
   return (
@@ -453,17 +495,20 @@ export default function ChatPanel({
   /** 卡片态只呈现 AI 生成的内容（隐藏用户气泡与输入框）；聊天态保持全部消息 */
   const visibleMessages = mode === "card" ? messages.filter((item) => item.role === "assistant") : messages
 
-  /** 卡片态 → 聊天态：展开后聚焦输入框，方便直接追问 */
-  const handleExpand = useCallback(() => {
-    setMode("chat")
-    requestAnimationFrame(() => inputRef.current?.focus())
-  }, [])
-
-  /** 聊天态 → 卡片态：收起时释放输入框残留焦点，避免后续按键落入已隐藏的输入框 */
-  const handleCollapse = useCallback(() => {
-    setMode("card")
-    inputRef.current?.blur()
-  }, [])
+  /**
+   * 头部形态切换按钮（单按钮两态）：卡片态 = 追问（展开为聊天态），聊天态 = 收起。
+   * 展开后聚焦输入框方便直接追问；收起时释放输入框残留焦点，
+   * 避免后续按键落入已隐藏的 textarea。
+   */
+  const handleToggleMode = useCallback(() => {
+    const next = mode === "card" ? "chat" : "card"
+    setMode(next)
+    if (next === "chat") {
+      requestAnimationFrame(() => inputRef.current?.focus())
+    } else {
+      inputRef.current?.blur()
+    }
+  }, [mode])
   /** 用户是否停在消息区底部附近（流式期间仅贴底时才自动跟随滚动） */
   const isNearBottomRef = useRef(true)
 
@@ -552,7 +597,7 @@ export default function ChatPanel({
         }
       `}</style>
 
-      {/* 头部：拖拽手柄（模型图标左置，钉子 + 关闭右置；按钮不可拖拽） */}
+      {/* 头部：拖拽手柄（模型图标左置，形态切换 + 钉子 + 关闭右置；按钮不可拖拽） */}
       <div
         onPointerDown={handleHeaderPointerDown}
         style={{
@@ -597,32 +642,33 @@ export default function ChatPanel({
 
         <div style={{ flex: 1, alignSelf: "stretch" }} />
 
-        {mode === "chat" ? (
-          <button
-            onClick={handleCollapse}
-            onMouseEnter={() => setHovered("collapse")}
-            onMouseLeave={() => setHovered(null)}
-            onFocus={() => setFocused("collapse")}
-            onBlur={() => setFocused(null)}
-            aria-label={t("chat.collapsePanel")}
-            title={t("chat.collapsePanel")}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 22,
-              height: 22,
-              borderRadius: "50%",
-              border: "none",
-              background: hovered === "collapse" ? theme.bg.surfaceMuted : "transparent",
-              cursor: "pointer",
-              padding: 0,
-              flexShrink: 0,
-              boxShadow: focused === "collapse" ? createFocusRing(theme.accent.primary) : "none"
-            }}>
-            <CollapseIcon size={12} color={theme.text.secondary} />
-          </button>
-        ) : null}
+        {/* 形态切换：两态同族（图标 + 文案的胶囊），仅图标与文案随态切换 */}
+        <button
+          onClick={handleToggleMode}
+          onMouseEnter={() => setHovered("mode")}
+          onMouseLeave={() => setHovered(null)}
+          onFocus={() => setFocused("mode")}
+          onBlur={() => setFocused(null)}
+          aria-expanded={mode === "chat"}
+          aria-label={mode === "card" ? t("chat.expandChat") : t("chat.collapsePanel")}
+          title={mode === "card" ? t("chat.expandChat") : t("chat.collapsePanel")}
+          style={headerControlStyle(theme, {
+            withLabel: true,
+            hovered: hovered === "mode",
+            focused: focused === "mode"
+          })}>
+          {mode === "card" ? (
+            <>
+              <ExpandChatIcon size={12} color={theme.text.secondary} />
+              {t("chat.expandChat")}
+            </>
+          ) : (
+            <>
+              <CollapseIcon size={12} color={theme.text.secondary} />
+              {t("chat.collapseShort")}
+            </>
+          )}
+        </button>
 
         <button
           onClick={() => onPinChange(!pinned)}
@@ -633,26 +679,18 @@ export default function ChatPanel({
           aria-pressed={pinned}
           aria-label={pinned ? t("chat.unpinPanel") : t("chat.pinPanel")}
           title={pinned ? t("chat.unpinPanel") : t("chat.pinPanel")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 22,
-            height: 22,
-            borderRadius: "50%",
-            border: "none",
-            background:
-              pinned || hovered === "pin" ? theme.bg.surfaceMuted : "transparent",
-            cursor: "pointer",
-            padding: 0,
-            flexShrink: 0,
-            boxShadow: focused === "pin" ? createFocusRing(theme.accent.primary) : "none"
-          }}>
+          style={headerControlStyle(theme, {
+            withLabel: true,
+            hovered: hovered === "pin",
+            focused: focused === "pin",
+            active: pinned
+          })}>
           <PinIcon
-            size={13}
+            size={12}
             color={pinned ? theme.accent.primary : theme.text.secondary}
             pinned={pinned}
           />
+          {t("chat.pinShort")}
         </button>
 
         <button
@@ -663,21 +701,11 @@ export default function ChatPanel({
           onBlur={() => setFocused(null)}
           aria-label={t("chat.closePanel")}
           title={t("chat.closePanel")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 22,
-            height: 22,
-            borderRadius: "50%",
-            border: "none",
-            background: hovered === "close" ? theme.bg.surfaceMuted : "transparent",
-            cursor: "pointer",
-            padding: 0,
-            flexShrink: 0,
-            boxShadow: focused === "close" ? createFocusRing(theme.accent.primary) : "none"
-          }}>
-          <CloseIcon size={11} color={theme.text.secondary} />
+          style={headerControlStyle(theme, {
+            hovered: hovered === "close",
+            focused: focused === "close"
+          })}>
+          <CloseIcon size={12} color={theme.text.secondary} />
         </button>
       </div>
 
@@ -690,7 +718,10 @@ export default function ChatPanel({
           flex: 1,
           overflowY: "auto",
           overscrollBehavior: "contain",
-          padding: mode === "card" ? `${uiSpace[10]}px ${uiSpace[14]}px` : uiSpace[6],
+          padding:
+            mode === "card"
+              ? `${uiSpace[10]}px ${uiSpace[14]}px ${uiSpace[12]}px`
+              : uiSpace[6],
           display: "block",
           background: theme.bg.surfaceAlt,
           minHeight: 0
@@ -737,45 +768,6 @@ export default function ChatPanel({
           </div>
         ) : null}
       </div>
-
-      {/* 卡片态底部：仅一个「追问」按钮，点击展开为完整聊天态 */}
-      {mode === "card" ? (
-        <div
-          style={{
-            flexShrink: 0,
-            padding: `${uiSpace[6]}px ${uiSpace[8]}px`,
-            borderTop: `0.5px solid ${theme.border.hairline}`,
-            background: theme.bg.surface
-          }}>
-          <button
-            onClick={handleExpand}
-            onMouseEnter={() => setHovered("expand")}
-            onMouseLeave={() => setHovered(null)}
-            onFocus={() => setFocused("expand")}
-            onBlur={() => setFocused(null)}
-            aria-label={t("chat.expandChat")}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: uiSpace[6],
-              width: "100%",
-              padding: `${uiSpace[6]}px ${uiSpace[10]}px`,
-              borderRadius: uiRadius.sm,
-              border: "none",
-              background: hovered === "expand" ? theme.bg.surfaceMuted : "transparent",
-              color: theme.text.primary,
-              cursor: "pointer",
-              fontFamily: uiTypography.fontFamily,
-              fontSize: uiTypography.fontSize.sm,
-              fontWeight: uiTypography.fontWeight.medium,
-              boxShadow: focused === "expand" ? createFocusRing(theme.accent.primary) : "none"
-            }}>
-            <ExpandChatIcon size={13} color={theme.text.secondary} />
-            {t("chat.expandChat")}
-          </button>
-        </div>
-      ) : null}
 
       {/* 聊天态：消息区下方保留完整输入区 */}
       {mode === "chat" ? (
