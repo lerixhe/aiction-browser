@@ -71,10 +71,7 @@ export function ModelParamsEditor({
       kind: "effort",
       key: "reasoningEffort",
       label: "Reasoning Effort",
-      desc:
-        modelParams.reasoning === false
-          ? t("options.connection.paramReasoningEffortOffHint")
-          : t("options.connection.paramReasoningEffortDesc")
+      desc: t("options.connection.paramReasoningEffortDesc")
     }
   ]
 
@@ -158,23 +155,18 @@ export function ModelParamsEditor({
                   <option value="off">{t("options.connection.paramDisabled")}</option>
                 </select>
               ) : (
-                /* 思考力度档位 */
+                /* 思考力度档位：与思考模式开关解耦，恒可编辑。发送层不变式：
+                   reasoning=false 时档位不随请求发送（传档位会隐式开启思考） */
                 <select
                   id={`model-param-${param.key}`}
                   value={modelParams.reasoningEffort ?? ""}
-                  disabled={modelParams.reasoning === false}
                   onFocus={() => onFocusField(`modelParams-${param.key}`)}
                   onBlur={onBlurField}
                   onChange={(event) => {
                     const raw = event.target.value
                     onParamChange("reasoningEffort", raw === "" ? undefined : (raw as "low" | "medium" | "high"))
                   }}
-                  style={{
-                    ...createInput(`modelParams-${param.key}`),
-                    width: "100%",
-                    cursor: modelParams.reasoning === false ? "not-allowed" : "pointer",
-                    opacity: modelParams.reasoning === false ? 0.5 : 1
-                  }}>
+                  style={{ ...createInput(`modelParams-${param.key}`), width: "100%", cursor: "pointer" }}>
                   <option value=""></option>
                   <option value="low">low</option>
                   <option value="medium">medium</option>

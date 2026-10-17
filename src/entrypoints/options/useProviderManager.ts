@@ -15,6 +15,7 @@ import {
   type ModelParamSupport
 } from "@/shared/models-dev"
 import { requestOpenRouterModels, findOpenRouterModel } from "@/shared/openrouter"
+import { resolveProviderNpm } from "@/shared/model-params"
 import { MESSAGE_TYPES } from "@/shared/constants"
 import type {
   ExtensionSettings,
@@ -307,6 +308,17 @@ export function useProviderManager(
   // --- 智能填充参数 ---
   // 数据源优先级：models.dev（有 modelsDevId 时）> OpenRouter /models
   // 只填充「未填充」的项，用户已填的永不覆盖；点击后永远提示「成功补充 X 个」(X>=0)
+  //
+  // 思考模式 / effort 的默认值策略（中性默认，不替用户做价值预设）：
+  // - reasoning：默认**不填**（空白 = 跟随端点默认）。仅当 provider 路径存在官方
+  //   「关闭思考」映射（@ai-sdk/openai / @ai-sdk/deepseek / @openrouter/ai-sdk-provider）时
+  //   才自动填禁用——注意这是 provider 级判定，无法区分模型（o1 不可关、DeepSeek-R1 不可关，
+  //   但 gpt-5 可关），模型级数据源缺失。
+  // - reasoningEffort：仅当「明确支持调整 effort」时默认填最低档 low：
+  //   ① OpenRouter 显式声明 supported_parameters 含 reasoning_effort（模型级强信号）；
+  //   ② OpenAI 系 provider（@ai-sdk/openai）且模型为推理模型（models.dev 数据源）。
+  //   其余保持空白： Claude thinking（budget 模式）、Gemini thinking、DeepSeek-R1
+  //   等不接受 reasoning_effort 参数，盲填会直接 400。
   const handleSmartFillParams = useCallback(async () => {
     if (smartFilling) return
     setSmartFilling(true)
@@ -354,9 +366,19 @@ export function useProviderManager(
           // 未知的模型默认可填（用户自行决定）
           (!devKeyed && !orModel),
         contextSize: true, // 输入裁剪为应用层能力，恒可用
-        reasoning: devKeyed?.reasoning === true || orParams.has("reasoning"),
-        reasoningEffort: devKeyed?.reasoning === true || orParams.has("reasoning_effort")
+        reasoning: devKeyed?.reasoning === true || orParams.has("reasoning")
       }
+
+      // provider 级信号：npm 路径是否存在官方「关闭思考」映射
+      const npm = resolveProviderNpm(providerDraft, modelsDevData ?? undefined)
+      const explicitReasoningOff =
+        npm === "@ai-sdk/openai" ||
+        npm === "@ai-sdk/deepseek" ||
+        npm === "@openrouter/ai-sdk-provider"
+      // 强信号：明确接受 reasoning_effort 参数
+      const explicitEffortAdjust =
+        orParams.has("reasoning_effort") ||
+        (npm === "@ai-sdk/openai" && devKeyed?.reasoning === true)
 
       const current = providerDraft.modelParams
       const fills: Array<[keyof ModelParams, NonNullable<ModelParams[keyof ModelParams]>]> = []
@@ -376,11 +398,12 @@ export function useProviderManager(
           fills.push(["contextSize", contextSize])
         }
       }
-      // Reasoning 填充为禁用；Reasoning Effort 默认填最低档位 low
-      if (supported.reasoning && current.reasoning === undefined) {
+      // 思考模式：仅当 provider 明确支持关闭语义时自动填禁用，其余保持空白
+      if (supported.reasoning && explicitReasoningOff && current.reasoning === undefined) {
         fills.push(["reasoning", false])
       }
-      if (supported.reasoningEffort && current.reasoningEffort === undefined) {
+      // reasoningEffort：明确支持调整 effort 时默认填最低档 low，其余保持空白
+      if (explicitEffortAdjust && current.reasoningEffort === undefined) {
         fills.push(["reasoningEffort", "low" as const])
       }
 
