@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 
 import { MarkdownRenderer } from "@/shared/ui/markdown"
 import { useUiTheme } from "@/shared/ui/theme"
@@ -10,6 +10,7 @@ import {
 import { uiLayer, uiMotion, uiRadius, uiSpace, uiShadow, uiTypography } from "@/shared/ui/tokens"
 import { createButtonStyle, createFocusRing, createInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
 import { useI18n } from "@/shared/i18n/context"
+import { toSingleLine } from "@/entrypoints/content/utils/reasoningText"
 import type { ChatMessage, ChatRequestState } from "@/shared/types"
 
 /** 对话窗宽度 */
@@ -141,13 +142,13 @@ function ExpandChatIcon({ size, color }: { size: number; color: string }) {
   )
 }
 
-/** 思考中的跳动圆点 */
-function ThinkingDot({ color }: { color: string }) {
+/** 生成中的跳动圆点（用于消息区底部「AI 正在生成中…」提示） */
+function ThinkingDot({ color, size = 6 }: { color: string; size?: number }) {
   return (
     <span
       style={{
-        width: 8,
-        height: 8,
+        width: size,
+        height: size,
         borderRadius: "50%",
         background: color,
         animation: "thinking-pulse 1s ease-in-out infinite",
@@ -158,13 +159,82 @@ function ThinkingDot({ color }: { color: string }) {
   )
 }
 
+/**
+ * 思考图标（四角星）：常态静止且低对比，仅思考中播呼吸动画（缩放 + 微旋 + 明暗），
+ * 内核小点错相位心跳，形成「星光」质感。状态完全由动画表达，不再额外占一个状态点。
+ */
+function ThinkingSparkIcon({ size, color, active }: { size: number; color: string; active: boolean }) {
+  const animating = active && !prefersReducedMotion()
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      style={{
+        flexShrink: 0,
+        transformOrigin: "center",
+        opacity: active ? 1 : 0.75,
+        animation: animating ? "thinking-spark 2s ease-in-out infinite" : "none",
+        transition: `opacity ${uiMotion.durationNormal} ${uiMotion.easingStandard}`
+      }}>
+      <path
+        d="M8 1.8L9.7 6.3L14.2 8L9.7 9.7L8 14.2L6.3 9.7L1.8 8L6.3 6.3Z"
+        stroke={color}
+        strokeWidth={1.2}
+        strokeLinejoin="round"
+      />
+      <circle
+        cx="8"
+        cy="8"
+        r="1.8"
+        fill={color}
+        style={{
+          transformOrigin: "center",
+          transformBox: "fill-box",
+          animation: animating ? "thinking-core 1.4s ease-in-out infinite" : "none"
+        }}
+      />
+    </svg>
+  )
+}
+
 interface ThinkingTheme {
   text: { secondary: string; primary: string }
   bg: { surfaceMuted: string; surface: string }
-  border: { subtle: string }
+  border: { subtle: string; default: string }
   brand: { primary: string }
 }
 
+/** 思考行高度（单行） */
+const THINKING_ROW_HEIGHT = 26
+/** 原始思考文本参与单行化的尾部窗口：先截断再纯化，避免长思考每次重跑全量正则 */
+const THINKING_RAW_WINDOW = 800
+/** 单行化后保留的尾部字符数：思考可达上万字，只留尾部避免滚动节点过宽掉帧 */
+const THINKING_TEXT_WINDOW = 600
+/** 跑马灯追随系数：每帧追剩余的 16%，越大越紧跟流式输出 */
+const THINKING_FOLLOW = 0.16
+/** 跑马灯每帧最大位移（px）：限速，避免长思考时文本糊成一片 */
+const THINKING_MAX_STEP = 28
+/** 滚动视口左右渐隐：新字自右侧渐入、旧字自左侧渐出，形成「穿行而过」的观感 */
+const THINKING_FADE_MASK =
+  "linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 22px), transparent 100%)"
+/** 思考结束后定格在尾部：右侧不再渐隐，否则末几字会被淡掉 */
+const THINKING_FADE_MASK_STATIC = "linear-gradient(to right, transparent 0, #000 14px, #000 100%)"
+
+/** 是否要求减弱动效（系统设置开启时改为跳变式贴尾，不做平滑追随） */
+function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+}
+
+/**
+ * 思考行：左侧「>」展开箭头 +「思考：」标签 + 单行滚动文本。
+ *
+ * 流式思考时文本向左流动（每帧把视口贴到文本末尾，新内容从右侧渐入），
+ * 思考结束后平滑滑回开头、停成静态单行；点击整行展开完整的多行思考内容。
+ * 标签与滚动文本分列：标签固定不滚动，只有文本参与滚动。
+ */
 function ThinkingBlock({
   reasoning,
   isStreaming,
@@ -175,40 +245,132 @@ function ThinkingBlock({
   theme: ThinkingTheme
 }) {
   const { t } = useI18n()
-  // 通用方案：思考块默认折叠（不依赖模型是否支持关闭思考），点击标题可展开查看
   const [expanded, setExpanded] = useState(false)
-  const prevStreamingRef = useRef(isStreaming)
+  const [hovered, setHovered] = useState(false)
+  const [focused, setFocused] = useState(false)
+  const viewportRef = useRef<HTMLSpanElement | null>(null)
+  const trackRef = useRef<HTMLSpanElement | null>(null)
+  /** 展开的完整思考（条件挂载，收起时不渲染长 Markdown） */
+  const fullRef = useRef<HTMLDivElement | null>(null)
+  /** 当前滚动偏移：rAF 循环内累积，不进 state（每帧 setState 会拖垮流式渲染） */
+  const offsetRef = useRef(0)
 
+  /** 单行纯文本（只处理尾部窗口，思考全文仅展开态才渲染） */
+  const plainText = useMemo(
+    () => toSingleLine(reasoning.slice(-THINKING_RAW_WINDOW)).slice(-THINKING_TEXT_WINDOW),
+    [reasoning]
+  )
+
+  // 流式中：rAF 逐帧追随文本末尾（chunk 是 32ms 节流到达的，这里把跳变抹成连续位移）
   useEffect(() => {
-    if (prevStreamingRef.current && !isStreaming) {
-      setExpanded(false)
+    // 展开态不渲染单行视口，无需跑循环（收起时由下方 layout effect 直接贴到尾端）
+    if (!isStreaming || expanded) return
+    const viewport = viewportRef.current
+    const track = trackRef.current
+    if (!viewport || !track) return
+    const reduce = prefersReducedMotion()
+    track.style.transition = "none"
+    let raf = 0
+    const tick = () => {
+      // 目标 = 文本末尾贴住视口右侧；文本不足一屏时为 0（不滚动，左对齐）
+      const target = Math.max(0, track.offsetWidth - viewport.clientWidth)
+      if (target > offsetRef.current) {
+        // 只前进、不后退：文本窗口滑动与空白折叠会让量出的宽度小幅回缩，
+        // 若跟着回退，视觉上就是文字「倒着走」
+        const diff = target - offsetRef.current
+        const step = Math.min(THINKING_MAX_STEP, Math.max(0.5, diff * (reduce ? 1 : THINKING_FOLLOW)))
+        offsetRef.current = Math.min(target, offsetRef.current + step)
+        track.style.transform = `translateX(${-offsetRef.current}px)`
+      }
+      raf = requestAnimationFrame(tick)
     }
-    prevStreamingRef.current = isStreaming
-  }, [isStreaming])
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [isStreaming, expanded])
+
+  // 视口挂载 / 思考结束：无动画对齐到文本末尾并就此定格
+  // （结束后不做「滑回开头」：长距离反向滑动看起来就是倒带）
+  useLayoutEffect(() => {
+    if (expanded) return
+    const viewport = viewportRef.current
+    const track = trackRef.current
+    if (!viewport || !track) return
+    const target = Math.max(0, track.offsetWidth - viewport.clientWidth)
+    offsetRef.current = target
+    track.style.transition = "none"
+    track.style.transform = `translateX(${-target}px)`
+  }, [expanded, isStreaming])
+
+  // 展开：内容条件挂载（收起时不渲染长 Markdown），故用 max-height 自 0 过渡，
+  // 让单行框「向下撑开」而不是弹出一块内容
+  useLayoutEffect(() => {
+    if (!expanded) return
+    const el = fullRef.current
+    if (!el) return
+    if (prefersReducedMotion()) {
+      el.style.maxHeight = "none"
+      el.style.opacity = "1"
+      return
+    }
+    const target = el.scrollHeight
+    el.style.maxHeight = "0px"
+    el.style.opacity = "0"
+    void el.offsetHeight // 先把 0 高度落到样式，保证过渡有起点
+    el.style.maxHeight = `${target}px`
+    el.style.opacity = "1"
+    // 过渡结束即解除钳制：流式期间内容继续增长也不会被裁
+    const handleEnd = (event: TransitionEvent) => {
+      if (event.propertyName !== "max-height") return
+      el.style.maxHeight = "none"
+      el.removeEventListener("transitionend", handleEnd)
+    }
+    el.addEventListener("transitionend", handleEnd)
+    return () => el.removeEventListener("transitionend", handleEnd)
+  }, [expanded])
 
   return (
     <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        borderBottom: `1px solid ${theme.border.subtle}`,
-        fontSize: uiTypography.fontSize.sm
+        // 展开后画一个白底卡片（描边用 border.default：subtle 比块底色更亮，浅色下会隐形）
+        border: expanded ? `1px solid ${theme.border.default}` : undefined,
+        borderBottom: expanded ? undefined : `1px solid ${theme.border.subtle}`,
+        borderRadius: expanded ? uiRadius.md : 0,
+        // 展开态：白底卡片（比消息区/气泡都亮，与下方回答边界最清楚）；
+        // 收起态：透明，hover 时整块淡底
+        background: expanded ? theme.bg.surface : hovered ? theme.bg.surfaceMuted : "transparent",
+        boxShadow: expanded ? uiShadow.sm : "none",
+        marginBottom: expanded ? uiSpace[8] : 0,
+        fontSize: uiTypography.fontSize.sm,
+        transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}, box-shadow ${uiMotion.durationFast} ${uiMotion.easingStandard}`
       }}>
       <button
+        type="button"
         onClick={() => setExpanded((prev) => !prev)}
+        onFocus={(event) => setFocused(event.currentTarget.matches(":focus-visible"))}
+        onBlur={() => setFocused(false)}
+        aria-expanded={expanded}
+        aria-label={t("chat.thinkingProcess")}
         style={{
           display: "flex",
           alignItems: "center",
           gap: uiSpace[6],
           width: "100%",
-          padding: `${uiSpace[8]}px ${uiSpace[12]}px`,
+          height: THINKING_ROW_HEIGHT,
+          padding: `0 ${uiSpace[12]}px`,
           border: "none",
+          // 底色由外层容器统一给（整块高亮），按钮自身透明
           background: "transparent",
           color: theme.text.secondary,
           cursor: "pointer",
           fontFamily: uiTypography.fontFamily,
           fontSize: uiTypography.fontSize.sm,
-          fontWeight: uiTypography.fontWeight.medium,
-          textAlign: "left"
+          textAlign: "left",
+          outline: focused ? `2px solid ${theme.brand.primary}` : "none",
+          outlineOffset: -2
         }}>
+        {/* 展开箭头：整行均可点击展开，箭头仅作提示（展开时旋转 90°） */}
         <svg
           width="10"
           height="10"
@@ -228,21 +390,58 @@ function ThinkingBlock({
             strokeLinejoin="round"
           />
         </svg>
-        {isStreaming ? t("chat.thinking") : t("chat.thinkingProcess")}
-        {isStreaming ? <ThinkingDot color={theme.brand.primary} /> : null}
+        {/* 常态思考图标：思考中靠动画指示状态（不占额外宽度，不会让视口宽度抖动） */}
+        <ThinkingSparkIcon size={13} color={theme.text.secondary} active={isStreaming} />
+        {/* 标签：「思考」二字常驻（展开态也在），冒号只服务于其后的单行内容 */}
+        <span style={{ flexShrink: 0, fontWeight: uiTypography.fontWeight.medium }}>
+          {t("chat.thinkingLabel")}
+          {expanded ? null : t("chat.thinkingColon")}
+        </span>
+        {/* 单行跑马灯：展开后停下并隐藏（冒号与之同时让位给完整思考） */}
+        {expanded ? null : (
+          <span
+            ref={viewportRef}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              overflow: "hidden",
+              position: "relative",
+              // 流式中右侧渐隐（新字渐入）；结束后取消右侧渐隐（定格在尾部）
+              maskImage: isStreaming ? THINKING_FADE_MASK : THINKING_FADE_MASK_STATIC,
+              WebkitMaskImage: isStreaming ? THINKING_FADE_MASK : THINKING_FADE_MASK_STATIC
+            }}>
+            {/* 滚动文本：高频变化，不播报（读屏只读展开后的完整思考） */}
+            <span
+              ref={trackRef}
+              aria-hidden="true"
+              style={{
+                display: "inline-block",
+                whiteSpace: "nowrap",
+                willChange: "transform",
+                opacity: isStreaming ? 0.85 : 0.55,
+                transition: `opacity ${uiMotion.durationNormal} ${uiMotion.easingStandard}`
+              }}>
+              {plainText}
+            </span>
+          </span>
+        )}
       </button>
       {expanded ? (
         <div
+          ref={fullRef}
           style={{
-            padding: `0 ${uiSpace[12]}px ${uiSpace[8]}px`,
-            color: theme.text.secondary,
-            borderLeft: `2px solid ${theme.brand.primary}`,
-            marginLeft: uiSpace[12],
-            marginRight: uiSpace[4],
-            marginBottom: uiSpace[4],
-            opacity: 0.85
+            overflow: "hidden",
+            transition: `max-height ${uiMotion.durationExpanded} ${uiMotion.easingDecelerate}, opacity ${uiMotion.durationNormal} ${uiMotion.easingStandard}`
           }}>
-          <MarkdownRenderer content={reasoning} color={theme.text.secondary} />
+          {/* 内容与头部同一内边距，无竖线无额外缩进：是同一个框被撑高，而非内嵌引用块 */}
+          <div
+            style={{
+              padding: `0 ${uiSpace[12]}px ${uiSpace[10]}px`,
+              color: theme.text.secondary,
+              opacity: 0.85
+            }}>
+            <MarkdownRenderer content={reasoning} color={theme.text.secondary} />
+          </div>
         </div>
       ) : null}
     </div>
@@ -581,6 +780,16 @@ export default function ChatPanel({
         @keyframes thinking-pulse {
           0%, 100% { opacity: 0.4; }
           50% { opacity: 1; }
+        }
+        /* 思考图标：常态静止，仅思考中呼吸 */
+        @keyframes thinking-spark {
+          0%, 100% { opacity: 0.5; transform: scale(0.9) rotate(0deg); }
+          50% { opacity: 1; transform: scale(1.05) rotate(18deg); }
+        }
+        /* 思考图标内核：与外层错相位的心跳 */
+        @keyframes thinking-core {
+          0%, 100% { opacity: 0.35; transform: scale(0.6); }
+          50% { opacity: 1; transform: scale(1); }
         }
         [data-messages-scroll]::-webkit-scrollbar {
           width: 6px;
