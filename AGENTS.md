@@ -111,7 +111,7 @@ Shared UI in `src/shared/ui/`: `tokens.ts`, `styles.ts`, `theme.ts`, `icons.tsx`
 
 Content script hooks in `src/entrypoints/content/hooks/`: `useChatState.ts`, `useSelectionDetection.ts`, `useToolbarState.ts`, `useSpeechPlayer.ts`.
 
-Content script components in `src/entrypoints/content/components/`: `SelectionToolbar.tsx`（划词工具栏，通过 `onRectChange` 上报落位）, `floating.ts`（悬浮面板公共锚定/安全区逻辑）, `ChatSession.tsx`（单个对话会话实例：App/PdfViewer 每次触发以递增 id 作为 key 独立创建，关闭即销毁）, `ChatPanel.tsx`（悬浮对话窗内容件，由 ChatSession 渲染）, `SpeechWidget.tsx`（悬浮朗读控件：控制条 ⇄ 小圆球）, `SpeechPlayer.tsx`（TTS 内容件：`TtsControlBar` / `TtsCircleContent` / `TtsCountdownRing`）, `ToolbarActionMenu.tsx`.
+Content script components in `src/entrypoints/content/components/`: `SelectionToolbar.tsx`（划词工具栏，通过 `onRectChange` 上报落位）, `floating.ts`（悬浮面板公共锚定/安全区逻辑）, `ChatSession.tsx`（单个对话会话实例：App/PdfViewer 每次触发以递增 id 作为 key 独立创建，关闭即销毁）, `ChatPanel.tsx`（悬浮对话窗内容件，由 ChatSession 渲染）, `SpeechWidget.tsx`（悬浮朗读控件：未悬停时小圆球 ⇄ 悬停/点击展开控制条）, `SpeechPlayer.tsx`（TTS 内容件：`TtsControlBar` / `TtsCircleContent` / `TtsCountdownRing`）, `ToolbarActionMenu.tsx`.
 
 Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (deep active element traversal, extension root checks, selection helpers).
 
@@ -151,7 +151,8 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
 （`SelectionToolbar.handleActionClick` 不再 `removeAllRanges`；copy 快捷动作除外），
 用户可在工具栏上连续触发不同动作；工具栏在新选区/点击页面空白/copy 时自然关闭。
 所有面板统一锚定在触发时刻快照的工具栏落位矩形上（页面滚动时随文档一起滚动，
-不跟随此后的工具栏拖拽）。
+不跟随此后的工具栏拖拽）；**朗读控件是唯一例外**——它固定在视口顶部中间，
+不依赖锚点（见下方朗读控件条目）。
 
 - **公共定位**：`components/floating.ts`。`SelectionToolbar` 通过 `onRectChange`
   上报自身落位（文档坐标矩形 `AnchorRect`）；App 在触发动作时快照一份传给面板。
@@ -220,9 +221,18 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   ResizeObserver 也跳过。`fitPanelInViewport` 只在**未拖拽**时生效（自动落位的
   面板长高后顶出视口时拉回来），否则一开 DevTools 就会把用户拖到边缘的面板
   硬拽回视口，观感同样是「拖不出去」。
-- **朗读控件 `SpeechWidget.tsx`**：触发朗读后浮现于工具栏落位下方，默认展开为
-  控制条；鼠标移出 300ms（或触发后 4s 一直未交互）自动收起为 32px 小圆球，
-  悬停/点击圆球再次展开；morph 时用 `translateX` 补偿宽度变化使中心不动。
+- **朗读控件 `SpeechWidget.tsx`**：触发朗读后在**视口顶部中间**以小圆球态浮现
+  （`TOP_INSET = EDGE_INSET + 4`，水平为视口中心，视口过窄时钳到左侧），
+  接收 `player` 一个 prop（不再吃工具栏锚点）。鼠标移入自动展开为控制条，
+  移出 300ms（或触发后 4s 一直未交互）自动收起回 32px 小圆球，
+  触摸屏点击圆球同样展开；morph 时用 left/top 与宽高一起过渡，
+  以 placement 的 `{cx, cy}` 为中心——不靠 `transform` 补偿（否则与入场 keyframes
+  的 transform 打架）。
+- **朗读岛固定视口顶部**：容器用 `position: fixed` + 视口坐标落位
+  （`placement = {cx, cy}` 保存视口坐标，渲染时按当前尺寸反推 left/top），
+  所以视觉上恒定贴在视口顶部中间，且滚动由合成线程同步、零 JS 开销（只监听 resize
+  重算水平中心）。不用「absolute + 文档坐标」是因为岛不锚在选区/工具栏上，
+  若随文档滚动就等于把控件丢了；也不用滚动监听重算（每帧 setState 不划算）。
 - **朗读退场**：finished 且处于圆球态闲置 5s（未悬停、未展开）自动 `stop()` 卸载；
   倒计时圆环 `TtsCountdownRing` 与退场计时器同帧启停（悬停/展开暂停，移开重计），
   时长常量为 `TTS_DISMISS_MS`（SpeechPlayer 与 SpeechWidget 各定义一次，需同步改）。
@@ -236,7 +246,8 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
 
 ### 不变量
 - 面板定位是 absolute + 文档坐标（不是 fixed），随页面滚动；重新定位只发生在
-  anchor/resize 变化时。
+  anchor/resize 变化时。**朗读控件是唯一例外**：它不锚工具栏，用 fixed + 视口
+  坐标固定在视口顶部中间（滚动不重算，仅 resize 重算）。
 - 面板的点外关闭监听必须用 `event.composedPath()` 穿透 Shadow DOM；
   层级：工具栏 `uiLayer.overlay` > 面板 `uiLayer.panel`。
 - 输入框 Enter 发送必须检查 `event.nativeEvent.isComposing`（IME 组合确认不是发送）。

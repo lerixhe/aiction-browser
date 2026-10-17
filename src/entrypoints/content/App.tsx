@@ -48,11 +48,8 @@ export default function App() {
     return fallbackAnchor(toolbarAnchor)
   }, [toolbarAnchor])
 
-  const [ttsAnchor, setTtsAnchor] = useState<AnchorRect | null>(null)
-
   /** 朗读是否激活（朗读控件挂载中） */
   const ttsActive = speechPlayer.state.status !== "idle"
-
   // ---------- 对话会话实例（每个 action 触发独立创建，关闭即销毁） ----------
 
   /**
@@ -144,14 +141,13 @@ export default function App() {
         const trimmed = text.trim()
         if (!trimmed) return
 
-        // 朗读触发：朗读控件出现在工具栏落位下方（工具栏保持可见，随后控件自动收起为小圆球）
-        setTtsAnchor(takeToolbarAnchor())
+        // 朗读触发：朗读控件在视口顶部中间以小圆球浮现（随后跟随视口，鼠标移入展开）
         speechPlayer.start(trimmed)
       }
 
       void trackEvent("quick_action_clicked", { action_type: action.type })
     },
-    [selectionContext, closeToolbar, takeToolbarAnchor, speechPlayer.start]
+    [selectionContext, closeToolbar, speechPlayer.start]
   )
 
   // Handle free submit from panel captured text
@@ -212,8 +208,8 @@ export default function App() {
         />
       ))}
 
-      {/* 朗读控件：触发朗读后浮现于工具栏下方，闲置自动收起为小圆球 */}
-      {ttsActive && <SpeechWidget player={speechPlayer} anchor={ttsAnchor} />}
+      {/* 朗读控件：视口顶部中间浮现，鼠标移入展开为控制条，闲置自动收起为小圆球 */}
+      {ttsActive && <SpeechWidget player={speechPlayer} />}
     </div>
   )
 }

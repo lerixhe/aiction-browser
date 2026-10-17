@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 
 import { TtsCircleContent, TtsControlBar, TtsCountdownRing } from "@/entrypoints/content/components/SpeechPlayer"
 import type { useSpeechPlayer } from "@/entrypoints/content/hooks/useSpeechPlayer"
-import { placeNearAnchor, type AnchorRect } from "@/entrypoints/content/components/floating"
+import { EDGE_INSET } from "@/entrypoints/content/components/floating"
 import { useUiTheme } from "@/shared/ui/theme"
 import { useI18n } from "@/shared/i18n/context"
 import { uiLayer, uiMotion, uiRadius, uiTypography } from "@/shared/ui/tokens"
@@ -28,37 +28,42 @@ const TTS_DISMISS_MS = 5000
 const HOVER_COLLAPSE_MS = 300
 /** 触发后用户未交互（未悬停）时的自动收起延迟 */
 const AUTO_COLLAPSE_MS = 4000
+/** 悬浮岛距视口顶部（安全区）的间距 */
+const TOP_INSET = EDGE_INSET + 4
 
 /** 焦点抑制收起只针对文本输入类元素（含下拉框；按钮残留焦点不应阻止收起） */
 function isTextEntryElement(el: HTMLElement): boolean {
   return el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.tagName === "SELECT" || el.isContentEditable
 }
 
-/** 悬浮控件的落位状态（文档坐标） */
+/**
+ * 悬浮控件的落位锚点（视口坐标，因容器是 position: fixed）：
+ * 视口顶部中间，展开/收起都以此为几何中心，morph 时中心不动。
+ */
 interface Placement {
-  left: number
-  top: number
+  cx: number
+  cy: number
 }
 
 interface Props {
   player: SpeechPlayerInstance
-  /** 锚定矩形（工具栏落位，文档坐标） */
-  anchor: AnchorRect | null
 }
 
 /**
- * 悬浮朗读控件：触发朗读后自动浮现在划词工具栏下方（安全区自动翻转）。
+ * 悬浮朗读控件：触发朗读后在**视口顶部中间**浮出。
  *
- * - 默认展开为控制条；鼠标移出（或触发后一直未交互）自动收起为 32px 小圆球，
- *   悬停/点击圆球再次展开
+ * - 默认以小圆球出现；鼠标移入自动展开为控制条，移出（或触发后一直未交互）
+ *   自动收起回圆球，触摸屏点击圆球同样展开
+ * - 位置：视口顶部中间，用 `position: fixed` 固定（不跟文档滚走）——朗读常伴随
+ *   页面滚动，若随文档滚走就等于把控件丢了；fixed 与滚动同帧，无需监听 scroll
  * - 拖动进度条（hold）或焦点在输入类控件时，鼠标滑出不收起
  * - 播放完毕（finished）且处于圆球态时，5s 倒计时圆环走完自动退场（卸载控件）；
  *   悬停/展开期间计时暂停，移开后从头重计
  */
-export default function SpeechWidget({ player, anchor }: Props) {
+export default function SpeechWidget({ player }: Props) {
   const theme = useUiTheme()
   const { t } = useI18n()
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(false)
   const [placement, setPlacement] = useState<Placement | null>(null)
 
   const holdCountRef = useRef(0)
@@ -113,24 +118,24 @@ export default function SpeechWidget({ player, anchor }: Props) {
 
   const holdApi = useMemo(() => ({ hold, release }), [hold, release])
 
-  // ---------- 落位：工具栏下方，放不下翻转上方（按控制条尺寸预留） ----------
+  // ---------- 落位：视口顶部中间（fixed，跟随视口无需滚动监听） ----------
 
   const computePlacement = useCallback(() => {
-    const rect =
-      anchor ??
-      ({ x: window.scrollX + window.innerWidth / 2, y: window.scrollY + 80, width: 0, height: 0 } satisfies AnchorRect)
-    const placed = placeNearAnchor(rect, BAR_WIDTH, BAR_HEIGHT)
-    setPlacement({ left: placed.left, top: placed.top })
-  }, [anchor])
+    // 水平：视口水平中心；视口比控制条还窄时钳到左侧（保持可点）
+    const minCx = EDGE_INSET + BAR_WIDTH / 2
+    const cx = Math.min(Math.max(window.innerWidth / 2, minCx), Math.max(minCx, window.innerWidth - EDGE_INSET - BAR_WIDTH / 2))
+    // 垂直：以控制条高度定的中心（圆球态按自身高度居中补偿，中心不动）
+    setPlacement({ cx, cy: TOP_INSET + BAR_HEIGHT / 2 })
+  }, [])
 
   useLayoutEffect(() => {
     computePlacement()
   }, [computePlacement])
 
+  // 只需跟 resize：fixed 定位本身就跟着视口，滚动无需重算
   useEffect(() => {
-    const handleResize = () => computePlacement()
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
+    window.addEventListener("resize", computePlacement)
+    return () => window.removeEventListener("resize", computePlacement)
   }, [computePlacement])
 
   // ---------- 交互：悬停展开 / 移出收起 ----------
@@ -217,6 +222,10 @@ export default function SpeechWidget({ player, anchor }: Props) {
   const h = expanded ? BAR_HEIGHT : CIRCLE_SIZE
   const radius = expanded ? CONTROL_BAR_RADIUS : CIRCLE_SIZE / 2
 
+  // 位置按当前尺寸反推（中心取自 placement）：展开/收起时 left/top 与宽高一起过渡，中心保持不动
+  const left = placement ? placement.cx - w / 2 : -9999
+  const top = placement ? placement.cy - h / 2 : -9999
+
   return (
     <div
       ref={widgetRef}
@@ -233,9 +242,9 @@ export default function SpeechWidget({ player, anchor }: Props) {
       }}
       onClick={handleClick}
       style={{
-        position: "absolute",
-        left: placement?.left ?? -9999,
-        top: placement?.top ?? -9999,
+        position: "fixed",
+        left,
+        top,
         width: w,
         height: h,
         zIndex: uiLayer.panel,
@@ -247,10 +256,8 @@ export default function SpeechWidget({ player, anchor }: Props) {
         overflow: "hidden",
         fontFamily: uiTypography.fontFamily,
         cursor: expanded ? "default" : "pointer",
-        // 收缩时保持中心不动：宽度变化的一半用位移补回（读起来等效 left 微移动画）
-        transform: `translateX(${(BAR_WIDTH - w) / 2}px)`,
         animation: `speech-widget-enter 240ms ${uiMotion.easingDecelerate} backwards`,
-        transition: `width ${HOVER_COLLAPSE_MS}ms ${uiMotion.easingSpringGentle}, height ${HOVER_COLLAPSE_MS}ms ${uiMotion.easingSpringGentle}, border-radius ${HOVER_COLLAPSE_MS}ms ${uiMotion.easingSpringGentle}, transform ${HOVER_COLLAPSE_MS}ms ${uiMotion.easingSpringGentle}`
+        transition: `left ${HOVER_COLLAPSE_MS}ms ${uiMotion.easingSpringGentle}, top ${HOVER_COLLAPSE_MS}ms ${uiMotion.easingSpringGentle}, width ${HOVER_COLLAPSE_MS}ms ${uiMotion.easingSpringGentle}, height ${HOVER_COLLAPSE_MS}ms ${uiMotion.easingSpringGentle}, border-radius ${HOVER_COLLAPSE_MS}ms ${uiMotion.easingSpringGentle}`
       } as React.CSSProperties}>
       <style>{`
         @keyframes speech-widget-enter {
