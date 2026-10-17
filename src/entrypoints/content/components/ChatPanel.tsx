@@ -8,7 +8,7 @@ import {
   type AnchorRect
 } from "@/entrypoints/content/components/floating"
 import { uiLayer, uiMotion, uiRadius, uiSpace, uiShadow, uiTypography } from "@/shared/ui/tokens"
-import { createButtonStyle, createFocusRing, createInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
+import { createFocusRing, createStatusMessageStyle } from "@/shared/ui/styles"
 import { useI18n } from "@/shared/i18n/context"
 import { toSingleLine } from "@/entrypoints/content/utils/reasoningText"
 import type { ChatMessage, ChatRequestState } from "@/shared/types"
@@ -19,6 +19,11 @@ const PANEL_WIDTH = 480
 const PANEL_MAX_HEIGHT = 640
 /** 卡片态落位时的假设高度（实际高度随内容自适应，仅参与翻转/钳制计算） */
 const CARD_ASSUME_HEIGHT = 170
+/** 输入区（composer）内 textarea 的高度区间：单行起步，超过上限后内部滚动 */
+const COMPOSER_INPUT_MIN_HEIGHT = 24
+const COMPOSER_INPUT_MAX_HEIGHT = 132
+/** 圆形发送按钮直径 */
+const SEND_BUTTON_SIZE = 28
 
 /**
  * 头部控件统一样式族：icon-only 呈正圆、带文案呈胶囊，几何与交互完全一致。
@@ -60,6 +65,100 @@ function headerControlStyle(
     boxShadow: focused ? createFocusRing(theme.accent.primary) : "none",
     transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
   }
+}
+
+/**
+ * 输入区（composer）容器：单一描边同时包住输入框与发送按钮，
+ * 聚焦时描边转主色并叠一圈柔光，取代原先「输入框 + 并排按钮」两个独立控件的观感。
+ */
+function composerStyle(
+  theme: ReturnType<typeof useUiTheme>,
+  { focused }: { focused: boolean }
+): React.CSSProperties {
+  return {
+    display: "flex",
+    alignItems: "flex-end",
+    gap: uiSpace[6],
+    padding: `${uiSpace[6]}px ${uiSpace[6]}px ${uiSpace[6]}px ${uiSpace[12]}px`,
+    borderRadius: uiRadius.xl,
+    border: `1px solid ${focused ? theme.accent.primary : theme.border.default}`,
+    background: theme.bg.surfaceMuted,
+    boxShadow: focused ? `0 0 0 3px ${theme.accent.primary}1A` : "none",
+    transition: `border-color ${uiMotion.durationFast} ${uiMotion.easingStandard}, box-shadow ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+  }
+}
+
+/**
+ * 圆形发送按钮：空输入时静默（无底 + 淡描边箭头），有内容时点亮主色；
+ * 生成中切换为停止按钮（中性底 + 实心方块），与「发送」在语义上区分开。
+ */
+function composerSendButtonStyle(
+  theme: ReturnType<typeof useUiTheme>,
+  {
+    stop = false,
+    active = false,
+    hovered = false,
+    focused = false,
+    pressed = false
+  }: {
+    stop?: boolean
+    active?: boolean
+    hovered?: boolean
+    focused?: boolean
+    pressed?: boolean
+  } = {}
+): React.CSSProperties {
+  const background = stop
+    ? theme.bg.surface
+    : active
+      ? hovered
+        ? theme.accent.primaryHover
+        : theme.accent.primary
+      : "transparent"
+
+  return {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: SEND_BUTTON_SIZE,
+    height: SEND_BUTTON_SIZE,
+    flexShrink: 0,
+    padding: 0,
+    boxSizing: "border-box",
+    // 停止态：输入槽底色上的一枚反色圆（靠描边定型，hover 加深描边）
+    border: stop ? `1px solid ${hovered ? theme.text.secondary : theme.border.default}` : "none",
+    borderRadius: uiRadius.pill,
+    background,
+    cursor: stop || active ? "pointer" : "not-allowed",
+    opacity: stop || active ? 1 : 0.55,
+    transform: pressed && (stop || active) ? "scale(0.88)" : "scale(1)",
+    boxShadow: focused ? createFocusRing(theme.accent.primary) : "none",
+    transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}, opacity ${uiMotion.durationFast} ${uiMotion.easingStandard}, transform 150ms ${uiMotion.easingSpring}, box-shadow ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+  }
+}
+
+/** 发送图标（向上箭头）：圆形按钮的常态 */
+function SendArrowIcon({ size, color }: { size: number; color: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M8 13V3.4M8 3.4L3.9 7.5M8 3.4l4.1 4.1"
+        stroke={color}
+        strokeWidth={1.7}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/** 停止图标（实心圆角方块）：生成中替代发送箭头 */
+function StopIcon({ size, color }: { size: number; color: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="4.6" y="4.6" width="6.8" height="6.8" rx="1.8" fill={color} />
+    </svg>
+  )
 }
 
 function CloseIcon({ size, color }: { size: number; color: string }) {
@@ -726,8 +825,16 @@ export default function ChatPanel({
     container.scrollTop = container.scrollHeight
   }, [messages, requestState])
 
-  const focusRing = (state: string | null, target: string) =>
-    focused === target ? createFocusRing(theme.accent.primary) : "none"
+  /**
+   * 输入框自增高：单行起步，内容变多时向上撑开（上限内），超过上限内部滚动。
+   * 依赖 mode：textarea 仅在聊天态挂载，切回聊天态时需要重新量一次高度。
+   */
+  useLayoutEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = "auto"
+    el.style.height = `${Math.min(el.scrollHeight, COMPOSER_INPUT_MAX_HEIGHT)}px`
+  }, [input, mode])
 
   if (!open) return null
 
@@ -803,6 +910,21 @@ export default function ChatPanel({
         }
         [data-messages-scroll]::-webkit-scrollbar-thumb:hover {
           background-color: rgba(0, 0, 0, 0.2);
+        }
+        [data-composer-input]::placeholder {
+          color: ${theme.text.secondary};
+          opacity: 0.75;
+        }
+        /* 多行输入超限后内部滚动的滚动条（随主题取色，不写死灰度） */
+        [data-composer-input]::-webkit-scrollbar {
+          width: 6px;
+        }
+        [data-composer-input]::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        [data-composer-input]::-webkit-scrollbar-thumb {
+          background-color: ${theme.border.default};
+          border-radius: 3px;
         }
       `}</style>
 
@@ -982,106 +1104,107 @@ export default function ChatPanel({
       {mode === "chat" ? (
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "1fr auto",
-          gap: uiSpace[6],
-          padding: `${uiSpace[6]}px ${uiSpace[8]}px`,
+          padding: `${uiSpace[8]}px ${uiSpace[8]}px ${uiSpace[10]}px`,
           borderTop: `0.5px solid ${theme.border.hairline}`,
           background: theme.bg.surface,
           flexShrink: 0
         }}>
-        <textarea
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          onFocus={() => setFocused("input")}
-          onBlur={() => setFocused(null)}
-          onKeyDown={(event) => {
-            event.stopPropagation()
+        {/* composer：一层描边同时包住输入框与发送按钮，聚焦时整体点亮 */}
+        <div style={composerStyle(theme, { focused: focused === "input" })}>
+          <textarea
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            onFocus={() => setFocused("input")}
+            onBlur={() => setFocused(null)}
+            onKeyDown={(event) => {
+              event.stopPropagation()
 
-            // 输入法组合中的 Enter 是确认候选词，不能当成发送
-            if (event.nativeEvent.isComposing) {
-              return
-            }
+              // 输入法组合中的 Enter 是确认候选词，不能当成发送
+              if (event.nativeEvent.isComposing) {
+                return
+              }
 
-            if (event.key !== "Enter" || event.shiftKey) {
-              return
-            }
+              if (event.key !== "Enter" || event.shiftKey) {
+                return
+              }
 
-            event.preventDefault()
+              event.preventDefault()
 
-            const value = input.trim()
-            if (!value || isStreaming) {
-              return
-            }
+              const value = input.trim()
+              if (!value || isStreaming) {
+                return
+              }
 
-            onSend(value)
-            setInput("")
-          }}
-          aria-label={t("chat.inputLabel")}
-          placeholder={t("chat.inputPlaceholder")}
-          style={{
-            ...createInputStyle(theme, focused === "input"),
-            flex: 1,
-            minHeight: 44,
-            resize: "none",
-            borderRadius: uiRadius.sm,
-            padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
-            fontSize: uiTypography.fontSize.sm,
-            fontFamily: "inherit",
-            lineHeight: 1.4,
-            boxShadow: focusRing(focused, "input")
-          }}
-        />
-        <button
-          onClick={() => {
-            if (isStreaming) {
-              onStop()
-              return
-            }
+              onSend(value)
+              setInput("")
+            }}
+            aria-label={t("chat.inputLabel")}
+            placeholder={t("chat.inputPlaceholder")}
+            data-composer-input="true"
+            style={{
+              flex: 1,
+              minWidth: 0,
+              minHeight: COMPOSER_INPUT_MIN_HEIGHT,
+              maxHeight: COMPOSER_INPUT_MAX_HEIGHT,
+              margin: 0,
+              padding: `${uiSpace[6]}px 0`,
+              border: "none",
+              outline: "none",
+              background: "transparent",
+              color: theme.text.primary,
+              boxSizing: "border-box",
+              resize: "none",
+              overflowY: "auto",
+              fontFamily: "inherit",
+              fontSize: uiTypography.fontSize.sm,
+              lineHeight: 1.45
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              if (isStreaming) {
+                onStop()
+                return
+              }
 
-            const value = input.trim()
-            if (!value) {
-              return
-            }
+              const value = input.trim()
+              if (!value) {
+                return
+              }
 
-            onSend(value)
-            setInput("")
-          }}
-          onMouseEnter={() => setHovered("send")}
-          onMouseLeave={() => {
-            setHovered(null)
-            setSendPressed(false)
-          }}
-          onMouseDown={() => setSendPressed(true)}
-          onMouseUp={() => setSendPressed(false)}
-          onFocus={() => setFocused("send")}
-          onBlur={() => setFocused(null)}
-          disabled={sendDisabled && !isStreaming}
-          style={{
-            ...createButtonStyle(theme, isStreaming ? "secondary" : "primary", {
-              disabled: sendDisabled && !isStreaming,
-              pressed: sendPressed,
-              focused: focused === "send"
-            }),
-            height: 32,
-            minWidth: 60,
-            alignSelf: "center",
-            borderRadius: uiRadius.md,
-            background: isStreaming
-              ? theme.bg.surfaceMuted
-              : sendDisabled
-                ? theme.state.disabled
-                : hovered === "send"
-                  ? theme.accent.primaryHover
-                  : theme.accent.primary,
-            cursor: isStreaming ? "pointer" : sendDisabled ? "not-allowed" : "pointer",
-            opacity: sendDisabled && !isStreaming ? 0.5 : 1,
-            transform: sendPressed ? "scale(0.95)" : "scale(1)",
-            padding: `0 ${uiSpace[12]}px`,
-            fontSize: uiTypography.fontSize.sm
-          }}>
-          {isStreaming ? t("chat.stop") : t("chat.send")}
-        </button>
+              onSend(value)
+              setInput("")
+            }}
+            onMouseEnter={() => setHovered("send")}
+            onMouseLeave={() => {
+              setHovered(null)
+              setSendPressed(false)
+            }}
+            onMouseDown={() => setSendPressed(true)}
+            onMouseUp={() => setSendPressed(false)}
+            onFocus={() => setFocused("send")}
+            onBlur={() => setFocused(null)}
+            disabled={sendDisabled && !isStreaming}
+            aria-label={isStreaming ? t("chat.stop") : t("chat.send")}
+            title={isStreaming ? t("chat.stop") : t("chat.send")}
+            style={composerSendButtonStyle(theme, {
+              stop: isStreaming,
+              active: !sendDisabled,
+              hovered: hovered === "send",
+              focused: focused === "send",
+              pressed: sendPressed
+            })}>
+            {isStreaming ? (
+              <StopIcon size={12} color={theme.text.primary} />
+            ) : (
+              <SendArrowIcon
+                size={15}
+                color={sendDisabled ? theme.text.secondary : theme.text.inverse}
+              />
+            )}
+          </button>
+        </div>
       </div>
       ) : null}
     </div>

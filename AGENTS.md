@@ -179,6 +179,13 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   关闭按钮保持纯图标（× 语义自明）；钉住是切换型按钮，可见文案**不随态变**（恒为「钉住」/
   "Pin"，避免「钉住/取消钉住」宽度跳变），开关状态靠 `active` 淡底 + 填色图标 + `aria-pressed` 表达，
   描述性长文案留在 `aria-label` / `title`（`chat.pinPanel` / `chat.unpinPanel`）。
+- **输入区（composer）统一样式族**：`ChatPanel.tsx` 的 `composerStyle` /
+  `composerSendButtonStyle` 是底部输入区的唯一样式来源。一层描边同时包住 textarea 与 28px
+  圆形发送按钮（不再是「并排的输入框 + 文字按钮」），聚焦时描边转主色 + 一圈柔光；
+  按钮三态：空输入静默（无底、淡箭头、不可点）→ 有内容点亮主色（箭头反色）→ 生成中
+  换成停止按钮（输入槽底上的反色圆 + 描边 + 实心方块，hover 加深描边）。输入框自增高
+  （`COMPOSER_INPUT_MIN/MAX_HEIGHT`，24→132，超出内部滚动），滚动条与 placeholder 取色
+  均随主题（不写死灰度）。`Enter` 发送 / `Shift+Enter` 换行、IME 组合判定不变。
 - 两态共用同一会话实例：`useChatState`
   的 messages/流式跨态持续进行，卡片态下流式生成照常渲染。
 - **对话会话 `ChatSession.tsx` / 内容件 `ChatPanel.tsx`**：触发 AI 动作后弹出新的
