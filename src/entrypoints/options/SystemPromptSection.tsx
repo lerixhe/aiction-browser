@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties } from "react"
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react"
 
 import { trackEvent } from "@/shared/analytics"
 import { DEFAULT_SYSTEM_PROMPT } from "@/shared/defaults"
@@ -38,25 +38,52 @@ export function SystemPromptSection({ settings, saveSettingsNow }: SystemPromptS
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const value = settings.systemPrompt
 
-  // 即时保存：输入即写入；失焦时 trim 清理首尾空白
+  // 草稿态：编辑只落在本地草稿，点击「保存」才写入 settings（显式保存，避免误操作）
+  const [draft, setDraft] = useState(value)
+  const [dirty, setDirty] = useState(false)
+
+  // 外部 value 变化（初始加载 / 导入配置 / 保存后回读）且草稿无未保存修改时，跟随同步
+  useEffect(() => {
+    if (!dirty) {
+      setDraft(value)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, dirty])
+
   const handleChange = (next: string) => {
-    saveSettingsNow((current) => ({ ...current, systemPrompt: next }))
+    setDraft(next)
+    setDirty(true)
   }
 
-  const handleBlur = () => {
-    const trimmed = value.trim()
-    if (trimmed !== value) {
-      handleChange(trimmed)
+  const handleSave = () => {
+    if (!dirty) return
+    const trimmed = draft.trim()
+    saveSettingsNow((current) => ({ ...current, systemPrompt: trimmed }))
+    setDraft(trimmed)
+    setDirty(false)
+    void trackEvent("system_prompt_save")
+  }
+
+  const handleDiscard = () => {
+    setDraft(value)
+    setDirty(false)
+  }
+
+  // ⌘S / Ctrl+S 快捷保存
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+      event.preventDefault()
+      handleSave()
     }
   }
 
-  // 在光标处插入占位符
+  // 在光标处插入占位符（只改草稿）
   const insertPlaceholder = (token: string) => {
     const textarea = textareaRef.current
     if (!textarea) return
-    const start = textarea.selectionStart ?? value.length
-    const end = textarea.selectionEnd ?? value.length
-    const next = value.slice(0, start) + token + value.slice(end)
+    const start = textarea.selectionStart ?? draft.length
+    const end = textarea.selectionEnd ?? draft.length
+    const next = draft.slice(0, start) + token + draft.slice(end)
     handleChange(next)
     // 插入后把光标移到占位符之后
     const caret = start + token.length
@@ -72,7 +99,7 @@ export function SystemPromptSection({ settings, saveSettingsNow }: SystemPromptS
     void trackEvent("system_prompt_reset")
   }
 
-  const overLimit = value.length > PROMPT_SOFT_LIMIT
+  const overLimit = draft.length > PROMPT_SOFT_LIMIT
 
   return (
     <section style={{ ...cardStyle, marginBottom: uiSpace[16] }}>
@@ -146,9 +173,9 @@ export function SystemPromptSection({ settings, saveSettingsNow }: SystemPromptS
       {/* 编辑器 */}
       <textarea
         ref={textareaRef}
-        value={value}
+        value={draft}
         onChange={(event) => handleChange(event.target.value)}
-        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
         spellCheck={false}
         aria-label={t("options.systemPrompt.title")}
         style={{
@@ -169,7 +196,7 @@ export function SystemPromptSection({ settings, saveSettingsNow }: SystemPromptS
         }}
       />
 
-      {/* 底部状态行：字符数 + 恢复默认 */}
+      {/* 底部状态行：字符数 + 未保存提示 + 操作按钮 */}
       <div
         style={{
           display: "flex",
@@ -180,31 +207,104 @@ export function SystemPromptSection({ settings, saveSettingsNow }: SystemPromptS
         }}>
         <div
           style={{
+            display: "flex",
+            alignItems: "center",
+            gap: uiSpace[10],
             fontSize: uiTypography.fontSize.xs,
             color: overLimit ? theme.state.warning : theme.text.secondary
           }}>
           {overLimit
-            ? t("options.systemPrompt.tooLong", [String(value.length)])
-            : t("options.systemPrompt.charCount", [String(value.length)])}
+            ? t("options.systemPrompt.tooLong", [String(draft.length)])
+            : t("options.systemPrompt.charCount", [String(draft.length)])}
+          {dirty ? (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: uiSpace[4],
+                color: theme.accent.primary
+              }}>
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: theme.accent.primary
+                }}/>
+              {t("options.systemPrompt.unsavedIndicator")}
+            </span>
+          ) : null}
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowResetConfirm(true)}
+        <div
           style={{
-            padding: `${uiSpace[6]}px ${uiSpace[14]}px`,
-            borderRadius: uiRadius.sm,
-            border: `0.5px solid ${theme.border.hairline}`,
-            background: "transparent",
-            color: theme.text.primary,
-            cursor: "pointer",
-            fontFamily: uiTypography.fontFamily,
-            fontSize: uiTypography.fontSize.sm,
-            outline: "none",
-            transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+            display: "flex",
+            alignItems: "center",
+            gap: uiSpace[8]
           }}>
-          {t("options.systemPrompt.resetButton")}
-        </button>
+          <button
+            type="button"
+            onClick={() => setShowResetConfirm(true)}
+            style={{
+              padding: `${uiSpace[6]}px ${uiSpace[14]}px`,
+              borderRadius: uiRadius.sm,
+              border: `0.5px solid ${theme.border.hairline}`,
+              background: "transparent",
+              color: theme.text.primary,
+              cursor: "pointer",
+              fontFamily: uiTypography.fontFamily,
+              fontSize: uiTypography.fontSize.sm,
+              outline: "none",
+              transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+            }}>
+            {t("options.systemPrompt.resetButton")}
+          </button>
+
+          {dirty ? (
+            <button
+              type="button"
+              onClick={handleDiscard}
+              style={{
+                padding: `${uiSpace[6]}px ${uiSpace[14]}px`,
+                borderRadius: uiRadius.sm,
+                border: `0.5px solid ${theme.border.hairline}`,
+                background: "transparent",
+                color: theme.text.primary,
+                cursor: "pointer",
+                fontFamily: uiTypography.fontFamily,
+                fontSize: uiTypography.fontSize.sm,
+                outline: "none",
+                transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+              }}>
+              {t("options.systemPrompt.discardButton")}
+            </button>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={!dirty}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: uiSpace[6],
+              padding: `${uiSpace[6]}px ${uiSpace[16]}px`,
+              borderRadius: uiRadius.sm,
+              border: "none",
+              background: dirty ? theme.accent.primary : theme.bg.surfaceMuted,
+              color: dirty ? "#fff" : theme.text.secondary,
+              cursor: dirty ? "pointer" : "default",
+              opacity: dirty ? 1 : 0.6,
+              fontFamily: uiTypography.fontFamily,
+              fontSize: uiTypography.fontSize.sm,
+              fontWeight: uiTypography.fontWeight.medium,
+              outline: "none",
+              transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+            }}>
+            {t("options.systemPrompt.saveButton")}
+          </button>
+        </div>
       </div>
 
       {showResetConfirm ? (
