@@ -161,11 +161,23 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   `placeNearAnchor()`：下方放不下自动翻转到上方，两边都放不下收敛回视口，
   水平方向钳制在文档安全区内。`fallbackAnchor()` 用选区锚点兜底。
 - **卡片态（收缩态）与聊天态**：对话窗有两种形态（`ChatPanel` 内部 `mode`），新触发默认
-  进入**卡片态**——同一锚点、同一宽度，高度随内容自适应（`maxHeight` 钳制，落位计算用
+  进入**卡片态**——同一锚点、更窄的宽度（`CARD_WIDTH` 480），高度随内容自适应（`maxHeight` 钳制，落位计算用
   `CARD_ASSUME_HEIGHT` 假设高度，避免误判为「下方放不下」而错误翻转到上方），内容区只渲染
   assistant 消息（隐藏用户气泡）、无输入区（头部专门有一个形态切换按钮承载展开入口）；卡片态的 assistant
   内容**去掉气泡框直铺铺满面板**（`MessageBubble` 的 `variant="card"`：透明背景、无边框
-  圆角阴影、`maxWidth` 100%，多条间用 hairline 分隔），展开为聊天态后回到常规气泡样式。
+  圆角阴影、`maxWidth` 100%，多条间用 hairline 分隔），展开为聊天态后回到常规气泡样式
+  （`CHAT_WIDTH` 640，比卡片态宽 160：追问场景要放得下更长的消息与输入区）。
+  宽度上限受视口约束（下限 `PANEL_MIN_WIDTH` 320），窄视口下两态宽度趋同、只剩高度过渡。
+- **形态切换过渡（卡片 ↔ 聊天）**：`handleToggleMode` 里置 `morphing` 并起一个
+  `MORPH_DURATION + 60ms` 的收尾定时器，面板 style 只在 `morphing` 期间
+  `transition: width/height/left/top`——拖拽与流式增高必须即时跟手，不能常开过渡。
+  卡片态 `height: auto`、聊天态是固定像素，靠 `<style>` 里的
+  `[data-aiction-chat-panel] { interpolate-size: allow-keywords }` 让关键字参与高度插值
+  （不支持该属性的浏览器降级为高度跳变，宽度/位移过渡照旧）。
+  位置随宽度一起过渡：未拖拽时由 `computePosition` 按新宽度重算（`placeNearAnchor`
+  水平以锚点中心对齐，天然是「以中心为轴」扩张）；已拖拽时位置归用户，改由 ResizeObserver
+  的 `measure()` 拿宽度差补一半到 `left`（`clampPanelDragPos` 后再钳一次），否则聊天态会只朝右侧单向变宽。
+  拖拽开始时主动结束 `morphing`，避免位移带一段滞后的 easing。`prefersReducedMotion()` 时直接跳变。
 - **形态切换按钮（头部单按钮两态）**：卡片态 =「追问」（对话气泡图标 + 文案），聊天态 =「收起」
   （人字箭头 + 文案），两态**同族同形**（同高度/同圆角/同图标尺寸/同 hover，仅图标与文案变），
   点击展开为完整**聊天态**（消息 + 输入区）并自动聚焦输入框，或在聊天态点击回卡片态并 blur
@@ -248,7 +260,7 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
 
 ### 不变量
 - 面板定位是 absolute + 文档坐标（不是 fixed），随页面滚动；重新定位只发生在
-  anchor/resize 变化时。**朗读控件是唯一例外**：它不锚工具栏，用 fixed + 视口
+  anchor / resize / 形态切换（mode）变化时。**朗读控件是唯一例外**：它不锚工具栏，用 fixed + 视口
   坐标固定在视口顶部中间（滚动不重算，仅 resize 重算）。
 - 面板的点外关闭监听必须用 `event.composedPath()` 穿透 Shadow DOM；
   层级：工具栏 `uiLayer.overlay` > 面板 `uiLayer.panel`。

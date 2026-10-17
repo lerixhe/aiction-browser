@@ -16,12 +16,18 @@ import { useI18n } from "@/shared/i18n/context"
 import { toSingleLine } from "@/entrypoints/content/utils/reasoningText"
 import type { ChatMessage, ChatRequestState } from "@/shared/types"
 
-/** 对话窗宽度 */
-const PANEL_WIDTH = 480
+/** 卡片态宽度（新触发时的默认形态，内容直铺、窄一些、贴选区） */
+const CARD_WIDTH = 480
+/** 聊天态宽度：比卡片态更宽，展开时以面板中心为轴向两侧扩张 */
+const CHAT_WIDTH = 640
+/** 面板最小宽度（视口过窄时的下限，避免被压成窄条） */
+const PANEL_MIN_WIDTH = 320
 /** 对话窗理想高度（超高视口按可用高度收缩） */
 const PANEL_MAX_HEIGHT = 640
 /** 卡片态落位时的假设高度（实际高度随内容自适应，仅参与翻转/钳制计算） */
 const CARD_ASSUME_HEIGHT = 170
+/** 卡片 ↔ 聊天形态切换的过渡时长（宽度/高度/落位同步过渡） */
+const MORPH_DURATION = 260
 /** 输入区（composer）内 textarea 的高度区间：单行起步，超过上限后内部滚动 */
 const COMPOSER_INPUT_MIN_HEIGHT = 24
 const COMPOSER_INPUT_MAX_HEIGHT = 132
@@ -328,6 +334,11 @@ const THINKING_FADE_MASK_STATIC = "linear-gradient(to right, transparent 0, #000
 /** 是否要求减弱动效（系统设置开启时改为跳变式贴尾，不做平滑追随） */
 function prefersReducedMotion(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+}
+
+/** 聊天态高度：理想高度与视口可用高度取小（落位计算与渲染共用同一套算式） */
+function chatPanelHeight(): number {
+  return Math.min(PANEL_MAX_HEIGHT, window.innerHeight - EDGE_INSET * 2)
 }
 
 /**
@@ -655,6 +666,12 @@ export default function ChatPanel({
   const { t } = useI18n()
   /** 面板形态：card = 卡片态（仅 AI 生成内容）/ chat = 完整聊天态（消息 + 输入框）。新会话默认卡片态 */
   const [mode, setMode] = useState<"card" | "chat">("card")
+  /** 形态切换过渡中（仅此时开启 width/height/left/top 过渡，拖拽仍要跟手） */
+  const [morphing, setMorphing] = useState(false)
+  /** 视口宽度：聊天态更宽，视口过窄时宽度随之收敛 */
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window === "undefined" ? CARD_WIDTH : window.innerWidth
+  )
   const [input, setInput] = useState("")
   const [focused, setFocused] = useState<string | null>(null)
   const [hovered, setHovered] = useState<string | null>(null)
@@ -676,6 +693,16 @@ export default function ChatPanel({
   // 用户拖拽头部后位置改由用户接管：此后不再按锚点重算，仅在 resize 时收敛回视口
 
   const [pos, setPos] = useState<PanelPos | null>(null)
+  /** 形态切换过渡的收尾定时器（卸载时清理） */
+  const morphTimerRef = useRef<number | null>(null)
+  /**
+   * 当前形态下的面板宽度：卡片态窄、聊天态宽（展开时视觉上是「以中心为轴」向两侧扩张）。
+   * 上限受视口约束，下限 PANEL_MIN_WIDTH，避免窄视口下面板溢到屏幕外。
+   */
+  const panelWidth = useMemo(() => {
+    const target = mode === "chat" ? CHAT_WIDTH : CARD_WIDTH
+    return Math.min(target, Math.max(viewportWidth - EDGE_INSET * 2, PANEL_MIN_WIDTH))
+  }, [mode, viewportWidth])
   /** 用户是否已拖拽过位置（拖拽后位置归用户管） */
   const draggedRef = useRef(false)
   /**
@@ -683,7 +710,7 @@ export default function ChatPanel({
    * 卡片态高度随内容自适应、聊天态才接近 PANEL_MAX_HEIGHT，
    * 钳制一律用实测值，否则矮卡片会被按展开态高度硬顶在视口上部、拖不到下方。
    */
-  const panelSizeRef = useRef({ width: PANEL_WIDTH, height: CARD_ASSUME_HEIGHT })
+  const panelSizeRef = useRef({ width: CARD_WIDTH, height: CARD_ASSUME_HEIGHT })
 
   const computePosition = useCallback(() => {
     if (!open) return
@@ -697,27 +724,37 @@ export default function ChatPanel({
     }
     const isCard = mode === "card"
     // 卡片态实际高度随内容自适应，翻转/钳制计算用较小的假设高度，避免误判为「下方放不下」而错误翻转到上方
-    const height = isCard
-      ? CARD_ASSUME_HEIGHT
-      : Math.min(PANEL_MAX_HEIGHT, window.innerHeight - EDGE_INSET * 2)
+    // 注：翻转/落位只按当前形态的目标尺寸算，形态切换时 left/top 的位移一并由过渡动画补上
+    const height = isCard ? CARD_ASSUME_HEIGHT : chatPanelHeight()
     const rect =
       anchor ??
       ({ x: window.scrollX + window.innerWidth / 2, y: window.scrollY + 80, width: 0, height: 0 } satisfies AnchorRect)
-    const placed = placeNearAnchor(rect, PANEL_WIDTH, height)
+    const placed = placeNearAnchor(rect, panelWidth, height)
     setPos({ left: placed.left, top: placed.top })
-  }, [open, anchor, mode])
+  }, [open, anchor, mode, panelWidth])
 
   useLayoutEffect(() => {
     computePosition()
   }, [computePosition])
 
-  // 视口尺寸变化时重新定位（未拖拽时贴边、已拖拽时只防拖丢）
+  // 视口尺寸变化时重新定位（未拖拽时贴边、已拖拽时只防拖丢），并更新宽度上限
   useEffect(() => {
     if (!open) return
-    const handleResize = () => computePosition()
+    const handleResize = () => {
+      setViewportWidth(window.innerWidth)
+      computePosition()
+    }
     window.addEventListener("resize", handleResize)
     return () => window.removeEventListener("resize", handleResize)
   }, [open, computePosition])
+
+  // 卸载时清掉形态过渡的收尾定时器
+  useEffect(
+    () => () => {
+      if (morphTimerRef.current !== null) window.clearTimeout(morphTimerRef.current)
+    },
+    []
+  )
 
   // ---------- 拖拽：按住头部空白处拖动整个对话窗（头部按钮不受影响） ----------
 
@@ -727,6 +764,12 @@ export default function ChatPanel({
       // 头部上的功能按钮（模型图标 / 钉子 / 关闭）不触发拖拽
       if ((event.target as HTMLElement).closest("button")) return
       event.preventDefault()
+      // 拖拽优先于形态过渡：过拖时立刻结束过渡，否则位移会带一段滞后的 easing
+      setMorphing(false)
+      if (morphTimerRef.current !== null) {
+        window.clearTimeout(morphTimerRef.current)
+        morphTimerRef.current = null
+      }
       if (!pos) return
       const start = {
         pointerX: event.clientX,
@@ -777,8 +820,23 @@ export default function ChatPanel({
       panelSizeRef.current = next
       // 尺寸变了（流式内容增长 / 卡片↔聊天态切换）。
       // 位置已归用户接管时不动它（尊重用户意图，用户自己能拖回来）；
+      // 但形态切换会改宽度，这里以中心为轴补一半差值，避免聊天态只朝右侧单向变宽。
+      if (draggedRef.current) {
+        const widthDelta = prev.width - next.width
+        if (widthDelta !== 0) {
+          setPos((current) =>
+            current
+              ? clampPanelDragPos(
+                  { left: current.left + widthDelta / 2, top: current.top },
+                  next.width,
+                  next.height
+                )
+              : current
+          )
+        }
+        return
+      }
       // 自动落位的面板长高后会顶出视口，收敛回来避免内容看不见。
-      if (draggedRef.current) return
       setPos((current) => (current ? fitPanelInViewport(current, next.width, next.height) : current))
     }
 
@@ -828,6 +886,15 @@ export default function ChatPanel({
    */
   const handleToggleMode = useCallback(() => {
     const next = mode === "card" ? "chat" : "card"
+    // 形态过渡：宽度/高度/落位一起变，交给 CSS 过渡；减弱动效时直接跳变
+    if (!prefersReducedMotion()) {
+      setMorphing(true)
+      if (morphTimerRef.current !== null) window.clearTimeout(morphTimerRef.current)
+      morphTimerRef.current = window.setTimeout(() => {
+        morphTimerRef.current = null
+        setMorphing(false)
+      }, MORPH_DURATION + 60)
+    }
     setMode(next)
     if (next === "chat") {
       requestAnimationFrame(() => inputRef.current?.focus())
@@ -876,9 +943,13 @@ export default function ChatPanel({
         position: "absolute",
         left: pos?.left ?? -9999,
         top: pos?.top ?? -9999,
-        width: PANEL_WIDTH,
-        height: mode === "card" ? "auto" : Math.min(PANEL_MAX_HEIGHT, window.innerHeight - EDGE_INSET * 2),
-        maxHeight: Math.min(PANEL_MAX_HEIGHT, window.innerHeight - EDGE_INSET * 2),
+        width: panelWidth,
+        height: mode === "card" ? "auto" : chatPanelHeight(),
+        maxHeight: chatPanelHeight(),
+        // 只在形态切换期间开过渡（拖拽、流式增高必须跟手/即时，否则会有滞后感）
+        transition: morphing
+          ? `width ${MORPH_DURATION}ms ${uiMotion.easingStandard}, height ${MORPH_DURATION}ms ${uiMotion.easingStandard}, left ${MORPH_DURATION}ms ${uiMotion.easingStandard}, top ${MORPH_DURATION}ms ${uiMotion.easingStandard}`
+          : "none",
         zIndex: uiLayer.panel,
         pointerEvents: "auto",
         display: "flex",
@@ -892,6 +963,11 @@ export default function ChatPanel({
         animation: `floating-enter 220ms ${uiMotion.easingDecelerate} both`
       }}>
       <style>{`
+        /* 卡片态高度是 auto、聊天态是固定像素：允许关键字参与高度插值，
+           两种形态之间才有「长高/缩回」的过渡（不支持该属性的浏览器降级为高度跳变，其余过渡照旧） */
+        [data-aiction-chat-panel="true"] {
+          interpolate-size: allow-keywords;
+        }
         @keyframes message-enter {
           from {
             opacity: 0;
