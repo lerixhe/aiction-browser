@@ -20,6 +20,14 @@ interface PlaceholderExtras {
   uiLanguage: string
 }
 
+/**
+ * 旧版占位符兼容：AI actions 动作模板的选区占位符曾为 {text}，现统一为 {selection}
+ * （与系统提示词 {pageTitle} 等语义化占位符命名一致），已保存的旧模板在读取时自动迁移。
+ */
+export function migrateLegacyActionTemplate(template: string): string {
+  return template.replaceAll("{text}", "{selection}")
+}
+
 /** Locales 在提示词中的可读描述：让模型明确知道该用什么语言回答 */
 const LOCALE_DISPLAY_NAMES: Record<Locale, string> = {
   en: "English",
@@ -66,7 +74,7 @@ export function resolveActionTemplate(
   settings: ExtensionSettings
 ): string {
   return template
-    .replaceAll("{text}", context.text)
+    .replaceAll("{selection}", context.text)
 }
 
 export function formatFreeInputPrompt(input: string, text: string): string {
@@ -100,5 +108,5 @@ export function buildContextSystemMessage(
 }
 
 export function hasTextPlaceholder(template: string): boolean {
-  return template.includes("{text}")
+  return template.includes("{selection}")
 }

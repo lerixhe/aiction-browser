@@ -135,7 +135,7 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
 - Keep `data-aiction-root="true"` on the extension UI root. Selection and mousedown handlers depend on ignoring events inside that subtree.
 - Keep the background message listener registered at module load time.
 - Keep AI requests in the background context; content script should only message background.
-- Preserve `{text}` placeholder validation for custom actions before saving.
+- Preserve `{selection}` placeholder validation for custom actions before saving (legacy `{text}` templates are auto-migrated on read).
 - Conversation is intentionally per-page in-memory only; refresh/close clears it.
 
 ## Selection UI Pitfalls

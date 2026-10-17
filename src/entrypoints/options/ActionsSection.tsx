@@ -954,7 +954,7 @@ export function ActionsSection({ settings, saveSettingsNow }: ActionsSectionProp
                   } as CSSProperties}
                 />
                 <p style={{ margin: `${uiSpace[6]}px 0 0`, color: theme.text.secondary, fontSize: uiTypography.fontSize.xs }}>
-                  {t("options.actions.templateHelp")}<code style={{ background: theme.bg.surfaceMuted, padding: "1px 4px", borderRadius: 3 }}>{"{text}"}</code>{t("options.actions.templateHelpSuffix")}
+                  {t("options.actions.templateHelp")}<code style={{ background: theme.bg.surfaceMuted, padding: "1px 4px", borderRadius: 3 }}>{"{selection}"}</code>{t("options.actions.templateHelpSuffix")}
                 </p>
                 {!hasTextPlaceholder(selectedAction.template) ? (
                   <div style={{ marginTop: uiSpace[6], color: theme.state.warning, fontSize: uiTypography.fontSize.xs, fontWeight: uiTypography.fontWeight.medium }}>

@@ -1,4 +1,5 @@
 import { DEFAULT_CUSTOM_MODEL_PROVIDER, DEFAULT_SETTINGS, DEFAULT_TTS_SETTINGS } from "@/shared/defaults"
+import { migrateLegacyActionTemplate } from "@/shared/prompt"
 import type { ExtensionSettings, LanguagePreference, ModelParams, ProviderConfig, QuickAction, QuickActionType, ThemePreference, TtsProvider, TtsSettings, UserIconData } from "@/shared/types"
 
 export { DEFAULT_SETTINGS }
@@ -14,7 +15,8 @@ function validateActions(items: unknown[]): ExtensionSettings["actions"] {
       return {
         id: String(record.id),
         label: String(record.label),
-        template: String(record.template),
+        // 旧模板中的 {text} 占位符自动迁移为 {selection}
+        template: migrateLegacyActionTemplate(String(record.template)),
         enabled: typeof record.enabled === "boolean" ? record.enabled : true,
         icon: typeof record.icon === "string" ? record.icon : undefined
       }

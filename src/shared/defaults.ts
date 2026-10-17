@@ -4,14 +4,14 @@ export const DEFAULT_ACTIONS: ActionTemplate[] = [
   {
     id: "explain",
     label: "解释",
-    template: "帮我解释选中内容「{text}」",
+    template: "帮我解释选中内容「{selection}」",
     enabled: true,
     icon: "tabler:bulb"
   },
   {
     id: "translate",
     label: "翻译",
-    template: "请将以下内容翻译为简体中文：\n{text}",
+    template: "请将以下内容翻译为简体中文：\n{selection}",
     enabled: true,
     icon: "tabler:language"
   }
@@ -44,7 +44,7 @@ export const DEFAULT_MODEL_PARAMS: ModelParams = {}
 
 /**
  * 系统提示词默认模板：静态指令 + 页面上下文占位符。
- * 支持占位符：{selection} 用户选区内容、{pageTitle} 页面标题、{pageUrl} 页面 URL、
+ * 支持占位符：{selection} 用户选区内容（与动作模板一致）、{pageTitle} 页面标题、{pageUrl} 页面 URL、
  * {metaDescription} 页面描述、{surround} 所在段落上下文（缺失时替换为空字符串）。
  */
 export const DEFAULT_SYSTEM_PROMPT = `# Role
