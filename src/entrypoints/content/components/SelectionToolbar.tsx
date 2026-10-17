@@ -6,24 +6,12 @@ import { uiLayer, uiMotion, uiRadius, uiTypography } from "@/shared/ui/tokens"
 import { ActionIcon } from "@/shared/ui/iconify"
 import { useI18n } from "@/shared/i18n/context"
 import type { AnchorRect } from "@/entrypoints/content/components/floating"
+import { clampToViewportSafe } from "@/entrypoints/content/components/floating"
 import type { ActionTemplate, QuickAction, SelectionAnchor } from "@/shared/types"
-
-interface SelectionStart {
-  x: number
-  y: number
-}
-
-enum SelectionDirection {
-  TOP_LEFT = "TOP_LEFT",
-  TOP_RIGHT = "TOP_RIGHT",
-  BOTTOM_LEFT = "BOTTOM_LEFT",
-  BOTTOM_RIGHT = "BOTTOM_RIGHT"
-}
 
 interface Props {
   visible: boolean
   anchor: SelectionAnchor | null
-  selectionStart: SelectionStart | null
   actions: ActionTemplate[]
   quickActions: QuickAction[]
   onAction: (template: string, text: string) => void
@@ -33,51 +21,14 @@ interface Props {
   onRectChange?: (rect: AnchorRect) => void
 }
 
+/** 工具栏左上角始终落在鼠标末位下方，避免盖住光标（也以左上角为视觉基准向右下展开） */
 const CURSOR_CLEARANCE = 20
-const DOWNWARD_TOLERANCE = 8
 const BUTTON_HEIGHT = 28
 const BUTTON_GAP = 2
-
-function getSelectionDirection(
-  startX: number,
-  startY: number,
-  endX: number,
-  endY: number
-): SelectionDirection {
-  const isRightward = startX <= endX
-  const isDownward = startY - DOWNWARD_TOLERANCE <= endY
-
-  if (isRightward && isDownward) return SelectionDirection.BOTTOM_RIGHT
-  if (isRightward && !isDownward) return SelectionDirection.TOP_RIGHT
-  if (!isRightward && isDownward) return SelectionDirection.BOTTOM_LEFT
-  return SelectionDirection.TOP_LEFT
-}
-
-function applyDirectionOffset(
-  direction: SelectionDirection,
-  baseX: number,
-  baseY: number,
-  toolbarWidth: number,
-  toolbarHeight: number
-): { x: number; y: number } {
-  switch (direction) {
-    case SelectionDirection.BOTTOM_RIGHT:
-      return { x: baseX, y: baseY + CURSOR_CLEARANCE }
-    case SelectionDirection.BOTTOM_LEFT:
-      return { x: baseX - toolbarWidth, y: baseY + CURSOR_CLEARANCE }
-    case SelectionDirection.TOP_RIGHT:
-      return { x: baseX, y: baseY - toolbarHeight - CURSOR_CLEARANCE }
-    case SelectionDirection.TOP_LEFT:
-      return { x: baseX - toolbarWidth, y: baseY - toolbarHeight - CURSOR_CLEARANCE }
-    default:
-      return { x: baseX, y: baseY + CURSOR_CLEARANCE }
-  }
-}
 
 export default function SelectionToolbar({
   visible,
   anchor,
-  selectionStart,
   actions,
   quickActions,
   onAction,
@@ -89,7 +40,6 @@ export default function SelectionToolbar({
   const { t } = useI18n()
   const toolbarRef = useRef<HTMLDivElement>(null)
   const posRef = useRef<{ x: number; y: number } | null>(null)
-  const directionRef = useRef<SelectionDirection>(SelectionDirection.BOTTOM_RIGHT)
 
   // 回调走 ref，让位置更新逻辑不随回调重建
   const onRectChangeRef = useRef(onRectChange)
@@ -121,10 +71,11 @@ export default function SelectionToolbar({
     const toolbarWidth = toolbarRef.current.offsetWidth
     const toolbarHeight = toolbarRef.current.offsetHeight
 
-    const { x, y } = applyDirectionOffset(
-      directionRef.current,
+    // 统一以工具栏左上角为基准：落在鼠标末位下方 CURSOR_CLEARANCE 处，
+    // 再钳制进视口安全区（超宽时贴左缘、右侧自然溢出）
+    const { x, y } = clampToViewportSafe(
       posRef.current.x,
-      posRef.current.y,
+      posRef.current.y + CURSOR_CLEARANCE,
       toolbarWidth,
       toolbarHeight
     )
@@ -140,24 +91,13 @@ export default function SelectionToolbar({
     const docX = anchor.mouseX + window.scrollX
     const docY = anchor.mouseY + window.scrollY
 
-    if (selectionStart) {
-      directionRef.current = getSelectionDirection(
-        selectionStart.x,
-        selectionStart.y,
-        anchor.mouseX,
-        anchor.mouseY
-      )
-    } else {
-      directionRef.current = SelectionDirection.BOTTOM_RIGHT
-    }
-
     posRef.current = { x: docX, y: docY }
     userDraggedRef.current = false
 
     requestAnimationFrame(() => {
       updatePosition()
     })
-  }, [visible, anchor, selectionStart, updatePosition])
+  }, [visible, anchor, updatePosition])
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {

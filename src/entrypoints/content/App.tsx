@@ -6,7 +6,6 @@ import SpeechWidget from "@/entrypoints/content/components/SpeechWidget"
 import { fallbackAnchor, type AnchorRect } from "@/entrypoints/content/components/floating"
 import { useChatSessions } from "@/entrypoints/content/hooks/useChatSessions"
 import { useSelectionDetection } from "@/entrypoints/content/hooks/useSelectionDetection"
-import type { SelectionStart } from "@/entrypoints/content/hooks/useSelectionDetection"
 import { useSpeechPlayer } from "@/entrypoints/content/hooks/useSpeechPlayer"
 import { useToolbarState } from "@/entrypoints/content/hooks/useToolbarState"
 import { initContentScriptAnalytics, trackEvent } from "@/shared/analytics"
@@ -16,7 +15,6 @@ import type { SelectionAnchor, SelectionContext, QuickAction } from "@/shared/ty
 
 export default function App() {
   const extensionRootRef = useRef<HTMLDivElement | null>(null)
-  const [selectionStart, setSelectionStart] = useState<SelectionStart | null>(null)
 
   const speechPlayer = useSpeechPlayer()
 
@@ -66,12 +64,10 @@ export default function App() {
   // ---------- 划词工具栏 ----------
 
   const handleSelectionChange = useCallback(
-    (context: SelectionContext | null, anchor: SelectionAnchor | null, start: SelectionStart | null) => {
+    (context: SelectionContext | null, anchor: SelectionAnchor | null) => {
       if (context && anchor) {
-        setSelectionStart(start)
         openToolbar(context, anchor)
       } else {
-        setSelectionStart(null)
         closeToolbar()
       }
     },
@@ -191,7 +187,6 @@ export default function App() {
       <SelectionToolbar
         visible={toolbarVisible}
         anchor={toolbarAnchor}
-        selectionStart={selectionStart}
         actions={actions}
         quickActions={quickActions}
         onAction={(template, text) => {

@@ -9,14 +9,9 @@ import {
   isInsideExtensionEvent
 } from "@/entrypoints/content/utils/domUtils"
 
-export interface SelectionStart {
-  x: number
-  y: number
-}
-
 interface UseSelectionDetectionOptions {
   extensionRootRef: React.RefObject<HTMLElement | null>
-  onSelectionChange: (context: SelectionContext | null, anchor: SelectionAnchor | null, selectionStart: SelectionStart | null) => void
+  onSelectionChange: (context: SelectionContext | null, anchor: SelectionAnchor | null) => void
   isToolbarVisible: () => boolean
 }
 
@@ -31,7 +26,6 @@ export function useSelectionDetection({
   const rafIdRef = useRef<number | null>(null)
   const lastAnchorRef = useRef<SelectionAnchor | null>(null)
   const lastMouseRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
-  const mousedownPosRef = useRef<SelectionStart | null>(null)
 
   const updateSelection = useCallback(
     (event?: Event) => {
@@ -60,7 +54,7 @@ export function useSelectionDetection({
         const snapshot = getSelectionSnapshot(target)
 
         if (!snapshot) {
-          onSelectionChange(null, null, null)
+          onSelectionChange(null, null)
           return
         }
 
@@ -81,7 +75,7 @@ export function useSelectionDetection({
         }
 
         if (!anchor) {
-          onSelectionChange(null, null, null)
+          onSelectionChange(null, null)
           return
         }
 
@@ -89,7 +83,7 @@ export function useSelectionDetection({
         anchor = { ...anchor, mouseX: mouse.x, mouseY: mouse.y }
 
         lastAnchorRef.current = anchor
-        onSelectionChange(snapshot.context, anchor, mousedownPosRef.current)
+        onSelectionChange(snapshot.context, anchor)
       })
     },
     [extensionRootRef, onSelectionChange]
@@ -115,14 +109,6 @@ export function useSelectionDetection({
       updateSelection(event)
     }
 
-    const onMouseDown = (event: MouseEvent) => {
-      if (isInsideExtension(event)) {
-        return
-      }
-
-      mousedownPosRef.current = { x: event.clientX, y: event.clientY }
-    }
-
     const handleSelectionChangeEvent = (event: Event) => {
       // When toolbar is visible, ignore all selection changes — the editor is the source of truth
       if (isToolbarVisible()) {
@@ -134,7 +120,7 @@ export function useSelectionDetection({
       }
 
       if (!readSelectionText()) {
-          onSelectionChange(null, null, null)
+          onSelectionChange(null, null)
           return
         }
 
@@ -168,11 +154,10 @@ export function useSelectionDetection({
       }
 
       // Click outside extension UI → close toolbar
-      onSelectionChange(null, null, null)
+      onSelectionChange(null, null)
     }
 
     document.addEventListener("pointerup", onPointerUp, true)
-    document.addEventListener("mousedown", onMouseDown, true)
     document.addEventListener("selectionchange", handleSelectionChangeEvent, true)
     document.addEventListener("keyup", onKeyUp, true)
     document.addEventListener("focusin", onFocusIn, true)
@@ -184,7 +169,6 @@ export function useSelectionDetection({
       }
 
       document.removeEventListener("pointerup", onPointerUp, true)
-      document.removeEventListener("mousedown", onMouseDown, true)
       document.removeEventListener("selectionchange", handleSelectionChangeEvent, true)
       document.removeEventListener("keyup", onKeyUp, true)
       document.removeEventListener("focusin", onFocusIn, true)

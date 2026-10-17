@@ -42,6 +42,27 @@ export function documentWidth(): number {
 }
 
 /**
+ * 把一块 w×h 的浮层钳制到「当前视口」内（入参/出参均为文档坐标）。
+ * 水平方向用视口宽度而非文档宽度：工具栏是一次性浮层，横向滚出去就看不见了。
+ * 整体超宽/超高（浮层比视口安全区还大）时不拉伸、不右移：贴左/上缘，右侧自然溢出。
+ */
+export function clampToViewportSafe(
+  x: number,
+  y: number,
+  width: number,
+  height: number
+): { x: number; y: number } {
+  const minX = window.scrollX + EDGE_INSET
+  const maxX = window.scrollX + window.innerWidth - width - EDGE_INSET
+  const minY = window.scrollY + EDGE_INSET
+  const maxY = window.scrollY + window.innerHeight - height - EDGE_INSET
+  return {
+    x: Math.min(Math.max(x, minX), Math.max(minX, maxX)),
+    y: Math.min(Math.max(y, minY), Math.max(minY, maxY))
+  }
+}
+
+/**
  * 从选区锚点推导兜底锚定矩形（工具栏尚未上报落位时使用；
  * SelectionAnchor 的 x/y 为视口坐标，需要加滚动偏移转文档坐标）。
  */
