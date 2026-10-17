@@ -69,6 +69,8 @@ export interface ExtensionSettings {
   quickActions: QuickAction[]
   tts: TtsSettings
   telemetryEnabled: boolean
+  /** 系统提示词模板，支持 {selection} {pageTitle} {pageUrl} {metaDescription} {surround} 占位符；空白则回退默认模板 */
+  systemPrompt: string
 }
 
 export interface SelectionContext {

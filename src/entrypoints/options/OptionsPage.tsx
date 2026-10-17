@@ -16,10 +16,11 @@ import { ProviderEditor } from "./ProviderEditor"
 import { ProviderSelectModal } from "./ProviderSelectModal"
 import { AppearanceSection } from "./AppearanceSection"
 import { ActionsSection } from "./ActionsSection"
+import { SystemPromptSection } from "./SystemPromptSection"
 import { BackupSection } from "./BackupSection"
 import { AboutSection } from "./AboutSection"
 
-type Section = "appearance" | "connection" | "actions" | "backup" | "about"
+type Section = "appearance" | "connection" | "actions" | "systemPrompt" | "backup" | "about"
 
 function PlusIcon({ size, color }: { size: number; color: string }) {
   return (
@@ -38,6 +39,7 @@ export default function OptionsPage() {
     { key: "appearance", label: t("options.nav.appearance"), icon: "tabler:palette" },
     { key: "connection", label: t("options.nav.connection"), icon: "tabler:api" },
     { key: "actions", label: t("options.nav.actions"), icon: "tabler:sparkles" },
+    { key: "systemPrompt", label: t("options.nav.systemPrompt"), icon: "tabler:file-text" },
     { key: "backup", label: t("options.nav.backup"), icon: "tabler:database-export" },
     { key: "about", label: t("options.nav.about"), icon: "tabler:info-circle" }
   ]
@@ -64,7 +66,7 @@ export default function OptionsPage() {
     })
     void chrome.storage.local.get("optionsActiveSection").then((result) => {
       const saved = result.optionsActiveSection as Section | undefined
-      if (saved && ["appearance", "connection", "actions", "backup", "about"].includes(saved)) {
+      if (saved && ["appearance", "connection", "actions", "systemPrompt", "backup", "about"].includes(saved)) {
         setActiveSection(saved)
       }
       setLoaded(true)
@@ -228,6 +230,7 @@ export default function OptionsPage() {
     appearance: () => <AppearanceSection settings={settings} saveSettingsNow={saveSettingsNow} />,
     connection: renderConnection,
     actions: () => <ActionsSection settings={settings} saveSettingsNow={saveSettingsNow} />,
+    systemPrompt: () => <SystemPromptSection settings={settings} saveSettingsNow={saveSettingsNow} />,
     backup: () => <BackupSection settings={settings} setSettings={setSettings} onImportComplete={handleImportComplete} />,
     about: () => <AboutSection settings={settings} saveSettingsNow={saveSettingsNow} />
   }

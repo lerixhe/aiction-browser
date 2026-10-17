@@ -5,7 +5,7 @@ import { streamChat } from "@/shared/messaging"
 import { buildContextSystemMessage } from "@/shared/prompt"
 import { trackEvent } from "@/shared/analytics"
 import { getSettings, getActiveProvider } from "@/shared/storage"
-import type { ChatMessage, ChatRequestState, SelectionContext } from "@/shared/types"
+import type { ChatMessage, ChatRequestState, ExtensionSettings, SelectionContext } from "@/shared/types"
 
 /**
  * Generate unique message ID
@@ -121,10 +121,19 @@ export function useChatState() {
       // Use overrideContext if provided, otherwise fall back to stored context
       const ctx = overrideContext !== undefined ? overrideContext : context
 
+      // 先取设置：系统提示词模板需要随请求注入， modelName 也复用这次读取
+      let settings: ExtensionSettings | null = null
+      try {
+        settings = await getSettings()
+      } catch {
+        // Ignore
+      }
+      const modelName = settings ? (getActiveProvider(settings)?.model ?? "unknown") : "unknown"
+
       // Build API messages with system context prepended
       let apiMessages = nextMessages
       if (ctx) {
-        const systemContent = buildContextSystemMessage(ctx)
+        const systemContent = buildContextSystemMessage(ctx, settings?.systemPrompt)
         const systemMessage = createMessage("system", systemContent)
         apiMessages = [systemMessage, ...nextMessages]
       }
@@ -133,14 +142,6 @@ export function useChatState() {
       setRequestState({ status: "streaming", assistantMessageId: assistantMessage.id })
 
       const streamStartTime = performance.now()
-      let modelName = "unknown"
-      try {
-        const settings = await getSettings()
-        const activeService = getActiveProvider(settings)
-        modelName = activeService?.model ?? "unknown"
-      } catch {
-        // Ignore
-      }
 
       try {
         let streamedContent = ""

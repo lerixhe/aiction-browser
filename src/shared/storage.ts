@@ -148,6 +148,9 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
 
   const tts = normalizeTts(saved.tts)
 
+  // 合并默认值：旧用户存储无 systemPrompt 字段时也能拿到默认模板
+  const systemPrompt = typeof saved.systemPrompt === "string" ? saved.systemPrompt : DEFAULT_SETTINGS.systemPrompt
+
   const validLanguages: LanguagePreference[] = ["system", "en", "zh_CN"]
   const language = validLanguages.includes(saved.language as LanguagePreference) ? (saved.language as LanguagePreference) : DEFAULT_SETTINGS.language
 
@@ -159,7 +162,8 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     actions,
     quickActions,
     tts,
-    telemetryEnabled
+    telemetryEnabled,
+    systemPrompt
   }
 }
 
