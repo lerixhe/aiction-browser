@@ -202,7 +202,24 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   不再关闭（Esc / × 仍可关闭），且在新触发时**继续驻留与其他实例并存**（钉住状态
   由父级持有：ChatPanel 受控 props → ChatSession → useChatSessions 回写）。
   头部整条为拖拽手柄（按钮除外），按住空白处可拖动整个对话窗：拖过一次后位置
-  归用户接管（`draggedRef`），resize 时只钳制回视口而不再按锚点重算。
+  归用户接管（`draggedRef`），resize 时只收敛回视口而不再按锚点重算。
+- **拖拽边界（`floating.ts` 的 `clampPanelDragPos` / `fitPanelInViewport`）**：
+  钳制必须用**面板实测尺寸**（`panelSizeRef` 由 ResizeObserver 维护），
+  不能用 `PANEL_MAX_HEIGHT`——卡片态实际高度远小于展开态，按 640 算会把矮卡片
+  硬顶在视口上部、拖不到下方（历史 bug）。边界是**单一套软边界**：
+  只保证「最小可抓取区」留在视口内——垂直 `DRAG_HEADER_KEEP` = 44（头部手柄在
+  视口内），水平 `DRAG_KEEP_VISIBLE_X` = 200（头部中央手柄仍在视口内），
+  上缘不允许拖出视口，下/左/右允许溢出。
+  为什么不用「放得下就要求整块可见」：对话窗展开后高度接近视口高度，
+  整块可见会把垂直可拖范围压到几十像素（视口 700 → 只能拖 44px），观感就是拖不动。
+  为什么不做「不限范围」：面板能被拖出视口而彻底抓不回来（= 悬浮窗丢失），
+  只能刷新页面自救。
+  水平基准取**视口**而非文档宽度：面板随文档滚动，横向滚出视口同样抓不回来。
+- **拖拽后的位置权归用户**：`draggedRef` 一旦置位，视口 resize 只跑软边界
+  （`clampPanelDragPos`，防拖丢），不再用 `fitPanelInViewport` 硬拽回视口；
+  ResizeObserver 也跳过。`fitPanelInViewport` 只在**未拖拽**时生效（自动落位的
+  面板长高后顶出视口时拉回来），否则一开 DevTools 就会把用户拖到边缘的面板
+  硬拽回视口，观感同样是「拖不出去」。
 - **朗读控件 `SpeechWidget.tsx`**：触发朗读后浮现于工具栏落位下方，默认展开为
   控制条；鼠标移出 300ms（或触发后 4s 一直未交互）自动收起为 32px 小圆球，
   悬停/点击圆球再次展开；morph 时用 `translateX` 补偿宽度变化使中心不动。

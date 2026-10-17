@@ -18,6 +18,22 @@ export const FLOATING_GAP = 8
 /** 视口安全区内边距 */
 export const EDGE_INSET = 8
 
+/**
+ * 拖拽时的「最小可抓取区」（与面板尺寸无关，始终生效）：
+ * 不管面板多矮多高，都只要求这两块留在视口内，其余部分允许溢出视口。
+ * - 垂直：头部整条（拖拽手柄所在的 34px）再加一点，保证任何时候都抓得回来
+ * - 水平：一截足够的宽度（头部中央的拖拽手柄仍在视口内），保证头部还拖得动
+ * 两者都只在无其他办法时降级：面板比视口这侧还小时，拖动范围直接覆盖整个视口。
+ */
+export const DRAG_HEADER_KEEP = 44
+export const DRAG_KEEP_VISIBLE_X = 200
+
+/** 面板位置（绝对定位的文档坐标，即 CSS left/top） */
+export interface PanelPos {
+  left: number
+  top: number
+}
+
 export interface FloatingPlacement {
   /** 文档坐标（absolute left） */
   left: number
@@ -59,6 +75,57 @@ export function clampToViewportSafe(
   return {
     x: Math.min(Math.max(x, minX), Math.max(minX, maxX)),
     y: Math.min(Math.max(y, minY), Math.max(minY, maxY))
+  }
+}
+
+/**
+ * 当前视口的文档坐标安全区（进入口参数为 inset）。
+ * 水平基准取「视口」而非文档宽度：面板是跟着文档滚的，横向滚出视口就等于看不见、
+ * 也就抓不回来，所以边界必须以视口为准。
+ */
+function viewportSafeBounds(inset = EDGE_INSET): { left: number; top: number; right: number; bottom: number } {
+  return {
+    left: window.scrollX + inset,
+    top: window.scrollY + inset,
+    right: window.scrollX + window.innerWidth - inset,
+    bottom: window.scrollY + window.innerHeight - inset
+  }
+}
+
+/**
+ * 拖拽边界（软，唯一一套）：
+ * 只保证「最小可抓取区」留在视口内（头部手柄 / 一截宽度），其余部分允许溢出视口。
+ *
+ * 为什么不用「放得下就要求整块可见」：对话窗展开后高度接近视口高度，
+ * 整块可见会把垂直可拖范围压到几十像素（700 高视口只能拖 44px），观感就是拖不动。
+ * 为什么不做「不限范围」：面板能被拖出视口而彻底抓不回来（= 悬浮窗丢失），
+ * 只能刷新页面自救，代价远大于多出来的自由度。
+ *
+ * 面板尺寸只影响“溢出多少”（可见区取 min），不影响边界规则本身。
+ */
+export function clampPanelDragPos(pos: PanelPos, width: number, height: number): PanelPos {
+  const bounds = viewportSafeBounds()
+  const visibleX = Math.min(DRAG_KEEP_VISIBLE_X, width)
+  const visibleY = Math.min(DRAG_HEADER_KEEP, height)
+
+  return {
+    // 左缘允许拖出视口左侧，但保证右侧 visibleX 宽仍在视口内（反之同理）
+    left: clamp(pos.left, bounds.left - (width - visibleX), Math.max(bounds.left, bounds.right - visibleX)),
+    // 上缘不允许拖出视口（头部贴顶即止），下缘允许溢出：只留 visibleY 高在视口内
+    top: clamp(pos.top, bounds.top, Math.max(bounds.top, bounds.bottom - visibleY))
+  }
+}
+
+/**
+ * 收敛（硬）：把面板尽量整块收回视口安全区，放不下时贴左上缘（不拉伸自身尺寸）。
+ * 只在**位置仍归锚点/自动落位管**时使用（此时用户没表达过位置意图，
+ * 内容长出来顶出视口就该拉回来）；用户拖过之后不再调用它，位置完全归用户。
+ */
+export function fitPanelInViewport(pos: PanelPos, width: number, height: number): PanelPos {
+  const bounds = viewportSafeBounds()
+  return {
+    left: clamp(pos.left, bounds.left, Math.max(bounds.left, bounds.right - width)),
+    top: clamp(pos.top, bounds.top, Math.max(bounds.top, bounds.bottom - height))
   }
 }
 

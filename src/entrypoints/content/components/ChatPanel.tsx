@@ -3,9 +3,12 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { MarkdownRenderer } from "@/shared/ui/markdown"
 import { useUiTheme } from "@/shared/ui/theme"
 import {
+  clampPanelDragPos,
   EDGE_INSET,
+  fitPanelInViewport,
   placeNearAnchor,
-  type AnchorRect
+  type AnchorRect,
+  type PanelPos
 } from "@/entrypoints/content/components/floating"
 import { uiLayer, uiMotion, uiRadius, uiSpace, uiShadow, uiTypography } from "@/shared/ui/tokens"
 import { createFocusRing, createStatusMessageStyle } from "@/shared/ui/styles"
@@ -672,30 +675,24 @@ export default function ChatPanel({
   // ---------- 落位：工具栏下方，放不下翻转上方，最后收敛回视口 ----------
   // 用户拖拽头部后位置改由用户接管：此后不再按锚点重算，仅在 resize 时收敛回视口
 
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
+  const [pos, setPos] = useState<PanelPos | null>(null)
   /** 用户是否已拖拽过位置（拖拽后位置归用户管） */
   const draggedRef = useRef(false)
-
-  /** 把面板位置钳制回当前视口（拖拽中与 resize 后都用它防丢） */
-  const clampPanelPos = useCallback((p: { left: number; top: number }) => {
-    const height = Math.min(PANEL_MAX_HEIGHT, window.innerHeight - EDGE_INSET * 2)
-    const maxLeft = Math.max(
-      EDGE_INSET,
-      Math.max(document.documentElement.clientWidth, document.documentElement.scrollWidth) - PANEL_WIDTH - EDGE_INSET
-    )
-    const viewportTop = window.scrollY + EDGE_INSET
-    const viewportBottom = window.scrollY + window.innerHeight - EDGE_INSET - height
-    return {
-      left: Math.min(Math.max(p.left, EDGE_INSET), maxLeft),
-      top: Math.min(Math.max(p.top, viewportTop), Math.max(viewportTop, viewportBottom))
-    }
-  }, [])
+  /**
+   * 面板**实际渲染尺寸**（ResizeObserver 持续更新）。
+   * 卡片态高度随内容自适应、聊天态才接近 PANEL_MAX_HEIGHT，
+   * 钳制一律用实测值，否则矮卡片会被按展开态高度硬顶在视口上部、拖不到下方。
+   */
+  const panelSizeRef = useRef({ width: PANEL_WIDTH, height: CARD_ASSUME_HEIGHT })
 
   const computePosition = useCallback(() => {
     if (!open) return
-    // 用户拖拽过后位置归用户接管，resize 只需要钳制回视口，不再按锚点重算
+    // 用户拖拽过后位置归用户接管，resize 只需要防止被拖丢，不再按锚点重算。
+    // 注意这里仍用软边界：若改成「整块收回视口」，开合 DevTools 之类的
+    // 视口变化会把用户拖到视口边缘的位置硬拽回来，观感就是“拖不出去”。
     if (draggedRef.current) {
-      setPos((prev) => (prev ? clampPanelPos(prev) : prev))
+      const { width, height } = panelSizeRef.current
+      setPos((prev) => (prev ? clampPanelDragPos(prev, width, height) : prev))
       return
     }
     const isCard = mode === "card"
@@ -708,13 +705,13 @@ export default function ChatPanel({
       ({ x: window.scrollX + window.innerWidth / 2, y: window.scrollY + 80, width: 0, height: 0 } satisfies AnchorRect)
     const placed = placeNearAnchor(rect, PANEL_WIDTH, height)
     setPos({ left: placed.left, top: placed.top })
-  }, [open, anchor, clampPanelPos, mode])
+  }, [open, anchor, mode])
 
   useLayoutEffect(() => {
     computePosition()
   }, [computePosition])
 
-  // 视口尺寸变化时重新钳制（仅贴边时需要；拖拽后钳制回当前视口）
+  // 视口尺寸变化时重新定位（未拖拽时贴边、已拖拽时只防拖丢）
   useEffect(() => {
     if (!open) return
     const handleResize = () => computePosition()
@@ -741,11 +738,16 @@ export default function ChatPanel({
       setDragging(true)
 
       const handleMove = (e: PointerEvent) => {
+        const { width, height } = panelSizeRef.current
         setPos(
-          clampPanelPos({
-            left: start.left + (e.clientX - start.pointerX),
-            top: start.top + (e.clientY - start.pointerY)
-          })
+          clampPanelDragPos(
+            {
+              left: start.left + (e.clientX - start.pointerX),
+              top: start.top + (e.clientY - start.pointerY)
+            },
+            width,
+            height
+          )
         )
       }
       const handleUp = () => {
@@ -758,8 +760,34 @@ export default function ChatPanel({
       window.addEventListener("pointerup", handleUp)
       window.addEventListener("pointercancel", handleUp)
     },
-    [pos, clampPanelPos]
+    [pos]
   )
+
+  // ---------- 面板自身尺寸变化：卡片态内容增长 / 形态切换后收敛回视口 ----------
+
+  useEffect(() => {
+    if (!open) return
+    const el = panelRef.current
+    if (!el) return
+
+    const measure = () => {
+      const next = { width: el.offsetWidth, height: el.offsetHeight }
+      const prev = panelSizeRef.current
+      if (next.width === prev.width && next.height === prev.height) return
+      panelSizeRef.current = next
+      // 尺寸变了（流式内容增长 / 卡片↔聊天态切换）。
+      // 位置已归用户接管时不动它（尊重用户意图，用户自己能拖回来）；
+      // 自动落位的面板长高后会顶出视口，收敛回来避免内容看不见。
+      if (draggedRef.current) return
+      setPos((current) => (current ? fitPanelInViewport(current, next.width, next.height) : current))
+    }
+
+    measure()
+    if (typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [open])
 
   // ---------- 关闭交互：点击窗外（未钉住时）----------
   // 注意：Esc 关闭已上移到 useChatSessions 统一监听（多实例并存时避免一次按键连环关关闭所有面板）
