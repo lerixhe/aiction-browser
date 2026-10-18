@@ -36,6 +36,12 @@ const COMPOSER_INPUT_MAX_HEIGHT = 132
 const SEND_BUTTON_SIZE = 28
 /** 复制成功反馈的驻留时长 */
 const COPY_FEEDBACK_MS = 1600
+/**
+ * 防抖命中时的高亮脉冲时长。
+ * 命中不再静默吞掉点击：给已有卡片描一圈主色脉冲，明确告诉用户「这张已经有了」。
+ * （不改变卡片位置：位置是用户的，只有用户自己拖或形态切换才会动）
+ */
+const REVEAL_HIGHLIGHT_MS = 1100
 
 /**
  * 头部控件统一样式族：icon-only 呈正圆、带文案呈胶囊，几何与交互完全一致。
@@ -769,6 +775,11 @@ interface Props {
   onStop: () => void
   /** 关闭对话窗（清空本轮对话） */
   onClose: () => void
+  /**
+   * 递增信号：变化时闪一圈主色脉冲（父级防抖命中时置位），不改变位置。
+   * 初值 0 表示「还没命中过」，挂载时不会触发。
+   */
+  revealNonce?: number
 }
 
 /**
@@ -786,7 +797,8 @@ export default function ChatPanel({
   onPinChange,
   onSend,
   onStop,
-  onClose
+  onClose,
+  revealNonce = 0
 }: Props) {
   const theme = useUiTheme()
   const themeName = useUiThemeName()
@@ -803,6 +815,8 @@ export default function ChatPanel({
   const [focused, setFocused] = useState<string | null>(null)
   const [hovered, setHovered] = useState<string | null>(null)
   const [sendPressed, setSendPressed] = useState(false)
+  /** 命中脉冲覆盖层：常驻 DOM，靠显式重启动画，不依赖节点重建 / state 布尔切换 */
+  const revealPulseRef = useRef<HTMLDivElement | null>(null)
   /** 钉住状态（受控 props）：钉住后点击窗外不再关闭对话窗（Esc / × 仍可关闭） */
   const pinnedRef = useRef(pinned)
   pinnedRef.current = pinned
@@ -974,6 +988,21 @@ export default function ChatPanel({
     return () => observer.disconnect()
   }, [open])
 
+  // ---------- 防抖命中的反馈：父级 revealNonce 递增即闪一圈主色（不动位置） ----------
+
+  useEffect(() => {
+    if (revealNonce === 0) return
+    const el = revealPulseRef.current
+    if (!el) return
+    // 显式重启动画：先摘掉 animation + 强制回流，再重新赋上。
+    // 不能依赖「改 key 让 React 重建节点」或「state 布尔翻转」：
+    // 重复赋同一个 animation 值浏览器不会重播，而 state 已是 true 时再次置 true 不触发渲染，
+    // 连锁点时会变成「有时闪一下、有时完全不闪」。
+    el.style.animation = "none"
+    void el.offsetWidth
+    el.style.animation = `panel-reveal ${REVEAL_HIGHLIGHT_MS}ms ${uiMotion.easingStandard}`
+  }, [revealNonce])
+
   // ---------- 关闭交互：点击窗外（未钉住时）----------
   // 注意：Esc 关闭已上移到 useChatSessions 统一监听（多实例并存时避免一次按键连环关关闭所有面板）
 
@@ -1131,6 +1160,13 @@ export default function ChatPanel({
         @keyframes model-pulse {
           0% { opacity: 0.5; transform: scale(1); }
           100% { opacity: 0; transform: scale(2.8); }
+        }
+        /* 防抖命中反馈：命中已有卡片时整体闪一下（覆盖层自带描边 + 内柔光，面板 overflow 裁不到） */
+        @keyframes panel-reveal {
+          0% { opacity: 0; }
+          15% { opacity: 1; }
+          70% { opacity: 1; }
+          100% { opacity: 0; }
         }
         /* 选中文字：用主色淡底（与面板强调色同族），比浏览器默认的蓝更协调 */
         [data-aiction-chat-panel="true"] ::selection {
@@ -1508,6 +1544,25 @@ export default function ChatPanel({
         </div>
       </div>
       ) : null}
+
+      {/* 防抖命中反馈：常驻覆盖层，命中时由 effect 显式重启动画
+          （不碰面板自身的入场动画与投影，也不动位置；动画无 fill-mode，播完自然回到 opacity 0） */}
+      <div
+        ref={revealPulseRef}
+        aria-hidden="true"
+        data-panel-reveal="true"
+        style={{
+          position: "absolute",
+          inset: 0,
+          borderRadius: "inherit",
+          border: `2px solid ${theme.accent.primary}`,
+          // 内柔光而非外发光：面板自身 overflow: hidden，画在外侧的光晕会被裁掉
+          boxShadow: `inset 0 0 0 4px ${theme.accent.primary}33`,
+          pointerEvents: "none",
+          zIndex: 2,
+          opacity: 0
+        }}
+      />
     </div>
   )
 }

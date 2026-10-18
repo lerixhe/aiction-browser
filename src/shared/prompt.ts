@@ -68,11 +68,17 @@ function resolvePlaceholderValue(
   }
 }
 
+/**
+ * 解析动作模板。当前动作模板只有 `{selection}` 一个占位符，解析**不依赖设置项**，
+ * 所以 `settings` 只是历史签名（保留可选以免调用方必须 await 读取设置）：
+ * 触发路径可以在任何 await 之前同步算出 prompt，防抖判断才不会踩到竞态。
+ */
 export function resolveActionTemplate(
   template: string,
   context: SelectionContext,
-  settings: ExtensionSettings
+  settings?: ExtensionSettings
 ): string {
+  void settings
   return template
     .replaceAll("{selection}", context.text)
 }

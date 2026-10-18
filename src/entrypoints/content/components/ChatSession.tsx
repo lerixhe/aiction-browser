@@ -19,7 +19,7 @@ export interface ChatSessionInit {
    * 会话首个 prompt（动作模板解析 / 自由输入拼装的结果）：
    * - 挂载即自动发送
    * - 同时充当防抖键：同一动作在同一选区上的重复点击（prompt 相同），
-   *   只要本会话未关闭，父级就不会重复响应
+   *   只要本会话未关闭，父级就不重复响应；命中时本实例会闪一圈脉冲作为反馈
    */
   initialPrompt: string
 }
@@ -29,6 +29,11 @@ interface Props {
   /** 钉住状态（父级持有，跨渲染持久）；钉住后父级会保护本会话不被新触发替换 */
   pinned: boolean
   onPinnedChange: (pinned: boolean) => void
+  /**
+   * 递增信号：父级防抖命中时置位，要求本实例的卡片闪一圈主色脉冲（不动位置）。
+   * 命中静默的话用户会以为按钮失效（卡片可能只是滚出了视口）。
+   */
+  revealNonce: number
   /** 关闭会话（父级销毁本实例） */
   onClose: () => void
 }
@@ -38,7 +43,7 @@ interface Props {
  * 实例内部持有独立的 messages、流式请求 abort、输入框状态，
  * 互不与其它会话共享（卸载时中断流式并清理节流定时器）。
  */
-export default function ChatSession({ init, pinned, onPinnedChange, onClose }: Props) {
+export default function ChatSession({ init, pinned, revealNonce, onPinnedChange, onClose }: Props) {
   const chat = useChatState()
 
   /** 挂载即完成一次性初始化，防止意外重放（卸载后再挂载会是新实例，ref 自动归零） */
@@ -72,6 +77,7 @@ export default function ChatSession({ init, pinned, onPinnedChange, onClose }: P
       }}
       onStop={chat.stopStreaming}
       onClose={onClose}
+      revealNonce={revealNonce}
     />
   )
 }

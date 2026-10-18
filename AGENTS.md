@@ -74,6 +74,30 @@ console.log(sf.parseDiagnostics)
 **收起浮层时要处理残留焦点**
 浮层（岛展开层）收起后 DOM 仍在（仅 opacity 0 + pointerEvents none），键盘焦点会残留在隐形输入框里，后续按键全部落入虚空。收起路径必须统一 blur 岛内焦点（容器用 `onFocusCapture` 记录焦点元素，collapse 时 blur）。
 
+**浮层防抖不能只看「实例是否存活」，且命中不能静默**
+用「同 prompt 实例是否存在」做防抖是对的（关闭后自然能重新触发），但**命中时只能闪一下、不能什么都不做**：
+用户判断卡片存不存在的标准是**看得见**，而卡片是 absolute + 文档坐标、随文档滚动，
+滚动后它会连同实例一起还在内存里、但已离开视口；此时静默吞掉点击的现象就是
+「卡片明明没了，再点翻译没反应」。三个要点：
+1. 命中时给那张卡片闪一圈主色脉冲（`revealSession` → `revealNonce` → ChatPanel 的
+   `data-panel-reveal` 常驻覆盖层）。三个容易做成「有时闪有时不闪」的坑：
+   - **不要靠 React 重建节点来重播动画**（`{cond ? <div key={nonce}/> : null}`、
+     按 nonce 改 key 之类）：重复赋同一个 `animation` 值浏览器不会重播，
+     而 `revealing` 已是 true 时再置 true 也不会触发渲染。正确做法是覆盖层**常驻**，
+     命中时用 `el.style.animation = "none"` → 读 `offsetWidth` 强制回流 → 重新赋上。
+   - 闪一下的信号要绑在**已提交**的会话上：`findSessionForPrompt` 直接用 state
+     （事件处理器闭包里的 state 就是最近一次已提交值）。
+     **绝不要在渲染期间写 `sessionsRef.current = sessions`**：并发渲染被中断/丢弃时
+     会留下一个从未提交的快照，据此算出的 id 在已提交列表里根本不存在，
+     `revealSession(id)` 匹配不上 → nonce 不变 → 就「不闪」了。
+   - 面板自身 `overflow: hidden`，脉冲层画在外侧的 box-shadow 会被裁，光晕要用 `inset`。
+   **不要顺手把卡片拉回视口**：位置是用户的，移动卡片比没反馈更意外（曾经实现过，已移除）——
+   卡片滚出视口后收不到脉冲是这套方案的已知取舍。
+2. 防抖判定必须放在**任何 await 之前**并同步建实例：`resolveActionTemplate` 其实不依赖
+   设置项，放在 `await getSettings()` 后面会让「等 storage 的那个窗口」里的第二次点击
+   双双通过检查，连开两张同 prompt 卡片（位置重叠，看起来像一张）。
+另：防抖键只有 prompt（不含选区位置），所以在页面另一处选中**同样文字**也会命中同一张卡片。
+
 ## Entry Points (WXT file-based routing)
 - `src/entrypoints/background.ts`: Background Service Worker (uses `defineBackground()`).
 - `src/entrypoints/content/index.tsx`: Content Script UI (uses `defineContentScript()` + `createShadowRootUi()`).
@@ -213,8 +237,9 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   流式并清理节流定时器）。Esc 由 hook 统一监听（逐面板监听会一次按键连环关闭所有
   面板），每按一次销毁最新创建的一个；IME 组合中的 Esc 属输入法行为，忽略。
   `useChatState` 由 ChatSession 内部调用，每实例持有独立的 messages / abort / 节流
-  定时器。防抖：存在解析 prompt 相同的未关闭会话（同动作同选区重复点击）时忽略
-  本次触发，相应会话被关闭后才能重新触发；其余动作不受已开会话（含钉住的）阻断。
+  定时器。防抖：存在解析 prompt 相同的未关闭会话（同动作同选区重复点击）时**不再新建实例，
+  而是让那张卡片闪一圈主色脉冲**（`revealSession`）作为反馈，相应会话被关闭后才能重新生成；
+  其余动作不受已开会话（含钉住的）阻断。
 - **对话窗头部交互**：头部左侧为模型胶囊（芯片图标 + 模型名内联显示，可拖拽），
   右侧为图钉钉住按钮、× 关闭；钉住（顶针图标填色 + 45° 旋转变实心）后点击窗外
   不再关闭（Esc / × 仍可关闭），且在新触发时**继续驻留与其他实例并存**（钉住状态
@@ -270,7 +295,7 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
 - 输入框 Enter 发送必须检查 `event.nativeEvent.isComposing`（IME 组合确认不是发送）。
 - 对话为单轮场景内存态：关闭面板 = 该会话实例整体销毁；新动作触发总是追加全新实例
   （多实例并存，不复用旧 messages；钉住的实例不计入替换，而是驻留并存）；同一动作
-  同一选区重复点击被防抖抑制（存在 initialPrompt 相同的未关闭会话）。
+  同一选区重复点击被防抖命中时**不静默忽略**：让那张卡片闪一圈主色脉冲（不动位置）。
 - 对话面板（ChatPanel）自身只管点外关闭与钉住；Esc 键统一在 useChatSessions 监听，
   面板内不再另加 Esc 监听（避免多实例时一次按键连环关闭）。
 - **工具栏上的动作按钮一律不关闭工具栏**：普通动作（`handleAction`）、朗读

@@ -205,7 +205,8 @@ export function PdfViewerPage() {
    * 对话会话管理（多实例并存）：新触发总是追加全新实例，钉住的实例继续驻留；
    * 关闭（× / 点外 / Esc）时按实例逐个销毁。Esc 在 hook 内统一监听，一次关一个。
    */
-  const { sessions, openSession, closeSession, setSessionPinned, hasSessionForPrompt } = useChatSessions()
+  const { sessions, openSession, closeSession, setSessionPinned, findSessionForPrompt, revealSession } =
+    useChatSessions()
 
   // Custom selection detection for PDF text layer
   useEffect(() => {
@@ -275,16 +276,27 @@ export function PdfViewerPage() {
         return
       }
 
-      const settings = await getSettings()
       const context = { ...selectionContext, text }
-      const prompt = resolveActionTemplate(template, context, settings)
+      // 防抖判断在任何 await 之前（解析不依赖设置项），避免读设置期间重复点击双双通过检查
+      const prompt = resolveActionTemplate(template, context)
 
-      // 防抖：存在解析出相同 prompt 的未关闭会话（同动作同选区重复点击）时忽略；
-      // 相应会话被关闭后才重新响应；钉住的会话继续驻留，其它动作正常弹出新实例
-      if (hasSessionForPrompt(prompt)) {
+      // 命中已有卡片：闪一圈脉冲作为反馈（不重新请求，也不改位置）——
+      // 静默忽略会让用户以为按钮失效
+      const existing = findSessionForPrompt(prompt)
+      if (existing) {
+        revealSession(existing.id)
         return
       }
 
+      // 先同步出新实例（卡片立刻挂出，不等 storage），埋点随后异步补齐
+      openSession({
+        anchor: takeToolbarAnchor(),
+        capturedText: text,
+        context,
+        initialPrompt: prompt
+      })
+
+      const settings = await getSettings()
       const matchedAction = settings.actions.find((a) => a.template === template)
       const BUILTIN_IDS = new Set(["explain", "translate"])
       const customActions = settings.actions.filter((a) => !BUILTIN_IDS.has(a.id))
@@ -294,16 +306,8 @@ export function PdfViewerPage() {
         custom_action_count: customActions.length,
         custom_action_labels: customActions.map((a) => a.label).join(",")
       })
-
-      // 每次触发均追加独立会话实例（与既有实例并存，钉住的不会被替换）
-      openSession({
-        anchor: takeToolbarAnchor(),
-        capturedText: text,
-        context,
-        initialPrompt: prompt
-      })
     },
-    [selectionContext, hasSessionForPrompt, openSession, takeToolbarAnchor]
+    [selectionContext, findSessionForPrompt, revealSession, openSession, takeToolbarAnchor]
   )
 
   // Handle quick action
@@ -335,31 +339,33 @@ export function PdfViewerPage() {
   )
 
   // Handle free submit from panel captured text
-  // （与 action 同路径：自由输入解析出的 prompt 相同且会话仍开着同样防抖）
+  // （与 action 同路径：自由输入解析出的 prompt 相同且会话仍开着时同样命中防抖，命中即闪一下）
   const handleFreeSubmit = useCallback(
     async (input: string, text: string) => {
       if (!selectionContext) {
         return
       }
 
-      void trackEvent("free_input_submitted", { input_length: input.length })
-
       const context = { ...selectionContext, text }
       const prompt = formatFreeInputPrompt(input, text)
-      // 防抖：与 handleAction 同规则（钉住的会话也不阻断新触发，仅同 prompt 忽略）
-      if (hasSessionForPrompt(prompt)) {
+      // 防抖：与 handleAction 同规则（钉住的会话也不阻断新触发，仅同 prompt 命中）
+      const existing = findSessionForPrompt(prompt)
+      if (existing) {
+        revealSession(existing.id)
         return
       }
 
-      // 多实例并存：钉住的会话不会被替换，自由输入也弹出新实例
+      // 多实例并存：钉住的会话不会被替换，自由输入也弹出新实例（同步先出卡片）
       openSession({
         anchor: takeToolbarAnchor(),
         capturedText: text,
         context,
         initialPrompt: prompt
       })
+
+      void trackEvent("free_input_submitted", { input_length: input.length })
     },
-    [selectionContext, hasSessionForPrompt, openSession, takeToolbarAnchor]
+    [selectionContext, findSessionForPrompt, revealSession, openSession, takeToolbarAnchor]
   )
 
   if (loading) {
@@ -407,6 +413,7 @@ export function PdfViewerPage() {
             key={session.id}
             init={session}
             pinned={session.pinned}
+            revealNonce={session.revealNonce}
             onPinnedChange={(pinned) => setSessionPinned(session.id, pinned)}
             onClose={() => closeSession(session.id)}
           />
