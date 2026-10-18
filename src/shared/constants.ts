@@ -61,3 +61,9 @@ export const DEFAULTS = {
   CHAT_PANEL_INITIAL_Y: 24,
   TOOLBAR_COLLAPSE_DELAY: 300
 } as const
+
+/**
+ * Options 页的入口标记（chrome.storage.local）：
+ * Popup 跳转前写入，Options 页读取后清除，用于区分「从 Popup 进来」还是「其它入口」。
+ */
+export const OPTIONS_ENTRY_STORAGE_KEY = "aiction:optionsEntry"

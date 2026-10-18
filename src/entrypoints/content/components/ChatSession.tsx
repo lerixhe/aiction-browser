@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react"
 import ChatPanel from "@/entrypoints/content/components/ChatPanel"
 import type { AnchorRect } from "@/entrypoints/content/components/floating"
 import { useChatState } from "@/entrypoints/content/hooks/useChatState"
+import type { AnalyticsSource } from "@/shared/analytics"
 import type { SelectionContext } from "@/shared/types"
 
 /** 单个对话会话的初始快照（触发动作时刻解析，实例存续期间不再变化） */
@@ -26,6 +27,8 @@ export interface ChatSessionInit {
 
 interface Props {
   init: ChatSessionInit
+  /** 触发来源（web 网页 / pdf 阅读器）：仅作为埋点维度，不影响行为 */
+  source: AnalyticsSource
   /** 钉住状态（父级持有，跨渲染持久）；钉住后父级会保护本会话不被新触发替换 */
   pinned: boolean
   onPinnedChange: (pinned: boolean) => void
@@ -43,8 +46,8 @@ interface Props {
  * 实例内部持有独立的 messages、流式请求 abort、输入框状态，
  * 互不与其它会话共享（卸载时中断流式并清理节流定时器）。
  */
-export default function ChatSession({ init, pinned, revealNonce, onPinnedChange, onClose }: Props) {
-  const chat = useChatState()
+export default function ChatSession({ init, source, pinned, revealNonce, onPinnedChange, onClose }: Props) {
+  const chat = useChatState(source)
 
   /** 挂载即完成一次性初始化，防止意外重放（卸载后再挂载会是新实例，ref 自动归零） */
   const bootstrappedRef = useRef(false)
@@ -70,6 +73,7 @@ export default function ChatSession({ init, pinned, revealNonce, onPinnedChange,
       messages={chat.messages}
       requestState={chat.requestState.status}
       modelName={chat.modelName}
+      source={source}
       pinned={pinned}
       onPinChange={onPinnedChange}
       onSend={(input) => {

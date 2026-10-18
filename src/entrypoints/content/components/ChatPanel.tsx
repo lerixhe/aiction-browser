@@ -13,6 +13,7 @@ import {
 import { uiLayer, uiMotion, uiRadius, uiShadow, uiSpace, uiTypography } from "@/shared/ui/tokens"
 import { createFocusRing, createFloatingPanelStyle, createStatusMessageStyle } from "@/shared/ui/styles"
 import { copyText } from "@/shared/clipboard"
+import { trackEvent, type AnalyticsSource } from "@/shared/analytics"
 import { useI18n } from "@/shared/i18n/context"
 import { toSingleLine } from "@/entrypoints/content/utils/reasoningText"
 import type { ChatMessage, ChatRequestState } from "@/shared/types"
@@ -768,6 +769,8 @@ interface Props {
   messages: ChatMessage[]
   requestState: ChatRequestState["status"]
   modelName?: string
+  /** 触发来源（web 网页 / pdf 阅读器）：仅作为埋点维度 */
+  source: AnalyticsSource
   /** 钉住状态由父级（ChatSession/App）持有：钉住后点击窗外不关闭，且父级可据此保护会话不被新触发替换 */
   pinned: boolean
   onPinChange: (pinned: boolean) => void
@@ -793,6 +796,7 @@ export default function ChatPanel({
   messages,
   requestState,
   modelName,
+  source,
   pinned,
   onPinChange,
   onSend,
@@ -1052,12 +1056,18 @@ export default function ChatPanel({
       }, MORPH_DURATION + 60)
     }
     setMode(next)
+    void trackEvent("chat_panel_mode_toggled", {
+      to_mode: next,
+      source,
+      // 卡片态下追问是否发生在生成中，能区分「追加提问」与「看看展开的全貌」
+      streaming: requestState === "streaming"
+    })
     if (next === "chat") {
       requestAnimationFrame(() => inputRef.current?.focus())
     } else {
       inputRef.current?.blur()
     }
-  }, [mode])
+  }, [mode, source, requestState])
   /** 用户是否停在消息区底部附近（流式期间仅贴底时才自动跟随滚动） */
   const isNearBottomRef = useRef(true)
 

@@ -5,6 +5,24 @@ const POSTHOG_HOST = "https://us.i.posthog.com"
 
 const ANONYMOUS_ID_KEY = "aiction:anonymousId"
 
+/** 事件来源上下文（埋点属性 `source` 的取值，见 docs/ANALYTICS.md §3） */
+export type AnalyticsSource = "web" | "pdf" | "popup" | "options" | "background"
+
+/** 一次性里程碑标记在 chrome.storage.local 中的键前缀 */
+const FIRST_TIME_PREFIX = "aiction:first:"
+
+/**
+ * 长度分桶：埋点禁止上报自由文本，长度也分桶（见 docs/ANALYTICS.md §3）。
+ * 用于文案 / 模板 / 选区内容 / 朗读文本等「长度能说明问题、内容不能上报」的字段。
+ */
+export function lengthBucket(length: number): string {
+  if (length === 0) return "0"
+  if (length <= 20) return "1-20"
+  if (length <= 60) return "21-60"
+  if (length <= 200) return "61-200"
+  return "200+"
+}
+
 // ── Anonymous ID ────────────────────────────────────────────────
 
 let cachedAnonymousId: string | null = null
@@ -49,6 +67,39 @@ export async function isTelemetryEnabled(): Promise<boolean> {
     // Extension context may have been invalidated
   }
   return true
+}
+
+// ── First-time milestones ───────────────────────────────────────
+
+/**
+ * 一次性里程碑：返回 true 表示该 key 首次出现（并写入标记，之后恒为 false）。
+ * storage 异常时返回 false —— 宁可漏报，也不要重复计数。
+ */
+export async function consumeFirstTimeFlag(key: string): Promise<boolean> {
+  const storageKey = `${FIRST_TIME_PREFIX}${key}`
+  try {
+    const result = await chrome.storage.local.get(storageKey)
+    if (result[storageKey]) {
+      return false
+    }
+    await chrome.storage.local.set({ [storageKey]: Date.now() })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** 仅在 `onceKey` 首次出现时上报（属性自动带上 `is_first: true`） */
+export async function trackFirstTimeEvent(
+  onceKey: string,
+  name: string,
+  properties?: Record<string, unknown>
+): Promise<void> {
+  const isFirst = await consumeFirstTimeFlag(onceKey)
+  if (!isFirst) {
+    return
+  }
+  await trackEvent(name, { ...(properties ?? {}), is_first: true })
 }
 
 // ── Content Script: PostHog SDK ─────────────────────────────────

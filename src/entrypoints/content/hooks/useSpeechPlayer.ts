@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { MESSAGE_TYPES } from "@/shared/constants"
 import { detectTextLocale, resolveVoiceForText } from "@/shared/edge-tts-voices"
 import { getSettings, saveSettings } from "@/shared/storage"
+import { trackEvent, lengthBucket, type AnalyticsSource } from "@/shared/analytics"
 import type { TtsSettings, TtsSynthesizeResponse } from "@/shared/types"
 
 const MAX_UTTERANCE_LENGTH = 180
@@ -85,7 +86,7 @@ const INITIAL_STATE: SpeechPlayerState = {
  *   finished 态下则从头播放；系统语音从当前句按新参数续播（句级粒度）
  * - 用户在控制条的调整会写回设置（edgeVoice / rate），作为之后的默认值
  */
-export function useSpeechPlayer() {
+export function useSpeechPlayer(source: AnalyticsSource = "web") {
   const [state, setState] = useState<SpeechPlayerState>(INITIAL_STATE)
 
   const statusRef = useRef<SpeechStatus>("idle")
@@ -93,6 +94,10 @@ export function useSpeechPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   /** 会话代数：start/stop/seek/change 后 +1，旧的异步回调据此自我丢弃，避免竞态 */
   const generationRef = useRef(0)
+  /** 本次朗读的开始时刻（用于 speech_finished 的 duration_ms） */
+  const sessionStartedAtRef = useRef<number | null>(null)
+  /** 本次朗读是否已上报过终态（自然播完 / 中途关闭只算一次） */
+  const finishReportedRef = useRef(false)
 
   const patchState = useCallback((patch: Partial<SpeechPlayerState>) => {
     if (patch.status !== undefined) statusRef.current = patch.status
@@ -135,6 +140,23 @@ export function useSpeechPlayer() {
     }
   }, [clearAudio])
 
+  /** 朗读终局上报（自然播完 / 中途关闭），每次朗读只报一次；只报结构特征，不报文本 */
+  const reportSpeechEnd = useCallback(
+    (session: SpeechSession, interrupted: boolean) => {
+      if (finishReportedRef.current) return
+      finishReportedRef.current = true
+      void trackEvent("speech_finished", {
+        source,
+        provider: session.engine,
+        char_count_bucket: lengthBucket(session.text.length),
+        rate: session.rate,
+        interrupted,
+        duration_ms: sessionStartedAtRef.current !== null ? Math.round(Date.now() - sessionStartedAtRef.current) : 0
+      })
+    },
+    [source]
+  )
+
   // ---------- 设置写回 ----------
 
   const persistTts = useCallback(async (patch: Partial<TtsSettings>) => {
@@ -151,6 +173,9 @@ export function useSpeechPlayer() {
   /** 播放结束：进入 finished 常驻态（控件不自动消失，进度打满） */
   const finish = useCallback(() => {
     const session = sessionRef.current
+    if (session) {
+      reportSpeechEnd(session, false)
+    }
     if (session && session.engine === "edge") {
       const audio = audioRef.current
       const duration = audio && Number.isFinite(audio.duration) ? audio.duration : 0
@@ -160,7 +185,7 @@ export function useSpeechPlayer() {
     } else {
       patchState({ status: "finished" })
     }
-  }, [patchState])
+  }, [patchState, reportSpeechEnd])
 
   /** 从第 startIndex 句开始播放系统语音（调用方需已 cancel 并推进 generation） */
   const speakFrom = useCallback(
@@ -337,6 +362,17 @@ export function useSpeechPlayer() {
           chunkCursor: 0
         }
         sessionRef.current = session
+        sessionStartedAtRef.current = Date.now()
+        finishReportedRef.current = false
+
+        void trackEvent("speech_started", {
+          source,
+          // 请求的引擎（edge 合成失败会降级到 system，降级会体现在 edge_tts_synthesize 的 success:false 上）
+          provider: tts.provider,
+          char_count_bucket: lengthBucket(trimmed.length),
+          rate: tts.rate,
+          chunk_count: chunks.length
+        })
 
         patchState({
           engine: tts.provider,
@@ -354,6 +390,7 @@ export function useSpeechPlayer() {
           if (generationRef.current !== generation) return
           if (!ok) {
             // 在线合成失败（如无网络）时降级到系统语音
+            session.engine = "system"
             patchState({ engine: "system" })
             speakFrom(session, 0, generation)
           }
@@ -362,15 +399,22 @@ export function useSpeechPlayer() {
         }
       })()
     },
-    [cancelPlayback, patchState, speakFrom, startEdge]
+    [cancelPlayback, patchState, speakFrom, startEdge, source]
   )
 
   /** 停止播放并关闭朗读控件 */
   const stop = useCallback(() => {
+    const session = sessionRef.current
+    // 还没播完就被关掉：与自然播完（finish）区分开，两者共用 speech_finished
+    if (session && !finishReportedRef.current) {
+      reportSpeechEnd(session, true)
+    }
     cancelPlayback()
     sessionRef.current = null
+    sessionStartedAtRef.current = null
+    finishReportedRef.current = false
     patchState({ status: "idle", progress: 0, currentTime: 0, duration: 0, chunkIndex: 0 })
-  }, [cancelPlayback, patchState])
+  }, [cancelPlayback, patchState, reportSpeechEnd])
 
   /** 播放/暂停切换；finished 状态下重新开始播放 */
   const togglePause = useCallback(() => {

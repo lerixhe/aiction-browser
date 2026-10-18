@@ -6,7 +6,8 @@ import ChatSession from "@/entrypoints/content/components/ChatSession"
 import { fallbackAnchor, type AnchorRect } from "@/entrypoints/content/components/floating"
 import { useChatSessions } from "@/entrypoints/content/hooks/useChatSessions"
 import { useToolbarState } from "@/entrypoints/content/hooks/useToolbarState"
-import { initContentScriptAnalytics, trackEvent } from "@/shared/analytics"
+import { initContentScriptAnalytics, trackEvent, trackFirstTimeEvent } from "@/shared/analytics"
+import { isBuiltinActionId } from "@/shared/defaults"
 import { resolveActionTemplate, formatFreeInputPrompt } from "@/shared/prompt"
 import { getSettings } from "@/shared/storage"
 import { useI18n } from "@/shared/i18n/context"
@@ -185,7 +186,7 @@ export function PdfViewerPage() {
     closeToolbar,
     openToolbar,
     toolbarVisibleRef
-  } = useToolbarState()
+  } = useToolbarState("pdf")
 
   // ---------- 悬浮对话窗锚点（触发时刻的工具栏落位） ----------
 
@@ -298,13 +299,22 @@ export function PdfViewerPage() {
 
       const settings = await getSettings()
       const matchedAction = settings.actions.find((a) => a.template === template)
-      const BUILTIN_IDS = new Set(["explain", "translate"])
-      const customActions = settings.actions.filter((a) => !BUILTIN_IDS.has(a.id))
+      // 埋点不带上动作文案（自定义文案是用户自由文本）；动作身份靠 id + is_custom 表达
+      const actionId = matchedAction?.id ?? "unknown"
+      const isCustom = !isBuiltinActionId(actionId)
+      const customActions = settings.actions.filter((a) => !isBuiltinActionId(a.id))
       void trackEvent("action_clicked", {
-        action_id: matchedAction?.id ?? "unknown",
-        action_label: matchedAction?.label ?? "unknown",
+        action_id: actionId,
+        is_custom: isCustom,
         custom_action_count: customActions.length,
-        custom_action_labels: customActions.map((a) => a.label).join(",")
+        source: "pdf"
+      })
+
+      // 激活里程碑：只上报一次
+      void trackFirstTimeEvent("first_action_clicked", "first_action_clicked", {
+        action_id: actionId,
+        is_custom: isCustom,
+        source: "pdf"
       })
     },
     [selectionContext, findSessionForPrompt, revealSession, openSession, takeToolbarAnchor]
@@ -333,7 +343,7 @@ export function PdfViewerPage() {
         closeToolbar()
       }
 
-      void trackEvent("quick_action_clicked", { action_type: action.type })
+      void trackEvent("quick_action_clicked", { action_type: action.type, source: "pdf" })
     },
     [selectionContext, closeToolbar]
   )
@@ -363,7 +373,7 @@ export function PdfViewerPage() {
         initialPrompt: prompt
       })
 
-      void trackEvent("free_input_submitted", { input_length: input.length })
+      void trackEvent("free_input_submitted", { input_length: input.length, source: "pdf" })
     },
     [selectionContext, findSessionForPrompt, revealSession, openSession, takeToolbarAnchor]
   )
@@ -412,6 +422,7 @@ export function PdfViewerPage() {
           <ChatSession
             key={session.id}
             init={session}
+            source="pdf"
             pinned={session.pinned}
             revealNonce={session.revealNonce}
             onPinnedChange={(pinned) => setSessionPinned(session.id, pinned)}

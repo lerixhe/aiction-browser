@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { addIcon } from "@iconify/react"
 
 import { ActionIcon } from "@/shared/ui/iconify"
 import { ToggleSwitch } from "@/shared/ui/toggle-switch"
 import { hasTextPlaceholder } from "@/shared/prompt"
 import { saveUserIcon } from "@/shared/storage"
+import { trackEvent, consumeFirstTimeFlag, lengthBucket } from "@/shared/analytics"
+import { isBuiltinActionId } from "@/shared/defaults"
 import { EDGE_TTS_VOICE_GROUPS, isKnownEdgeTtsVoice } from "@/shared/edge-tts-voices"
 import { MESSAGE_TYPES } from "@/shared/constants"
 import { useUiThemeName } from "@/shared/ui/theme"
@@ -35,6 +37,11 @@ function DragHandleIcon({ size, color }: { size: number; color: string }) {
     </svg>
   )
 }
+
+/** 编辑聚合上报的静默窗口：用户停手这么久才上报一次（避免逐字上报） */
+const ACTION_EDIT_FLUSH_MS = 2000
+
+type ActionEditField = "label" | "template"
 
 interface ActionsSectionProps {
   settings: ExtensionSettings
@@ -103,6 +110,64 @@ export function ActionsSection({ settings, saveSettingsNow }: ActionsSectionProp
     }
   }, [iconSearchQuery])
 
+  // ── 埋点：动作编辑聚合（避免输入时逐字上报，见 docs/ANALYTICS.md §3.7） ──
+  const pendingActionEditsRef = useRef<Map<string, Set<ActionEditField>>>(new Map())
+  const editFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const actionsRef = useRef(settings.actions)
+
+  // 在 effect 中同步（不能在渲染期间写 ref —— 并发渲染会留下未提交的快照）
+  useEffect(() => {
+    actionsRef.current = settings.actions
+  }, [settings.actions])
+
+  const flushActionEdits = useCallback(() => {
+    if (editFlushTimerRef.current) {
+      clearTimeout(editFlushTimerRef.current)
+      editFlushTimerRef.current = null
+    }
+
+    const pending = pendingActionEditsRef.current
+    if (pending.size === 0) {
+      return
+    }
+    pendingActionEditsRef.current = new Map()
+
+    for (const [actionId, fields] of pending) {
+      const action = actionsRef.current.find((item) => item.id === actionId)
+      if (!action) {
+        continue
+      }
+      // 只上报结构特征（长度分桶 / 是否含占位符），不上报用户填写的文案与模板
+      void trackEvent("action_updated", {
+        is_custom: !isBuiltinActionId(actionId),
+        changed_fields: [...fields],
+        has_selection_placeholder: hasTextPlaceholder(action.template),
+        template_length_bucket: lengthBucket(action.template.length),
+        label_length_bucket: lengthBucket(action.label.length),
+        enabled: action.enabled !== false,
+        source: "options"
+      })
+    }
+  }, [])
+
+  // 卸载（切换设置分区）时把未上报的编辑刷出去
+  useEffect(() => {
+    return () => {
+      flushActionEdits()
+    }
+  }, [flushActionEdits])
+
+  const recordActionEdit = (actionId: string, field: ActionEditField) => {
+    const fields = pendingActionEditsRef.current.get(actionId) ?? new Set<ActionEditField>()
+    fields.add(field)
+    pendingActionEditsRef.current.set(actionId, fields)
+
+    if (editFlushTimerRef.current) {
+      clearTimeout(editFlushTimerRef.current)
+    }
+    editFlushTimerRef.current = setTimeout(flushActionEdits, ACTION_EDIT_FLUSH_MS)
+  }
+
   const isBundledIcon = (iconName: string): boolean => {
     if (!iconName.startsWith("tabler:")) return false
     const name = iconName.replace("tabler:", "")
@@ -166,6 +231,27 @@ export function ActionsSection({ settings, saveSettingsNow }: ActionsSectionProp
           : item
       )
     }))
+
+    const actionId = settings.actions[index]?.id
+    if (!actionId) {
+      return
+    }
+
+    // 启用/禁用与「改了内容」语义不同，单独成一个事件；文案/模板编辑聚合后上报
+    if (patch.enabled !== undefined) {
+      void trackEvent("action_enabled_toggled", {
+        scope: "options",
+        enabled: patch.enabled,
+        is_custom: !isBuiltinActionId(actionId),
+        source: "options"
+      })
+    }
+    if (patch.label !== undefined) {
+      recordActionEdit(actionId, "label")
+    }
+    if (patch.template !== undefined) {
+      recordActionEdit(actionId, "template")
+    }
   }
 
   const handleActionDragStart = (index: number) => {
@@ -181,11 +267,18 @@ export function ActionsSection({ settings, saveSettingsNow }: ActionsSectionProp
 
   const handleActionDragEnd = () => {
     if (draggedActionIndex !== null && dragOverActionIndex !== null && draggedActionIndex !== dragOverActionIndex) {
+      const fromIndex = draggedActionIndex
+      const toIndex = dragOverActionIndex
       saveSettingsNow((current) => {
         const newActions = [...current.actions]
-        const [draggedItem] = newActions.splice(draggedActionIndex, 1)
-        newActions.splice(dragOverActionIndex, 0, draggedItem)
+        const [draggedItem] = newActions.splice(fromIndex, 1)
+        newActions.splice(toIndex, 0, draggedItem)
         return { ...current, actions: newActions }
+      })
+      void trackEvent("action_reordered", {
+        from_index: fromIndex,
+        to_index: toIndex,
+        source: "options"
       })
     }
     setDraggedActionIndex(null)
@@ -208,15 +301,27 @@ export function ActionsSection({ settings, saveSettingsNow }: ActionsSectionProp
       ]
     }))
     setSelectedActionId(newId)
+
+    const totalActions = settings.actions.length + 1
+    const customCount = settings.actions.filter((a) => !isBuiltinActionId(a.id)).length + 1
+    void (async () => {
+      const isFirstCustom = await consumeFirstTimeFlag("custom_action_created")
+      void trackEvent("action_created", {
+        is_first_custom: isFirstCustom,
+        total_actions: totalActions,
+        custom_count: customCount,
+        source: "options"
+      })
+    })()
   }
 
   const handleDeleteAction = (actionId: string) => {
     const index = settings.actions.findIndex((a) => a.id === actionId)
+    const remaining = settings.actions.filter((action) => action.id !== actionId)
     saveSettingsNow((current) => ({
       ...current,
       actions: current.actions.filter((action) => action.id !== actionId)
     }))
-    const remaining = settings.actions.filter((a) => a.id !== actionId)
     if (remaining.length === 0) {
       setSelectedActionId(null)
     } else if (index < remaining.length) {
@@ -224,10 +329,37 @@ export function ActionsSection({ settings, saveSettingsNow }: ActionsSectionProp
     } else {
       setSelectedActionId(remaining[remaining.length - 1].id)
     }
+
+    // 删除前先把该动作未上报的编辑刷掉，否则会丢一条 action_updated
+    flushActionEdits()
+    void trackEvent("action_deleted", {
+      is_custom: !isBuiltinActionId(actionId),
+      remaining_actions: remaining.length,
+      remaining_custom: remaining.filter((a) => !isBuiltinActionId(a.id)).length,
+      source: "options"
+    })
   }
 
   const selectedAction = selectedActionId ? settings.actions.find((a) => a.id === selectedActionId) : null
   const selectedActionIndex = selectedActionId ? settings.actions.findIndex((a) => a.id === selectedActionId) : -1
+
+  /** 选中图标（预置库 / 搜索结果共用）：落库 + 埋点 */
+  const handleIconPick = async (iconName: string, actionId: string) => {
+    await handleIconSelect(iconName)
+    saveSettingsNow((current) => ({
+      ...current,
+      actions: current.actions.map((a) => (a.id === actionId ? { ...a, icon: iconName } : a))
+    }))
+    setShowIconPicker(false)
+
+    // 图标名是预设枚举（tabler 名 / iconify 集合名），不是用户文本
+    void trackEvent("action_icon_changed", {
+      icon_source: isBundledIcon(iconName) ? "bundled" : "iconify",
+      icon_name: iconName,
+      is_custom: !isBuiltinActionId(actionId),
+      source: "options"
+    })
+  }
 
   // --- Shared styles ---
   const cardStyle: CSSProperties = {
@@ -852,16 +984,7 @@ export function ActionsSection({ settings, saveSettingsNow }: ActionsSectionProp
                                     key={iconName}
                                     type="button"
                                     title={iconName}
-                                    onClick={async () => {
-                                      await handleIconSelect(iconName)
-                                      saveSettingsNow((current) => ({
-                                        ...current,
-                                        actions: current.actions.map((a) =>
-                                          a.id === selectedAction.id ? { ...a, icon: iconName } : a
-                                        )
-                                      }))
-                                      setShowIconPicker(false)
-                                    }}
+                                    onClick={() => void handleIconPick(iconName, selectedAction.id)}
                                     style={{
                                       width: 32,
                                       height: 32,
@@ -894,16 +1017,7 @@ export function ActionsSection({ settings, saveSettingsNow }: ActionsSectionProp
                                   key={entry.icon}
                                   type="button"
                                   title={entry.label}
-                                  onClick={async () => {
-                                    await handleIconSelect(entry.icon)
-                                    saveSettingsNow((current) => ({
-                                      ...current,
-                                      actions: current.actions.map((a) =>
-                                        a.id === selectedAction.id ? { ...a, icon: entry.icon } : a
-                                      )
-                                    }))
-                                    setShowIconPicker(false)
-                                  }}
+                                  onClick={() => void handleIconPick(entry.icon, selectedAction.id)}
                                   style={{
                                     width: 32,
                                     height: 32,

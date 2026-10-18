@@ -6,6 +6,7 @@ import { EDGE_INSET } from "@/entrypoints/content/components/floating"
 import { useUiTheme } from "@/shared/ui/theme"
 import { useI18n } from "@/shared/i18n/context"
 import { uiLayer, uiMotion, uiRadius, uiTypography } from "@/shared/ui/tokens"
+import { trackEvent, type AnalyticsSource } from "@/shared/analytics"
 
 export type SpeechPlayerInstance = ReturnType<typeof useSpeechPlayer>
 
@@ -47,6 +48,8 @@ interface Placement {
 
 interface Props {
   player: SpeechPlayerInstance
+  /** 触发来源（web / pdf）：仅作为埋点维度 */
+  source?: AnalyticsSource
 }
 
 /**
@@ -60,7 +63,7 @@ interface Props {
  * - 播放完毕（finished）且处于圆球态时，5s 倒计时圆环走完自动退场（卸载控件）；
  *   悬停/展开期间计时暂停，移开后从头重计
  */
-export default function SpeechWidget({ player }: Props) {
+export default function SpeechWidget({ player, source = "web" }: Props) {
   const theme = useUiTheme()
   const { t } = useI18n()
   const [expanded, setExpanded] = useState(false)
@@ -76,6 +79,8 @@ export default function SpeechWidget({ player }: Props) {
 
   const collapseTimerRef = useRef<number | null>(null)
   const widgetRef = useRef<HTMLDivElement | null>(null)
+  /** 控件挂载时刻：自动退场时用来算控件存活时长 */
+  const mountedAtRef = useRef(Date.now())
 
   // 回调走 ref，让 document 级监听器不随回调重建
   const expandedRef = useRef(expanded)
@@ -181,9 +186,16 @@ export default function SpeechWidget({ player }: Props) {
 
   useEffect(() => {
     if (!dismissCounting) return
-    const timer = window.setTimeout(() => player.stop(), TTS_DISMISS_MS)
+    const timer = window.setTimeout(() => {
+      // 播完后闲置自动退场（之后的 stop 不会再报 speech_finished，因为已播完）
+      void trackEvent("speech_dismissed", {
+        source,
+        elapsed_ms: Date.now() - mountedAtRef.current
+      })
+      player.stop()
+    }, TTS_DISMISS_MS)
     return () => window.clearTimeout(timer)
-  }, [dismissCounting, player.stop])
+  }, [dismissCounting, player.stop, source])
 
   // 卸载时清理计时器
   useEffect(() => {

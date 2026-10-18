@@ -1,6 +1,8 @@
 import type { CSSProperties } from "react"
 
 import { ToggleSwitch } from "@/shared/ui/toggle-switch"
+import { saveSettings } from "@/shared/storage"
+import { trackEvent } from "@/shared/analytics"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiRadius, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { createCardStyle } from "@/shared/ui/styles"
@@ -16,6 +18,32 @@ export function AboutSection({ settings, saveSettingsNow }: AboutSectionProps) {
   const { t } = useI18n()
   const themeName = useUiThemeName()
   const theme = uiThemes[themeName]
+
+  /**
+   * 遥测开关本身的事件（关闭率是隐私信任指标）。
+   * 上报顺序是要紧的：
+   * - 关闭：**先上报再落盘**——一旦落盘，`trackEvent` 会被 `isTelemetryEnabled()` 拦掉；
+   * - 开启：**先落盘再上报**——落盘前开关还是 false，上报同样会被拦掉。
+   */
+  const handleTelemetryToggle = async () => {
+    const next = !settings.telemetryEnabled
+
+    if (!next) {
+      await trackEvent("telemetry_toggled", { enabled: false, source: "options" })
+      saveSettingsNow((current) => ({ ...current, telemetryEnabled: false }))
+      return
+    }
+
+    saveSettingsNow((current) => ({ ...current, telemetryEnabled: true }))
+    try {
+      // 幂等重写一次：等设置真正落盘后再上报（saveSettingsNow 内部的写入无法 await）
+      await saveSettings({ ...settings, telemetryEnabled: true })
+    } catch {
+      // 写入失败时不强行上报，避免「开关没开却报了开启」
+      return
+    }
+    void trackEvent("telemetry_toggled", { enabled: true, source: "options" })
+  }
 
   const cardStyle: CSSProperties = {
     ...createCardStyle(theme)
@@ -184,8 +212,7 @@ export function AboutSection({ settings, saveSettingsNow }: AboutSectionProps) {
           <ToggleSwitch
             checked={settings.telemetryEnabled}
             onChange={() => {
-              const next = !settings.telemetryEnabled
-              saveSettingsNow((current) => ({ ...current, telemetryEnabled: next }))
+              void handleTelemetryToggle()
             }}
             theme={theme}
           />

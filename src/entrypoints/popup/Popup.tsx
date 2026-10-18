@@ -1,6 +1,10 @@
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react"
 
 import { getSettings, saveSettings } from "@/shared/storage"
+import { OPTIONS_ENTRY_STORAGE_KEY } from "@/shared/constants"
+import { trackEvent } from "@/shared/analytics"
+import { isBuiltinActionId } from "@/shared/defaults"
+import { providerTypeOf } from "@/shared/provider-type"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { createFieldLabelStyle, createInputStyle } from "@/shared/ui/styles"
@@ -122,6 +126,10 @@ export default function Popup() {
   const enabledActionsCount = settings?.actions.filter((a) => a.enabled !== false).length ?? 0
 
   useEffect(() => {
+    void trackEvent("popup_opened", { source: "popup" })
+  }, [])
+
+  useEffect(() => {
     document.documentElement.style.margin = "0"
     document.documentElement.style.padding = "0"
     document.documentElement.style.height = "auto"
@@ -182,10 +190,18 @@ export default function Popup() {
     if (!settings || serviceId === settings.activeProviderId) {
       return
     }
+    const fromProvider = settings.providers.find((p) => p.id === settings.activeProviderId)
+    const toProvider = settings.providers.find((p) => p.id === serviceId)
     const nextSettings = { ...settings, activeProviderId: serviceId }
     setSettings(nextSettings)
     setChanging(true)
     setServiceMenuOpen(false)
+    // 上报放在落盘之前：popup 随时关闭，await 之后的事件会丢（与 options 侧同一事件名）
+    void trackEvent("provider_switched", {
+      from_provider_type: providerTypeOf(fromProvider),
+      to_provider_type: providerTypeOf(toProvider),
+      source: "popup"
+    })
     await saveSettings(nextSettings)
     setChanging(false)
   }
@@ -193,17 +209,32 @@ export default function Popup() {
   const handleActionToggle = useCallback(
     async (actionId: string) => {
       if (!settings) return
+      const nextEnabled = settings.actions.find((a) => a.id === actionId)?.enabled === false
       const nextActions = settings.actions.map((a) =>
         a.id === actionId ? { ...a, enabled: a.enabled === false ? true : false } : a
       )
       const nextSettings = { ...settings, actions: nextActions }
       setSettings(nextSettings)
+      // 上报放在落盘之前：popup 可能随时关闭，await 之后的事件会丢
+      void trackEvent("action_enabled_toggled", {
+        scope: "popup",
+        enabled: nextEnabled,
+        is_custom: !isBuiltinActionId(actionId),
+        source: "popup"
+      })
       await saveSettings(nextSettings)
     },
     [settings]
   )
 
-  const openOptionsPage = () => {
+  const openOptionsPage = async () => {
+    // 先写入入口标记（供 options 页上报 options_opened.entry 后清除）；
+    // 必须 await —— window.close() 会取消未完成的 storage 写入
+    try {
+      await chrome.storage.local.set({ [OPTIONS_ENTRY_STORAGE_KEY]: "popup" })
+    } catch {
+      // Extension context may have been invalidated
+    }
     void chrome.runtime.openOptionsPage()
     window.close()
   }

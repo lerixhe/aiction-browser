@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react"
 
-import { trackEvent } from "@/shared/analytics"
+import { trackEvent, lengthBucket } from "@/shared/analytics"
 import { DEFAULT_SYSTEM_PROMPT } from "@/shared/defaults"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
@@ -61,7 +61,17 @@ export function SystemPromptSection({ settings, saveSettingsNow }: SystemPromptS
     saveSettingsNow((current) => ({ ...current, systemPrompt: trimmed }))
     setDraft(trimmed)
     setDirty(false)
-    void trackEvent("system_prompt_save")
+    void trackEvent("system_prompt_save", {
+      // 空 = 用户选择回退到内置默认模板（见 types.ts 对 systemPrompt 的说明）
+      is_empty: trimmed.length === 0,
+      is_default: trimmed === DEFAULT_SYSTEM_PROMPT.trim(),
+      length_bucket: lengthBucket(trimmed.length),
+      // 只上报占位符 token（预设枚举），不上报提示词内容
+      used_placeholders: PLACEHOLDERS.filter((item) => trimmed.includes(item.token)).map(
+        (item) => item.token
+      ),
+      source: "options"
+    })
   }
 
   const handleDiscard = () => {

@@ -16,6 +16,7 @@ import {
 } from "@/shared/models-dev"
 import { requestOpenRouterModels, findOpenRouterModel } from "@/shared/openrouter"
 import { resolveProviderNpm } from "@/shared/model-params"
+import { providerTypeOf } from "@/shared/provider-type"
 import { MESSAGE_TYPES } from "@/shared/constants"
 import type {
   ExtensionSettings,
@@ -140,7 +141,11 @@ export function useProviderManager(
     setTestResult(null)
     setModelSearchQuery("")
     setProviderSearchQuery("")
-    void trackEvent("provider_created", { provider_type: "custom", provider_count: settings.providers.length + 1 })
+    void trackEvent("provider_created", {
+      provider_type: "custom",
+      provider_count: settings.providers.length + 1,
+      source: "options"
+    })
   }, [saveSettingsNow, settings.providers.length])
 
   const selectModelsDevProvider = useCallback(
@@ -164,7 +169,12 @@ export function useProviderManager(
       setTestResult(null)
       setModelSearchQuery("")
       setProviderSearchQuery("")
-      void trackEvent("provider_created", { provider_type: "models_dev", provider_name: providerInfo.name, provider_count: settings.providers.length + 1 })
+      void trackEvent("provider_created", {
+        provider_type: "models_dev",
+        models_dev_id: providerInfo.id,
+        provider_count: settings.providers.length + 1,
+        source: "options"
+      })
     },
     [saveSettingsNow, settings.providers.length]
   )
@@ -272,9 +282,12 @@ export function useProviderManager(
         return { ...current, activeProviderId: providerId }
       })
       void trackEvent("provider_switched", {
-        from_provider: fromProvider?.name || fromProviderId || "none",
-        to_provider: toProvider?.name || providerId,
-        provider_count: settings.providers.length
+        // 不再上报展示名（自定义 provider 名可能是用户填写的文本）
+        from_provider_type: providerTypeOf(fromProvider),
+        to_provider_type: providerTypeOf(toProvider),
+        ...(toProvider?.modelsDevId ? { to_models_dev_id: toProvider.modelsDevId } : {}),
+        provider_count: settings.providers.length,
+        source: "options"
       })
     },
     [settings, saveSettingsNow]

@@ -8,7 +8,8 @@ import { useChatSessions } from "@/entrypoints/content/hooks/useChatSessions"
 import { useSelectionDetection } from "@/entrypoints/content/hooks/useSelectionDetection"
 import { useSpeechPlayer } from "@/entrypoints/content/hooks/useSpeechPlayer"
 import { useToolbarState } from "@/entrypoints/content/hooks/useToolbarState"
-import { initContentScriptAnalytics, trackEvent } from "@/shared/analytics"
+import { initContentScriptAnalytics, trackEvent, trackFirstTimeEvent } from "@/shared/analytics"
+import { isBuiltinActionId } from "@/shared/defaults"
 import { copyTextFallback } from "@/shared/clipboard"
 import { resolveActionTemplate, formatFreeInputPrompt } from "@/shared/prompt"
 import { getSettings } from "@/shared/storage"
@@ -17,7 +18,7 @@ import type { SelectionAnchor, SelectionContext, QuickAction } from "@/shared/ty
 export default function App() {
   const extensionRootRef = useRef<HTMLDivElement | null>(null)
 
-  const speechPlayer = useSpeechPlayer()
+  const speechPlayer = useSpeechPlayer("web")
 
   useEffect(() => {
     void initContentScriptAnalytics()
@@ -33,7 +34,7 @@ export default function App() {
     closeToolbar,
     openToolbar,
     toolbarVisibleRef
-  } = useToolbarState()
+  } = useToolbarState("web")
 
   // ---------- 悬浮面板锚点（触发时刻的工具栏落位；工具栏随后关闭，位置保持不变） ----------
 
@@ -109,13 +110,22 @@ export default function App() {
 
       const settings = await getSettings()
       const matchedAction = settings.actions.find((a) => a.template === template)
-      const BUILTIN_IDS = new Set(["explain", "translate"])
-      const customActions = settings.actions.filter((a) => !BUILTIN_IDS.has(a.id))
+      // 埋点不带上动作文案（自定义文案是用户自由文本）；动作身份靠 id + is_custom 表达
+      const actionId = matchedAction?.id ?? "unknown"
+      const isCustom = !isBuiltinActionId(actionId)
+      const customActions = settings.actions.filter((a) => !isBuiltinActionId(a.id))
       void trackEvent("action_clicked", {
-        action_id: matchedAction?.id ?? "unknown",
-        action_label: matchedAction?.label ?? "unknown",
+        action_id: actionId,
+        is_custom: isCustom,
         custom_action_count: customActions.length,
-        custom_action_labels: customActions.map((a) => a.label).join(",")
+        source: "web"
+      })
+
+      // 激活里程碑：只上报一次（换设备不重复计数由 chrome.storage.local 标记控制）
+      void trackFirstTimeEvent("first_action_clicked", "first_action_clicked", {
+        action_id: actionId,
+        is_custom: isCustom,
+        source: "web"
       })
     },
     [selectionContext, findSessionForPrompt, revealSession, openSession, takeToolbarAnchor]
@@ -144,7 +154,7 @@ export default function App() {
         speechPlayer.start(trimmed)
       }
 
-      void trackEvent("quick_action_clicked", { action_type: action.type })
+      void trackEvent("quick_action_clicked", { action_type: action.type, source: "web" })
     },
     [selectionContext, speechPlayer.start]
   )
@@ -175,7 +185,7 @@ export default function App() {
         initialPrompt: prompt
       })
 
-      void trackEvent("free_input_submitted", { input_length: input.length })
+      void trackEvent("free_input_submitted", { input_length: input.length, source: "web" })
     },
     [selectionContext, findSessionForPrompt, revealSession, openSession, takeToolbarAnchor]
   )
@@ -204,6 +214,7 @@ export default function App() {
         <ChatSession
           key={session.id}
           init={session}
+          source="web"
           pinned={session.pinned}
           revealNonce={session.revealNonce}
           onPinnedChange={(pinned) => setSessionPinned(session.id, pinned)}
@@ -212,7 +223,7 @@ export default function App() {
       ))}
 
       {/* 朗读控件：视口顶部中间浮现，鼠标移入展开为控制条，闲置自动收起为小圆球 */}
-      {ttsActive && <SpeechWidget player={speechPlayer} />}
+      {ttsActive && <SpeechWidget player={speechPlayer} source="web" />}
     </div>
   )
 }

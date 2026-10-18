@@ -1,4 +1,5 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
+import { trackEvent } from "@/shared/analytics"
 import { uiMotion, uiRadius, uiSpace, uiTypography, type UiTheme } from "@/shared/ui/tokens"
 import { createButtonStyle, createInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
 import type { ModelsDevModel } from "@/shared/models-dev"
@@ -74,6 +75,25 @@ export function ModelPicker({
       )
     : devModels
 
+  /** 手输模型名时记录聚焦前的值：blur 时真的变了才算一次「选择」（避免逐字上报） */
+  const manualEntryStartRef = useRef<string | null>(null)
+
+  /**
+   * 模型选择埋点。只在「明确的选择动作」上触发：
+   * - `models_dev`：models.dev 模型列表点选（`from_search` 区分是否先搜过）
+   * - `fetched`：从接口拉取的模型下拉选择
+   * - `manual`：手输模式，仅在值真的变化时上报，且**不上报模型名**（用户自由文本）
+   */
+  const reportModelSelected = (sourceList: "models_dev" | "fetched" | "manual", model?: string) => {
+    void trackEvent("model_selected", {
+      provider_type: hasModelsDevId ? "models_dev" : "custom",
+      source_list: sourceList,
+      from_search: sourceList === "models_dev" && query.length > 0,
+      ...(model ? { model } : {}),
+      source: "options"
+    })
+  }
+
   return (
     <div>
       <div
@@ -128,7 +148,10 @@ export function ModelPicker({
           <select
             id="provider-model"
             value={currentModel}
-            onChange={(e) => onModelChange(e.target.value)}
+            onChange={(e) => {
+              onModelChange(e.target.value)
+              reportModelSelected("fetched", e.target.value)
+            }}
             style={{ ...createInput("model"), flex: 1, cursor: "pointer" }}>
             {fetchedModels.map((id) => (
               <option key={id} value={id}>
@@ -145,8 +168,19 @@ export function ModelPicker({
           <input
             id="provider-model"
             value={currentModel}
-            onFocus={() => onFocusField("model")}
-            onBlur={onBlurField}
+            onFocus={() => {
+              manualEntryStartRef.current = currentModel
+              onFocusField("model")
+            }}
+            onBlur={() => {
+              const startValue = manualEntryStartRef.current
+              manualEntryStartRef.current = null
+              onBlurField()
+              const next = currentModel.trim()
+              if (startValue !== null && next && next !== startValue.trim()) {
+                reportModelSelected("manual")
+              }
+            }}
             onChange={(e) => onModelChange(e.target.value)}
             placeholder="model-name"
             style={createInput("model")}
@@ -194,7 +228,10 @@ export function ModelPicker({
                     <button
                       key={m.id}
                       type="button"
-                      onClick={() => onModelChange(m.id)}
+                      onClick={() => {
+                        onModelChange(m.id)
+                        reportModelSelected("models_dev", m.id)
+                      }}
                       style={{
                         display: "flex",
                         alignItems: "center",

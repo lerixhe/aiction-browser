@@ -1,3 +1,5 @@
+import type { ChatErrorCode } from "@/shared/errors"
+
 export type ThemePreference = "auto" | "light" | "dark"
 
 export type LanguagePreference = "system" | "en" | "zh_CN"
@@ -122,6 +124,8 @@ export interface ChatStreamCancelledEvent {
 export interface ChatStreamFailedEvent {
   type: "failed"
   error: string
+  /** 失败归因枚举（仅用于埋点，见 docs/ANALYTICS.md §2.5）；旧端可能不带 */
+  code?: ChatErrorCode
 }
 
 export type ChatStreamRequest = ChatStreamStartRequest | ChatStreamCancelRequest

@@ -17,6 +17,16 @@ export const DEFAULT_ACTIONS: ActionTemplate[] = [
   }
 ]
 
+/** 内置动作 ID：不可删除、不算「自定义动作」（可改名 / 改模板 / 禁用） */
+export const BUILTIN_ACTION_IDS = ["explain", "translate"] as const
+
+const BUILTIN_ACTION_ID_SET: ReadonlySet<string> = new Set(BUILTIN_ACTION_IDS)
+
+/** 是否内置动作（埋点与 UI 统一以此区分 is_custom） */
+export function isBuiltinActionId(actionId: string | undefined): boolean {
+  return Boolean(actionId) && BUILTIN_ACTION_ID_SET.has(actionId as string)
+}
+
 export const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
   {
     id: "copyToClipboard",

@@ -4,6 +4,8 @@ import { NavIcon } from "@/shared/ui/iconify"
 import { BrandIcon } from "@/shared/ui/icons"
 import { DEFAULT_SETTINGS } from "@/shared/defaults"
 import { getSettings, saveSettings } from "@/shared/storage"
+import { OPTIONS_ENTRY_STORAGE_KEY } from "@/shared/constants"
+import { trackEvent } from "@/shared/analytics"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { createCardStyle } from "@/shared/ui/styles"
@@ -53,6 +55,25 @@ export default function OptionsPage() {
 
   // Provider manager hook
   const providerManager = useProviderManager(settings, setSettings)
+
+  // options_opened：区分「从 Popup 进来」与「其它入口」（标记由 Popup 写入，读取后清除）
+  useEffect(() => {
+    const reportOpened = async () => {
+      let entry = "direct"
+      try {
+        const result = await chrome.storage.local.get(OPTIONS_ENTRY_STORAGE_KEY)
+        const saved = result[OPTIONS_ENTRY_STORAGE_KEY] as string | undefined
+        if (saved) {
+          entry = saved
+          await chrome.storage.local.remove(OPTIONS_ENTRY_STORAGE_KEY)
+        }
+      } catch {
+        // Extension context may have been invalidated
+      }
+      void trackEvent("options_opened", { entry, source: "options" })
+    }
+    void reportOpened()
+  }, [])
 
   useEffect(() => {
     void getSettings().then((loaded) => {

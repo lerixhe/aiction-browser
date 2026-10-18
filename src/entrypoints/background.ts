@@ -11,7 +11,7 @@ import type {
 } from "@/shared/types"
 import { MESSAGE_TYPES, ERROR_MESSAGES } from "@/shared/constants"
 import { i18nStore } from "@/shared/i18n/index"
-import { formatApiError, getErrorMessage, isAbortError } from "@/shared/errors"
+import { formatApiError, getErrorMessage, isAbortError, classifyChatError } from "@/shared/errors"
 import { getActiveProvider, getSettings } from "@/shared/storage"
 import { DEFAULT_TTS_SETTINGS } from "@/shared/defaults"
 import { resolveLanguageModel } from "@/shared/model-provider"
@@ -27,12 +27,88 @@ function shouldRetryWithoutReasoningOptions(error: unknown): boolean {
 import {
   trackBackgroundEvent,
   startBackgroundBatching,
-  stopBackgroundBatching
+  stopBackgroundBatching,
+  consumeFirstTimeFlag,
+  type AnalyticsSource
 } from "@/shared/analytics"
+
+/** 上次上报活跃的本地日期（YYYY-MM-DD） */
+const LAST_ACTIVE_DATE_KEY = "aiction:lastActiveDate"
+
+/** 本地日期键：用本地时区，符合「用户的某一天」（UTC 会让东部时区的凌晨算到前一天） */
+function localDateKey(date = new Date()): string {
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+/** 同一 SW 生命周期内的去重（跨实例由 storage 里的日期保证） */
+let dailyActivePromise: Promise<void> | null = null
+
+/**
+ * 每日活跃：service worker 被唤醒的那一天算一次（浏览器启动 / popup / 划词请求等都会唤醒它）。
+ * 这是扩展唯一的口径为「日活」的事件，仅上报 version，不携带任何页面信息。
+ */
+function reportDailyActive(): Promise<void> {
+  if (!dailyActivePromise) {
+    dailyActivePromise = (async () => {
+      try {
+        const today = localDateKey()
+        const result = await chrome.storage.local.get(LAST_ACTIVE_DATE_KEY)
+        if (result[LAST_ACTIVE_DATE_KEY] === today) {
+          return
+        }
+        await chrome.storage.local.set({ [LAST_ACTIVE_DATE_KEY]: today })
+        await trackBackgroundEvent("daily_active", {
+          version: chrome.runtime.getManifest().version
+        })
+      } catch {
+        // 存储 / 上报失败都不应影响扩展本身
+      }
+    })()
+  }
+  return dailyActivePromise
+}
+
+/** 从 port 来源页面判断事件来源：PDF 阅读器是扩展页面，其余（content script）算网页 */
+function resolvePortSource(port: chrome.runtime.Port): AnalyticsSource {
+  const url = port.sender?.tab?.url ?? port.sender?.url ?? ""
+  return url.startsWith(chrome.runtime.getURL("pdf-viewer.html")) ? "pdf" : "web"
+}
+
+/**
+ * 里程碑：首次配置出「真的能用」的 provider（API 测试通过 / 首次对话成功，只算一次）。
+ * 只上报结构化枚举与数量，不上报 provider 展示名（自定义名可能是用户填写的文本）。
+ */
+async function reportProviderConfigured(
+  provider: { modelsDevId?: string },
+  trigger: "api_test" | "chat",
+  providerCount?: number
+): Promise<void> {
+  const isFirst = await consumeFirstTimeFlag("provider_configured")
+  if (!isFirst) {
+    return
+  }
+
+  const properties: Record<string, unknown> = {
+    provider_type: provider.modelsDevId ? "models_dev" : "custom",
+    trigger,
+    is_first: true
+  }
+  if (provider.modelsDevId) {
+    properties.models_dev_id = provider.modelsDevId
+  }
+  if (typeof providerCount === "number") {
+    properties.provider_count = providerCount
+  }
+
+  await trackBackgroundEvent("provider_configured", properties)
+}
 
 async function streamChat(
   messages: { role: "user" | "assistant" | "system"; content: string }[],
   signal: AbortSignal,
+  source: AnalyticsSource,
   onEvent: (event: ChatStreamEvent) => void
 ): Promise<void> {
   const { streamText } = await import("ai")
@@ -41,14 +117,16 @@ async function streamChat(
   const activeService = getActiveProvider(settings)
 
   if (!activeService?.apiKey.trim()) {
-    onEvent({ type: "failed", error: ERROR_MESSAGES.NO_API_KEY })
+    // 关键流失点：装了但没配好 provider 就触发动作（详情见 docs/ANALYTICS.md §5 P0）
+    void trackBackgroundEvent("action_triggered_without_provider", { source })
+    onEvent({ type: "failed", error: ERROR_MESSAGES.NO_API_KEY, code: "no_api_key" })
     return
   }
 
   onEvent({ type: "started" })
 
   if (!activeService.modelsDevId && !activeService.apiBaseUrl?.trim()) {
-    onEvent({ type: "failed", error: ERROR_MESSAGES.API_TEST_MISSING_FIELDS })
+    onEvent({ type: "failed", error: ERROR_MESSAGES.API_TEST_MISSING_FIELDS, code: "missing_config" })
     return
   }
 
@@ -118,14 +196,22 @@ async function streamChat(
   }
 
   if (!hasContent) {
-    onEvent({ type: "failed", error: ERROR_MESSAGES.NO_VALID_CONTENT })
+    onEvent({ type: "failed", error: ERROR_MESSAGES.NO_VALID_CONTENT, code: "no_content" })
     return
   }
 
+  void reportProviderConfigured(activeService, "chat", settings.providers.length)
   onEvent({ type: "completed" })
 }
 
 export default defineBackground(() => {
+  // 每日活跃：SW 被唤醒即算（顶层 + onStartup 双保险，由 storage 里的日期去重）
+  void reportDailyActive()
+
+  chrome.runtime.onStartup.addListener(() => {
+    void reportDailyActive()
+  })
+
   chrome.runtime.onConnect.addListener((port) => {
     if (port.name !== MESSAGE_TYPES.STREAM_PORT_NAME) {
       return
@@ -151,7 +237,7 @@ export default defineBackground(() => {
       const controller = new AbortController()
       abortController = controller
 
-      void streamChat(request.payload.messages, controller.signal, (event) => {
+      void streamChat(request.payload.messages, controller.signal, resolvePortSource(port), (event) => {
         try {
           port.postMessage(event)
         } catch {
@@ -171,7 +257,8 @@ export default defineBackground(() => {
         try {
           port.postMessage({
             type: "failed",
-            error: `${ERROR_MESSAGES.REQUEST_FAILED}: ${message}`
+            error: `${ERROR_MESSAGES.REQUEST_FAILED}: ${message}`,
+            code: classifyChatError(error)
           } satisfies ChatStreamEvent)
         } catch {
           return
@@ -212,6 +299,9 @@ export default defineBackground(() => {
     if (info.menuItemId === "open-pdf-with-aiction") {
       const pdfUrl = info.pageUrl || info.frameUrl || tab?.url
       if (pdfUrl) {
+        void trackBackgroundEvent("pdf_viewer_opened", {
+          scheme: pdfUrl.startsWith("file:") ? "file" : "http"
+        })
         const encodedUrl = encodeURIComponent(pdfUrl)
         chrome.tabs.create({
           url: chrome.runtime.getURL(`/pdf-viewer.html?url=${encodedUrl}`)
@@ -340,6 +430,7 @@ export default defineBackground(() => {
         const latencyMs = Math.round(performance.now() - startTime)
 
         void trackBackgroundEvent("api_test_completed", { success: true, latency_ms: latencyMs })
+        void reportProviderConfigured({ modelsDevId: request.payload.modelsDevId }, "api_test")
         sendResponse({ success: true, latencyMs } satisfies ApiTestResponse)
       } catch (error: unknown) {
         const latencyMs = Math.round(performance.now() - startTime)

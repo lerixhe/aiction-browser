@@ -3,7 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { ERROR_MESSAGES, UI_MESSAGES } from "@/shared/constants"
 import { streamChat } from "@/shared/messaging"
 import { buildContextSystemMessage, resolveUILanguageLabel } from "@/shared/prompt"
-import { trackEvent } from "@/shared/analytics"
+import { trackEvent, type AnalyticsSource } from "@/shared/analytics"
+import { classifyChatError } from "@/shared/errors"
+import { providerTypeOf } from "@/shared/provider-type"
 import { getSettings, getActiveProvider } from "@/shared/storage"
 import type { ChatMessage, ChatRequestState, ExtensionSettings, SelectionContext } from "@/shared/types"
 
@@ -51,7 +53,7 @@ function updateMessageContent(
  * 由 ChatSession（单个对话会话实例）内部调用：每个实例持有独立的
  * messages / 流式 abort / 节流定时器，实例卸载时一并中断与清理。
  */
-export function useChatState() {
+export function useChatState(source: AnalyticsSource = "web") {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [requestState, setRequestState] = useState<ChatRequestState>({ status: "idle" })
   const [context, setContext] = useState<SelectionContext | null>(null)
@@ -59,6 +61,14 @@ export function useChatState() {
 
   const messagesRef = useRef<ChatMessage[]>([])
   const activeStreamAbortRef = useRef<AbortController | null>(null)
+  /** 进行中请求的维度快照：供「用户主动停止」埋点使用（停止发生在 sendPrompt 之外） */
+  const activeRequestRef = useRef<{
+    controller: AbortController
+    turnIndex: number
+    model: string
+    providerType: string
+    startedAt: number
+  } | null>(null)
   const lastUpdateTimeRef = useRef<number>(0)
   const pendingChunkRef = useRef<{ id: string; content: string; reasoning?: string } | null>(null)
   const throttleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -101,8 +111,19 @@ export function useChatState() {
 
   // Stop streaming
   const stopStreaming = useCallback(() => {
+    const active = activeRequestRef.current
+    if (active) {
+      // 只有这里才是「用户主动点停止」；关闭面板导致的 abort 走卸载清理，不上报本事件
+      void trackEvent("chat_stopped_by_user", {
+        model: active.model,
+        provider_type: active.providerType,
+        source,
+        turn_index: active.turnIndex,
+        elapsed_ms: Math.round(performance.now() - active.startedAt)
+      })
+    }
     activeStreamAbortRef.current?.abort()
-  }, [])
+  }, [source])
 
   // Send prompt
   const sendPrompt = useCallback(
@@ -128,7 +149,12 @@ export function useChatState() {
       } catch {
         // Ignore
       }
-      const modelName = settings ? (getActiveProvider(settings)?.model ?? "unknown") : "unknown"
+      const activeProvider = settings ? getActiveProvider(settings) : undefined
+      const modelName = activeProvider?.model ?? "unknown"
+      const providerType = providerTypeOf(activeProvider)
+
+      // 轮次：本次调用是会话里的第几轮（1 = 触发动作的首轮，>1 = 追问）
+      const turnIndex = messagesRef.current.filter((message) => message.role === "user").length + 1
 
       // Build API messages with system context prepended
       let apiMessages = nextMessages
@@ -146,11 +172,33 @@ export function useChatState() {
       setRequestState({ status: "streaming", assistantMessageId: assistantMessage.id })
 
       const streamStartTime = performance.now()
+      activeRequestRef.current = {
+        controller: abortController,
+        turnIndex,
+        model: modelName,
+        providerType,
+        startedAt: streamStartTime
+      }
+
+      // TTFT：首个内容块（含思考块）到达时间，比总时长更能反映真实体验
+      let firstTokenMs: number | null = null
+
+      /** 每轮上报共用的维度（模型 / 来源 / 轮次） */
+      const chatProps = (extra: Record<string, unknown>): Record<string, unknown> => ({
+        model: modelName,
+        provider_type: providerType,
+        source,
+        turn_index: turnIndex,
+        is_follow_up: turnIndex > 1,
+        ...(firstTokenMs !== null ? { ttft_ms: firstTokenMs } : {}),
+        ...extra
+      })
 
       try {
         let streamedContent = ""
         let streamedReasoning = ""
         let terminalState: "completed" | "cancelled" | "failed" | null = null
+        let failedCode: string = "unknown"
 
         await streamChat(apiMessages, {
           signal: abortController.signal,
@@ -165,6 +213,10 @@ export function useChatState() {
             }
 
             if (event.type === "chunk") {
+              if (firstTokenMs === null) {
+                firstTokenMs = Math.round(performance.now() - streamStartTime)
+              }
+
               streamedContent += event.content
               if (event.reasoning_content) {
                 streamedReasoning += event.reasoning_content
@@ -219,6 +271,7 @@ export function useChatState() {
             }
 
             terminalState = "failed"
+            failedCode = event.code ?? classifyChatError(event.error)
             setRequestState({
               status: "failed",
               assistantMessageId: assistantMessage.id,
@@ -256,23 +309,24 @@ export function useChatState() {
 
         const durationMs = Math.round(performance.now() - streamStartTime)
         if (terminalState === "completed") {
-          void trackEvent("chat_completed", {
-            model: modelName,
+          void trackEvent("chat_completed", chatProps({
             duration_ms: durationMs,
             content_length: streamedContent.length
-          })
+          }))
         } else if (terminalState === "cancelled") {
-          void trackEvent("chat_cancelled", { model: modelName, duration_ms: durationMs })
+          void trackEvent("chat_cancelled", chatProps({ duration_ms: durationMs }))
         } else if (terminalState === "failed") {
-          void trackEvent("chat_failed", { model: modelName, duration_ms: durationMs })
+          void trackEvent("chat_failed", chatProps({ duration_ms: durationMs, error_code: failedCode }))
         }
       } catch (error: unknown) {
         if (!isCurrentRequest()) {
           return
         }
 
-        const durationMs = Math.round(performance.now() - streamStartTime)
-        void trackEvent("chat_failed", { model: modelName, duration_ms: durationMs })
+        void trackEvent("chat_failed", chatProps({
+          duration_ms: Math.round(performance.now() - streamStartTime),
+          error_code: classifyChatError(error)
+        }))
 
         const message = error instanceof Error ? error.message : ERROR_MESSAGES.UNKNOWN_ERROR
         setRequestState({ status: "failed", assistantMessageId: assistantMessage.id, error: message })
@@ -283,6 +337,9 @@ export function useChatState() {
         if (activeStreamAbortRef.current === abortController) {
           activeStreamAbortRef.current = null
         }
+        if (activeRequestRef.current?.controller === abortController) {
+          activeRequestRef.current = null
+        }
 
         setRequestState((current) =>
           current.status === "streaming" && current.assistantMessageId === assistantMessage.id
@@ -291,7 +348,7 @@ export function useChatState() {
         )
       }
     },
-    [syncMessages, context]
+    [syncMessages, context, source]
   )
 
   return {
