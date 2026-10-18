@@ -66,13 +66,23 @@ const MODEL_FADE_WIDTH = 26
 const MODEL_NAME_MASK = `linear-gradient(to right, #000 calc(100% - ${MODEL_FADE_WIDTH}px), transparent 100%)`
 
 /**
+ * 焦点环只在键盘导航时点亮（`:focus-visible`）。
+ * 鼠标点击按钮同样会 focus，且点完焦点就残留在按钮上（面板内点击不 blur），
+ * 常驻的主色光环会被误读成控件的第三种状态（与「已开启」混淆）。
+ */
+function isKeyboardFocus(event: { currentTarget: Element }): boolean {
+  return event.currentTarget.matches(":focus-visible")
+}
+
+/**
  * 头部控件统一样式族：icon-only 呈正圆、带文案呈胶囊，几何与交互完全一致。
  * 形态切换 / 钉住 / 关闭三个按钮共用，避免各自手写样式而逐渐走形。
  *
- * 视觉分层（头部只留一枚重音，其余保持中性，三个按钮各喊各的会把头部压沉）：
- * - `variant="primary"`（形态切换 / 追问）：主色描边 + 主色淡底 + 主色文字，是头部唯一的主行动点；
- * - 默认（钉住 / 关闭）：surface 底 + hairline 描边 + 次级文字，hover 才落一档实底；
- * - `active`（钉住已开启）：主色淡底 + 描边染主色，与「已点亮」语义对齐。
+ * 状态只有两档，三个按钮同一套语言（不设「常亮」的按钮，谁开启谁点亮）：
+ * - 默认（未开启）：surface 底 + hairline 描边 + 次级文字，hover 落一档 surfaceMuted；
+ * - `active`（已开启：已展开为聊天态 / 已钉住）：主色 12% 底 + 主色 40% 描边 +
+ *   图标与文字同为主色 + semibold，hover 再加深一档到 16%。
+ * 主次不靠固定的明暗差表达，而是靠各自的开启态；三个按钮的点亮长相完全同款。
  */
 function headerControlStyle(
   theme: ReturnType<typeof useUiTheme>,
@@ -80,18 +90,15 @@ function headerControlStyle(
     withLabel = false,
     hovered = false,
     focused = false,
-    active = false,
-    variant = "default"
+    active = false
   }: {
     withLabel?: boolean
     hovered?: boolean
     focused?: boolean
     active?: boolean
-    variant?: "default" | "primary"
   } = {}
 ): React.CSSProperties {
   const size = HEADER_CONTROL_SIZE
-  const primary = variant === "primary"
   return {
     display: "flex",
     alignItems: "center",
@@ -102,26 +109,24 @@ function headerControlStyle(
     minWidth: size,
     padding: withLabel ? `0 ${uiSpace[8]}px` : 0,
     borderRadius: uiRadius.pill,
-    border: `1px solid ${primary || active ? `${theme.accent.primary}40` : theme.border.hairline}`,
-    background: primary
+    border: `1px solid ${active ? `${theme.accent.primary}40` : theme.border.hairline}`,
+    background: active
       ? hovered
-        ? `${theme.accent.primary}1F`
-        : `${theme.accent.primary}14`
-      : active
-        ? `${theme.accent.primary}1F`
-        : hovered
-          ? theme.bg.surfaceMuted
-          : theme.bg.surface,
-    color: primary ? theme.accent.primary : theme.text.secondary,
+        ? `${theme.accent.primary}29`
+        : `${theme.accent.primary}1F`
+      : hovered
+        ? theme.bg.surfaceMuted
+        : theme.bg.surface,
+    color: active ? theme.accent.primary : theme.text.secondary,
     cursor: "pointer",
     flexShrink: 0,
     fontFamily: uiTypography.fontFamily,
     fontSize: uiTypography.fontSize.xs,
-    fontWeight: primary ? uiTypography.fontWeight.semibold : uiTypography.fontWeight.medium,
+    fontWeight: active ? uiTypography.fontWeight.semibold : uiTypography.fontWeight.medium,
     lineHeight: 1,
     whiteSpace: "nowrap",
     boxShadow: focused ? createFocusRing(theme.accent.primary) : "none",
-    transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}, border-color ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+    transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}, border-color ${uiMotion.durationFast} ${uiMotion.easingStandard}, color ${uiMotion.durationFast} ${uiMotion.easingStandard}`
   }
 }
 
@@ -536,7 +541,7 @@ function ThinkingBlock({
       <button
         type="button"
         onClick={() => setExpanded((prev) => !prev)}
-        onFocus={(event) => setFocused(event.currentTarget.matches(":focus-visible"))}
+        onFocus={(event) => setFocused(isKeyboardFocus(event))}
         onBlur={() => setFocused(false)}
         aria-expanded={expanded}
         aria-label={t("chat.thinkingProcess")}
@@ -756,7 +761,7 @@ const MessageBubble = memo(function MessageBubble({
           <button
             type="button"
             onClick={handleCopy}
-            onFocus={() => setCopyFocused(true)}
+            onFocus={(event) => setCopyFocused(isKeyboardFocus(event))}
             onBlur={() => setCopyFocused(false)}
             aria-label={t("chat.copyMessage")}
             title={t("chat.copyMessage")}
@@ -1335,12 +1340,13 @@ export default function ChatPanel({
 
         <div style={{ flex: 1, alignSelf: "stretch" }} />
 
-        {/* 形态切换：两态同族（图标 + 文案的胶囊），仅图标与文案随态切换 */}
+        {/* 形态切换：两态同族（图标 + 文案的胶囊），仅图标与文案随态切换；
+            聊天态即「已开启」，与钉住点亮同一套表达 */}
         <button
           onClick={handleToggleMode}
           onMouseEnter={() => setHovered("mode")}
           onMouseLeave={() => setHovered(null)}
-          onFocus={() => setFocused("mode")}
+          onFocus={(event) => setFocused(isKeyboardFocus(event) ? "mode" : null)}
           onBlur={() => setFocused(null)}
           aria-expanded={mode === "chat"}
           aria-label={mode === "card" ? t("chat.expandChat") : t("chat.collapsePanel")}
@@ -1349,16 +1355,16 @@ export default function ChatPanel({
             withLabel: true,
             hovered: hovered === "mode",
             focused: focused === "mode",
-            variant: "primary"
+            active: mode === "chat"
           })}>
           {mode === "card" ? (
             <>
-              <ExpandChatIcon size={13} color={theme.accent.primary} />
+              <ExpandChatIcon size={13} color="currentColor" />
               {t("chat.expandChat")}
             </>
           ) : (
             <>
-              <CollapseIcon size={13} color={theme.accent.primary} />
+              <CollapseIcon size={13} color="currentColor" />
               {t("chat.collapseShort")}
             </>
           )}
@@ -1368,7 +1374,7 @@ export default function ChatPanel({
           onClick={() => onPinChange(!pinned)}
           onMouseEnter={() => setHovered("pin")}
           onMouseLeave={() => setHovered(null)}
-          onFocus={() => setFocused("pin")}
+          onFocus={(event) => setFocused(isKeyboardFocus(event) ? "pin" : null)}
           onBlur={() => setFocused(null)}
           aria-pressed={pinned}
           aria-label={pinned ? t("chat.unpinPanel") : t("chat.pinPanel")}
@@ -1379,11 +1385,7 @@ export default function ChatPanel({
             focused: focused === "pin",
             active: pinned
           })}>
-          <PinIcon
-            size={13}
-            color={pinned ? theme.accent.primary : theme.text.secondary}
-            pinned={pinned}
-          />
+          <PinIcon size={13} color="currentColor" pinned={pinned} />
           {t("chat.pinShort")}
         </button>
 
@@ -1403,7 +1405,7 @@ export default function ChatPanel({
           onClick={onClose}
           onMouseEnter={() => setHovered("close")}
           onMouseLeave={() => setHovered(null)}
-          onFocus={() => setFocused("close")}
+          onFocus={(event) => setFocused(isKeyboardFocus(event) ? "close" : null)}
           onBlur={() => setFocused(null)}
           aria-label={t("chat.closePanel")}
           title={t("chat.closePanel")}
@@ -1566,7 +1568,7 @@ export default function ChatPanel({
             }}
             onMouseDown={() => setSendPressed(true)}
             onMouseUp={() => setSendPressed(false)}
-            onFocus={() => setFocused("send")}
+            onFocus={(event) => setFocused(isKeyboardFocus(event) ? "send" : null)}
             onBlur={() => setFocused(null)}
             disabled={sendDisabled && !isStreaming}
             aria-label={isStreaming ? t("chat.stop") : t("chat.send")}

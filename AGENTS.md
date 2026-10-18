@@ -204,29 +204,37 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   水平以锚点中心对齐，天然是「以中心为轴」扩张）；已拖拽时位置归用户，改由 ResizeObserver
   的 `measure()` 拿宽度差补一半到 `left`（`clampPanelDragPos` 后再钳一次），否则聊天态会只朝右侧单向变宽。
   拖拽开始时主动结束 `morphing`，避免位移带一段滞后的 easing。`prefersReducedMotion()` 时直接跳变。
-- **形态切换按钮（头部单按钮两态）**：卡片态 =「追问」（对话气泡图标 + 文案），聊天态 =「收起」
-  （人字箭头 + 文案），两态**同族同形**（同高度/同圆角/同图标尺寸/同 hover，仅图标与文案变），
+- **形态切换按钮（头部单按钮两态）**：卡片态 =「追问」（对话气泡图标 + 文案，**未开启=中性档**），
+  聊天态 =「收起」（人字箭头 + 文案，**已开启=点亮主色**），两态**同族同形**
+  （同高度/同圆角/同图标尺寸/同 hover，仅图标与文案变，外加开启态点亮），
   点击展开为完整**聊天态**（消息 + 输入区）并自动聚焦输入框，或在聊天态点击回卡片态并 blur
   输入框（防止残留焦点落入已隐藏的 textarea）。两态共用 `handleToggleMode`，`aria-expanded`
   随态切换；`aria-label` / `title` 用描述性长文案 `chat.expandChat` / `chat.collapsePanel`，
   可见文案用短文案 `chat.expandChat` / `chat.collapseShort`（「收起」/「Collapse」，两态宽度才接近）。
   卡片态高度比聊天态矮一个底部栏，`CARD_ASSUME_HEIGHT` 据此取 170。
 - **头部控件统一样式族**：`ChatPanel.tsx` 模块级 `headerControlStyle(theme, {withLabel, hovered,
-  focused, active, variant})` 是形态切换 / 钉住 / 关闭三个按钮的唯一样式来源（高 22、`uiRadius.pill`——
+  focused, active})` 是形态切换 / 钉住 / 关闭三个按钮的唯一样式来源（高 22、`uiRadius.pill`——
   icon-only 呈正圆、带文案呈胶囊、图标统一 13、focus ring 统一）。
   `HEADER_CONTROL_SIZE` 与 `HEADER_PADDING_Y` 一起决定标题栏高度（22 + 6×2 = 34）。
-  `active` 用于开关已开启态（目前只有钉住）：主色 12% 淡底（`${theme.accent.primary}1F`）。
-  `variant="primary"` 用于头部唯一的主行动点（形态切换 /「追问」）：主色描边 + 主色 8% 淡底 +
-  主色文字 + semibold，hover 加深到 12%；其余控件走默认中性档（surface 底 + hairline 描边 +
-  次级文字，hover 才落 surfaceMuted）——三个按钮各喊各的会把头部压沉，只留一枚重音。
+  **状态只有两档，三个按钮共用同一套语言**（不设「常亮」的按钮，谁开启谁点亮）：
+  默认 = 中性档（surface 底 + hairline 描边 + 次级文字，hover 落 surfaceMuted）；
+  `active`（已开启：已展开为聊天态 / 已钉住）= 统一为「主色 12% 淡底（`1F`）+ 主色 40% 描边 +
+  图标与文字同为主色 + semibold」，hover 再加深一档到 16%（`29`）。两个开关按钮的点亮长相
+  完全同款，主次不靠固定的明暗差表达（历史上「追问」常亮 primary 时，钉住开启反而更重、
+  且开启了 hover 无反馈）；图标一律传 `color="currentColor"` 与文字同色，
+  避免一个按钮内出现两种颜色。
+  **焦点环只在键盘导航（`:focus-visible`）时点亮**（模块级 `isKeyboardFocus()`，与思考行按钮同一写法）：
+  鼠标点击按钮同样会 focus，且点完焦点就残留在按钮上（面板内点击不 blur），常驻的 3px 主色光环
+  会被误读成控件的第三种状态（与「已开启」混淆）——头部三按钮、发送按钮、复制按钮均适用；
+  输入框（composer）的聚焦柔光不走此判定，鼠标点进输入框理应显示聚焦态。
   新增头部按钮时直接调它，不要再手写一份 style。
   形态切换与钉住都带可见文案（`chat.expandChat` / `chat.collapseShort` / `chat.pinShort`），
   关闭按钮保持纯图标（× 语义自明），且与前两个按钮之间有一条 1×12 竖分隔线（破坏性操作
   与常态操作分开防误点）。头部底色是主色极淡的一层（dark 10% / light 8% 的 `${accent.primary}`），
   与消息区的 hairline 分区共同构成标题栏。
   模型名左侧的状态点独立在模型名槽位之外（槽位要 `overflow: hidden` 裁长模型名，会把扩散环切掉）；钉住是切换型按钮，可见文案**不随态变**（恒为「钉住」/
-  "Pin"，避免「钉住/取消钉住」宽度跳变），开关状态靠 `active` 淡底 + 填色图标 + `aria-pressed` 表达，
-  描述性长文案留在 `aria-label` / `title`（`chat.pinPanel` / `chat.unpinPanel`）。
+  "Pin"，避免「钉住/取消钉住」宽度跳变），开关状态靠开启态点亮（同上 `active`）+ 填色图标 +
+  45° 旋转 + `aria-pressed` 表达，描述性长文案留在 `aria-label` / `title`（`chat.pinPanel` / `chat.unpinPanel`）。
 - **模型名槽位固定长度 + 右端渐隐**：模型名从「11px 灰字小胶囊」升级为标题级元素
   （`MODEL_SLOT_FONT_SIZE` 14 / semibold / `text.primary` / mono / 图标 14 与名字同高），
   并装入**固定长度槽位**：`MODEL_SLOT_WIDTH = 500`（`flex: 0 1 auto` + `minWidth: 0`，窄面板下可收缩，
