@@ -164,8 +164,9 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   进入**卡片态**——同一锚点、更窄的宽度（`CARD_WIDTH` 480），高度随内容自适应（`maxHeight` 钳制，落位计算用
   `CARD_ASSUME_HEIGHT` 假设高度，避免误判为「下方放不下」而错误翻转到上方），内容区只渲染
   assistant 消息（隐藏用户气泡）、无输入区（头部专门有一个形态切换按钮承载展开入口）；卡片态的 assistant
-  内容**去掉气泡框直铺铺满面板**（`MessageBubble` 的 `variant="card"`：透明背景、无边框
-  圆角阴影、`maxWidth` 100%，多条间用 hairline 分隔），展开为聊天态后回到常规气泡样式
+  内容是**一块淡底内容块**（`MessageBubble` 的 `variant="card"`：`surfaceMuted` 80% 淡底 + hairline
+  描边 + `uiRadius.lg` 圆角，把正文从毛玻璃面板上浮起一层；正文有内边距，思考行跨满块顶），
+  展开为聊天态后回到常规气泡样式
   （`CHAT_WIDTH` 640，比卡片态宽 160：追问场景要放得下更长的消息与输入区）。
   宽度上限受视口约束（下限 `PANEL_MIN_WIDTH` 320），窄视口下两态宽度趋同、只剩高度过渡。
 - **形态切换过渡（卡片 ↔ 聊天）**：`handleToggleMode` 里置 `morphing` 并起一个
@@ -191,7 +192,9 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   `active` 用于开关已开启态（目前只有钉住）：主色 12% 淡底（`${theme.accent.primary}1F`）。
   新增头部按钮时直接调它，不要再手写一份 style。
   形态切换与钉住都带可见文案（`chat.expandChat` / `chat.collapseShort` / `chat.pinShort`），
-  关闭按钮保持纯图标（× 语义自明）；钉住是切换型按钮，可见文案**不随态变**（恒为「钉住」/
+  关闭按钮保持纯图标（× 语义自明），且与前两个按钮之间有一条 1×12 竖分隔线（破坏性操作
+  与常态操作分开防误点）；形态切换按钮的图标染主色（它是本面板的主行动点，其余图标保持次级色）。
+  模型胶囊左侧的状态点独立于胶囊之外（胶囊要 `overflow: hidden` 裁长模型名，会把扩散环切掉），；钉住是切换型按钮，可见文案**不随态变**（恒为「钉住」/
   "Pin"，避免「钉住/取消钉住」宽度跳变），开关状态靠 `active` 淡底 + 填色图标 + `aria-pressed` 表达，
   描述性长文案留在 `aria-label` / `title`（`chat.pinPanel` / `chat.unpinPanel`）。
 - **输入区（composer）统一样式族**：`ChatPanel.tsx` 的 `composerStyle` /
@@ -274,6 +277,17 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   （`handleQuickAction` → speakText）与复制（copyToClipboard）都不调 `closeToolbar()`；
   复制后也能继续在工具栏上触发别的动作。复制需要复制临时内容时（Clipboard API 被拒）
   也必须在操作后还原选区与焦点，不能借“选区被消费”把复制变成例外。
+
+- **消息操作行与生成中提示**：助手消息的「复制」不再 hover 浮出盖在正文上，而是常驻
+  内容块底部右侧的一行操作区（低对比 70% 静默、hover 抬亮主文色、复制完成转成功色）；
+  「AI 正在生成中…」是自适应宽度的同族内容块（hairline 描边 + 淡底 + 圆角），
+  不再用横贯整条的 banner（`createStatusMessageStyle` 生成的是全宽块，与气泡不同族）。
+  思考行展开后按 `inset` 内缩到与正文同一栏（卡片态 12 / 聊天态 10），收起态跨满块顶。
+- **Markdown 元素取色（`createMarkdownStyles`，随主题 token）**：行内 `code` 用主色 10% 淡底
+  （把术语从正文里托出来）；`pre` 底色用 `surface` + `border.subtle` 描边（卡片态容器是
+  surfaceMuted，两套 token 不同才能在气泡/块里都看得出块形）；正文行高 1.5；
+  `> :first-child/:last-child` 清 margin，避免首尾多出一层空隙。
+- **面板内选中文字**用主色 20% 淡底（`<style>` 里的 `::selection`），不用浏览器默认蓝。
 
 ### 待优化清单
 - [ ] 无障碍：状态变化无 `aria-live` 播报；面板/圆球无键盘入口（Tab 不可达）

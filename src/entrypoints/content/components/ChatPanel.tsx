@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 
 import { MarkdownRenderer } from "@/shared/ui/markdown"
-import { useUiTheme } from "@/shared/ui/theme"
+import { useUiTheme, useUiThemeName } from "@/shared/ui/theme"
 import {
   clampPanelDragPos,
   EDGE_INSET,
@@ -10,8 +10,9 @@ import {
   type AnchorRect,
   type PanelPos
 } from "@/entrypoints/content/components/floating"
-import { uiLayer, uiMotion, uiRadius, uiSpace, uiShadow, uiTypography } from "@/shared/ui/tokens"
-import { createFocusRing, createStatusMessageStyle } from "@/shared/ui/styles"
+import { uiLayer, uiMotion, uiRadius, uiShadow, uiSpace, uiTypography } from "@/shared/ui/tokens"
+import { createFocusRing, createFloatingPanelStyle, createStatusMessageStyle } from "@/shared/ui/styles"
+import { copyText } from "@/shared/clipboard"
 import { useI18n } from "@/shared/i18n/context"
 import { toSingleLine } from "@/entrypoints/content/utils/reasoningText"
 import type { ChatMessage, ChatRequestState } from "@/shared/types"
@@ -33,10 +34,15 @@ const COMPOSER_INPUT_MIN_HEIGHT = 24
 const COMPOSER_INPUT_MAX_HEIGHT = 132
 /** 圆形发送按钮直径 */
 const SEND_BUTTON_SIZE = 28
+/** 复制成功反馈的驻留时长 */
+const COPY_FEEDBACK_MS = 1600
 
 /**
  * 头部控件统一样式族：icon-only 呈正圆、带文案呈胶囊，几何与交互完全一致。
  * 形态切换 / 钉住 / 关闭三个按钮共用，避免各自手写样式而逐渐走形。
+ *
+ * 视觉：芯片式——常态只有一圈 hairline 描边（不填底，三个按钮排开也不会把头部压沉），
+ * hover 才落一档淡底，active（钉住）主色淡底 + 描边染主色。
  */
 function headerControlStyle(
   theme: ReturnType<typeof useUiTheme>,
@@ -53,17 +59,19 @@ function headerControlStyle(
     alignItems: "center",
     justifyContent: "center",
     gap: uiSpace[4],
+    boxSizing: "border-box",
     height: size,
     minWidth: size,
     padding: withLabel ? `0 ${uiSpace[8]}px` : 0,
     borderRadius: uiRadius.pill,
-    border: "none",
-    // active = 开关已开启（目前只有钉住）：主色 12% 淡底，与普通 hover 区分
+    // 芯片式：常态一圈 hairline 描边 + 极淡底（不填实底，三个按钮排开也不会把头部压沉），
+    // hover 才落一档实底，active（钉住）主色淡底 + 描边染主色
+    border: `1px solid ${active ? `${theme.accent.primary}40` : theme.border.hairline}`,
     background: active
       ? `${theme.accent.primary}1F`
       : hovered
         ? theme.bg.surfaceMuted
-        : "transparent",
+        : `${theme.bg.surfaceMuted}80`,
     color: theme.text.secondary,
     cursor: "pointer",
     flexShrink: 0,
@@ -72,7 +80,7 @@ function headerControlStyle(
     lineHeight: 1,
     whiteSpace: "nowrap",
     boxShadow: focused ? createFocusRing(theme.accent.primary) : "none",
-    transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+    transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}, border-color ${uiMotion.durationFast} ${uiMotion.easingStandard}`
   }
 }
 
@@ -178,6 +186,36 @@ function CloseIcon({ size, color }: { size: number; color: string }) {
   )
 }
 
+/** 复制图标（双页）：助手消息操作条 */
+function CopyIcon({ size, color }: { size: number; color: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="5.6" y="2.6" width="7.8" height="9.4" rx="2" stroke={color} strokeWidth={1.2} />
+      <path
+        d="M10.4 13.4H4.6a2 2 0 0 1-2-2V6.2"
+        stroke={color}
+        strokeWidth={1.2}
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+/** 对勾图标：复制完成的瞬时反馈 */
+function CheckIcon({ size, color }: { size: number; color: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M3.4 8.6l3 3 6.2-7"
+        stroke={color}
+        strokeWidth={1.7}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 /** 模型图标（芯片造型）：替代原「模型：xxx」文本胶囊，悬停时 title 提示完整模型名 */
 function ModelIcon({ size, color }: { size: number; color: string }) {
   return (
@@ -225,8 +263,7 @@ function PinIcon({ size, color, pinned }: { size: number; color: string; pinned:
   )
 }
 
-/** 收起图标（聊天态 → 卡片态）：向下人字形 */
-function CollapseIcon({ size, color }: { size: number; color: string }) {
+/** 收起图标（聊天态 → 卡片态）：向下人字形 */function CollapseIcon({ size, color }: { size: number; color: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <path
@@ -308,13 +345,6 @@ function ThinkingSparkIcon({ size, color, active }: { size: number; color: strin
   )
 }
 
-interface ThinkingTheme {
-  text: { secondary: string; primary: string }
-  bg: { surfaceMuted: string; surface: string }
-  border: { subtle: string; default: string }
-  brand: { primary: string }
-}
-
 /** 思考行高度（单行） */
 const THINKING_ROW_HEIGHT = 26
 /** 原始思考文本参与单行化的尾部窗口：先截断再纯化，避免长思考每次重跑全量正则 */
@@ -351,11 +381,14 @@ function chatPanelHeight(): number {
 function ThinkingBlock({
   reasoning,
   isStreaming,
-  theme
+  theme,
+  inset = 0
 }: {
   reasoning: string
   isStreaming: boolean
-  theme: ThinkingTheme
+  theme: ReturnType<typeof useUiTheme>
+  /** 展开态左右内缩量：与所在容器里正文的左右内边距对齐（收起态跨满整块，分隔线贯通） */
+  inset?: number
 }) {
   const { t } = useI18n()
   const [expanded, setExpanded] = useState(false)
@@ -446,14 +479,15 @@ function ThinkingBlock({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        // 展开后画一个白底卡片（描边用 border.default：subtle 比块底色更亮，浅色下会隐形）
-        border: expanded ? `1px solid ${theme.border.default}` : undefined,
+        // 展开后画一块思考色卡片（紫调淡底 + 同色描边：与「回答」在语义上区分开）
+        border: expanded ? `1px solid ${theme.reasoning.border}` : undefined,
         borderBottom: expanded ? undefined : `1px solid ${theme.border.subtle}`,
         borderRadius: expanded ? uiRadius.md : 0,
-        // 展开态：白底卡片（比消息区/气泡都亮，与下方回答边界最清楚）；
-        // 收起态：透明，hover 时整块淡底
-        background: expanded ? theme.bg.surface : hovered ? theme.bg.surfaceMuted : "transparent",
-        boxShadow: expanded ? uiShadow.sm : "none",
+        // 收起态透明，hover / 展开时才落思考色淡底
+        background: expanded || hovered ? theme.reasoning.surface : "transparent",
+        // 展开态左右内缩到与正文同一栏，避免展开后的思考框比下方正文宽出一截
+        marginLeft: expanded ? inset : 0,
+        marginRight: expanded ? inset : 0,
         marginBottom: expanded ? uiSpace[8] : 0,
         fontSize: uiTypography.fontSize.sm,
         transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}, box-shadow ${uiMotion.durationFast} ${uiMotion.easingStandard}`
@@ -475,7 +509,7 @@ function ThinkingBlock({
           border: "none",
           // 底色由外层容器统一给（整块高亮），按钮自身透明
           background: "transparent",
-          color: theme.text.secondary,
+          color: theme.reasoning.text,
           cursor: "pointer",
           fontFamily: uiTypography.fontFamily,
           fontSize: uiTypography.fontSize.sm,
@@ -497,14 +531,14 @@ function ThinkingBlock({
           }}>
           <path
             d="M3.5 1.5L7 5L3.5 8.5"
-            stroke={theme.text.secondary}
+            stroke={theme.reasoning.text}
             strokeWidth={1.5}
             strokeLinecap="round"
             strokeLinejoin="round"
           />
         </svg>
         {/* 常态思考图标：思考中靠动画指示状态（不占额外宽度，不会让视口宽度抖动） */}
-        <ThinkingSparkIcon size={13} color={theme.text.secondary} active={isStreaming} />
+        <ThinkingSparkIcon size={13} color={theme.reasoning.accent} active={isStreaming} />
         {/* 标签：「思考」二字常驻（展开态也在），冒号只服务于其后的单行内容 */}
         <span style={{ flexShrink: 0, fontWeight: uiTypography.fontWeight.medium }}>
           {t("chat.thinkingLabel")}
@@ -565,53 +599,99 @@ interface MessageBubbleProps {
   item: ChatMessage
   isStreaming: boolean
   theme: ReturnType<typeof useUiTheme>
-  /** 呈现形态：chat = 常规气泡／card = 卡片态铺满（无气泡框，内容直铺） */
+  /** 呈现形态：chat = 常规气泡／card = 卡片态（助手回答包一层淡底内容块） */
   variant?: "chat" | "card"
-  /** card 形态下多条 assistant 内容之间的分隔（非末条时渲染底部 hairline） */
-  cardSeparated?: boolean
 }
 
 const MessageBubble = memo(function MessageBubble({
   item,
   isStreaming,
   theme,
-  variant = "chat",
-  cardSeparated = false
+  variant = "chat"
 }: MessageBubbleProps) {
+  const { t } = useI18n()
   const isCard = variant === "card"
+  const isUser = item.role === "user"
+  /** 消息块悬停：复制按钮在此刻浮出（同时影响按钮可点击性） */
+  const [hovered, setHovered] = useState(false)
+  const [copyFocused, setCopyFocused] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const copyTimerRef = useRef<number | null>(null)
+
+  useEffect(
+    () => () => {
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current)
+    },
+    []
+  )
+
+  const handleCopy = useCallback(async () => {
+    if (!(await copyText(item.content))) return
+    setCopied(true)
+    if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current)
+    copyTimerRef.current = window.setTimeout(() => {
+      copyTimerRef.current = null
+      setCopied(false)
+    }, COPY_FEEDBACK_MS)
+  }, [item.content])
+
+  // 复制按钮仅给助手回答（生成中不显示：内容还在变，复制到的是半截）
+  const showCopy = !isUser && item.content.trim().length > 0 && !isStreaming
+  /** 常驻但低对比（发现性优于 hover 才浮出），hover / 聚焦时抬亮，复制完成转成功色 */
+  const copyColor = copied
+    ? theme.state.success
+    : hovered || copyFocused
+      ? theme.text.primary
+      : theme.text.secondary
+
   return (
     <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         display: "block",
-        marginLeft: item.role === "user" ? "auto" : undefined,
+        position: "relative",
+        marginLeft: isUser ? "auto" : undefined,
         maxWidth: isCard ? "none" : "85%",
-        marginBottom: isCard ? (cardSeparated ? uiSpace[10] : 0) : uiSpace[8],
-        borderRadius: isCard ? 0 : uiRadius.md,
-        lineHeight: 1.4,
+        marginBottom: isCard ? uiSpace[12] : uiSpace[8],
+        // 聊天气泡：用户侧右上收一个小圆角（对话方向感）；
+        // 助手侧卡片态是一个「内容块」（与圆角、描边同族的块），聊天态是常规气泡
+        borderRadius: isCard ? (isUser ? 0 : uiRadius.lg) : isUser ? "12px 4px 12px 12px" : uiRadius.xl,
+        lineHeight: 1.45,
         fontSize: uiTypography.fontSize.sm,
-        whiteSpace: item.role === "user" ? "pre-wrap" : "normal",
+        whiteSpace: isUser ? "pre-wrap" : "normal",
         wordBreak: "break-word",
-        background: item.role === "user" ? theme.accent.primary : isCard ? "transparent" : theme.bg.surfaceMuted,
-        color: item.role === "user" ? theme.text.inverse : theme.text.primary,
-        border: item.role === "user" || isCard ? "none" : `0.5px solid ${theme.border.hairline}`,
-        boxShadow: isCard ? "none" : uiShadow.sm,
+        // 卡片态：助手回答落一层淡底内容块，把正文从面板底上浮起一层（不再是直接铺在玻璃上）
+        background: isUser
+          ? theme.accent.primary
+          : isCard
+            ? `${theme.bg.surfaceMuted}80`
+            : theme.bg.surfaceMuted,
+        color: isUser ? theme.text.inverse : theme.text.primary,
+        border: isUser
+          ? "none"
+          : isCard
+            ? `1px solid ${theme.border.hairline}`
+            : `0.5px solid ${theme.border.hairline}`,
+        boxShadow: isCard || isUser ? "none" : uiShadow.sm,
         animation: `message-enter 300ms ${uiMotion.easingDecelerate} forwards`,
-        overflow: "hidden",
-        borderBottom: isCard && cardSeparated ? `0.5px solid ${theme.border.hairline}` : undefined,
-        paddingBottom: isCard && cardSeparated ? uiSpace[10] : undefined
+        overflow: "hidden"
       }}>
       {item.role === "assistant" && item.reasoning_content ? (
         <ThinkingBlock
           reasoning={item.reasoning_content}
           isStreaming={isStreaming && !item.content}
           theme={theme}
+          inset={isCard ? uiSpace[12] : uiSpace[10]}
         />
       ) : null}
       {item.content ? (
         <div
           style={{
-            // 卡片态消息区容器统一提供舒适内边距，内容本身不再套气泡内边距
-            padding: isCard ? undefined : `${uiSpace[8]}px ${uiSpace[10]}px`,
+            // 卡片态自己就是内容块，内边距由块身给（思考行贴着块顶，正文从中段往下铺）
+            padding: isCard
+              ? `${uiSpace[10]}px ${uiSpace[12]}px`
+              : `${uiSpace[8]}px ${uiSpace[10]}px`,
             overflowWrap: "break-word",
             wordBreak: "break-word"
           }}>
@@ -620,6 +700,52 @@ const MessageBubble = memo(function MessageBubble({
           ) : (
             item.content
           )}
+        </div>
+      ) : null}
+      {showCopy ? (
+        /* 操作行：常驻在内容块底部右侧（不再盖在正文上浮出），低对比静默、hover 抬亮 */
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            padding: isCard
+              ? `0 ${uiSpace[12]}px ${uiSpace[8]}px`
+              : `0 ${uiSpace[10]}px ${uiSpace[8]}px`
+          }}>
+          <button
+            type="button"
+            onClick={handleCopy}
+            onFocus={() => setCopyFocused(true)}
+            onBlur={() => setCopyFocused(false)}
+            aria-label={t("chat.copyMessage")}
+            title={t("chat.copyMessage")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: uiSpace[4],
+              height: 20,
+              padding: `0 ${uiSpace[6]}px`,
+              // 往回缩半个内边距：按钮内的文字与上方正文的右边线对齐
+              marginRight: -uiSpace[6],
+              borderRadius: uiRadius.sm,
+              border: "none",
+              background: hovered ? theme.bg.surfaceMuted : "transparent",
+              color: copyColor,
+              fontFamily: uiTypography.fontFamily,
+              fontSize: uiTypography.fontSize.xs,
+              lineHeight: 1,
+              cursor: "pointer",
+              opacity: copied || hovered || copyFocused ? 1 : 0.7,
+              boxShadow: copyFocused ? createFocusRing(theme.accent.primary) : "none",
+              transition: `opacity ${uiMotion.durationFast} ${uiMotion.easingStandard}, color ${uiMotion.durationFast} ${uiMotion.easingStandard}, background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+            }}>
+            {copied ? (
+              <CheckIcon size={11} color={copyColor} />
+            ) : (
+              <CopyIcon size={11} color={copyColor} />
+            )}
+            {copied ? t("chat.copied") : t("chat.copyShort")}
+          </button>
         </div>
       ) : null}
     </div>
@@ -663,6 +789,7 @@ export default function ChatPanel({
   onClose
 }: Props) {
   const theme = useUiTheme()
+  const themeName = useUiThemeName()
   const { t } = useI18n()
   /** 面板形态：card = 卡片态（仅 AI 生成内容）/ chat = 完整聊天态（消息 + 输入框）。新会话默认卡片态 */
   const [mode, setMode] = useState<"card" | "chat">("card")
@@ -954,10 +1081,8 @@ export default function ChatPanel({
         pointerEvents: "auto",
         display: "flex",
         flexDirection: "column",
-        borderRadius: uiRadius.xl,
-        background: theme.bg.surface,
-        border: `1px solid ${theme.border.default}`,
-        boxShadow: uiShadow.lg,
+        // 毛玻璃面板：半透明表面 + 1px 渐变描边 + 分层投影（吸设计稿的面板质感）
+        ...createFloatingPanelStyle(theme, themeName === "dark"),
         overflow: "hidden",
         fontFamily: uiTypography.fontFamily,
         animation: `floating-enter 220ms ${uiMotion.easingDecelerate} both`
@@ -1002,18 +1127,29 @@ export default function ChatPanel({
           0%, 100% { opacity: 0.35; transform: scale(0.6); }
           50% { opacity: 1; transform: scale(1); }
         }
+        /* 模型状态点：生成中的扩散环（空闲时不跑） */
+        @keyframes model-pulse {
+          0% { opacity: 0.5; transform: scale(1); }
+          100% { opacity: 0; transform: scale(2.8); }
+        }
+        /* 选中文字：用主色淡底（与面板强调色同族），比浏览器默认的蓝更协调 */
+        [data-aiction-chat-panel="true"] ::selection {
+          background-color: ${theme.accent.primary}33;
+        }
         [data-messages-scroll]::-webkit-scrollbar {
           width: 6px;
+          height: 6px;
         }
         [data-messages-scroll]::-webkit-scrollbar-track {
           background: transparent;
         }
+        /* 滚动条随主题取色（半透明，hover 才抬亮），不写死灰度 */
         [data-messages-scroll]::-webkit-scrollbar-thumb {
-          background-color: rgba(0, 0, 0, 0.12);
+          background-color: ${theme.text.secondary}33;
           border-radius: 3px;
         }
         [data-messages-scroll]::-webkit-scrollbar-thumb:hover {
-          background-color: rgba(0, 0, 0, 0.2);
+          background-color: ${theme.text.secondary}59;
         }
         [data-composer-input]::placeholder {
           color: ${theme.text.secondary};
@@ -1027,19 +1163,23 @@ export default function ChatPanel({
           background: transparent;
         }
         [data-composer-input]::-webkit-scrollbar-thumb {
-          background-color: ${theme.border.default};
+          background-color: ${theme.text.secondary}33;
           border-radius: 3px;
+        }
+        [data-composer-input]::-webkit-scrollbar-thumb:hover {
+          background-color: ${theme.text.secondary}59;
         }
       `}</style>
 
-      {/* 头部：拖拽手柄（模型图标左置，形态切换 + 钉子 + 关闭右置；按钮不可拖拽） */}
+      {/* 头部：拖拽手柄（模型芯片左置，形态切换 + 钉子 + 关闭右置；按钮不可拖拽） */}
       <div
         onPointerDown={handleHeaderPointerDown}
         style={{
           display: "flex",
           alignItems: "center",
           gap: uiSpace[6],
-          padding: `${uiSpace[6]}px ${uiSpace[10]}px ${uiSpace[4]}px`,
+          padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
+          borderBottom: `1px solid ${theme.border.hairline}`,
           flexShrink: 0,
           cursor: dragging ? "grabbing" : "grab",
           userSelect: "none",
@@ -1047,31 +1187,68 @@ export default function ChatPanel({
         }}>
         {modelName ? (
           <div
-            onMouseEnter={() => setHovered("model")}
-            onMouseLeave={() => setHovered(null)}
-            aria-label={`${t("chat.modelLabel")}: ${modelName}`}
             style={{
-              display: "inline-flex",
+              display: "flex",
               alignItems: "center",
-              gap: uiSpace[4],
-              padding: `${uiSpace[2]}px ${uiSpace[6]}px ${uiSpace[2]}px`,
-              borderRadius: uiRadius.sm,
+              gap: uiSpace[6],
               flexShrink: 1,
-              minWidth: 0,
-              overflow: "hidden",
-              background: hovered === "model" ? theme.bg.surfaceMuted : "transparent"
+              minWidth: 0
             }}>
-            <ModelIcon size={14} color={theme.text.secondary} />
+            {/* 状态点：独立在模型芯片之外——芯片本体要裁掉溢出的长模型名，
+                扩散环放进去会被切掉；独立一颗也让「会话是否在跑」跳出模型信息，
+                成为模块级信号（生成中转主色并向外扩散，空闲为静默绿点） */}
             <span
-              style={{
-                fontSize: uiTypography.fontSize.xs,
-                color: theme.text.secondary,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap"
-              }}>
-              {modelName}
+              aria-hidden="true"
+              style={{ position: "relative", width: 6, height: 6, flexShrink: 0 }}>
+              <span
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  borderRadius: "50%",
+                  background: isStreaming ? theme.accent.primary : theme.state.success
+                }}
+              />
+              {isStreaming && !prefersReducedMotion() ? (
+                <span
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    borderRadius: "50%",
+                    background: theme.accent.primary,
+                    animation: "model-pulse 1.6s ease-out infinite"
+                  }}
+                />
+              ) : null}
             </span>
+            <div
+              onMouseEnter={() => setHovered("model")}
+              onMouseLeave={() => setHovered(null)}
+              aria-label={`${t("chat.modelLabel")}: ${modelName}`}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: uiSpace[6],
+                padding: `2px ${uiSpace[8]}px 2px ${uiSpace[4]}px`,
+                borderRadius: uiRadius.pill,
+                border: `1px solid ${theme.border.hairline}`,
+                background: hovered === "model" ? theme.bg.surfaceMuted : `${theme.bg.surfaceMuted}80`,
+                flexShrink: 1,
+                minWidth: 0,
+                transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+              }}>
+              <ModelIcon size={12} color={theme.text.secondary} />
+              <span
+                style={{
+                  fontFamily: uiTypography.fontFamilyMono,
+                  fontSize: 11,
+                  color: theme.text.secondary,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap"
+                }}>
+                {modelName}
+              </span>
+            </div>
           </div>
         ) : null}
 
@@ -1094,12 +1271,12 @@ export default function ChatPanel({
           })}>
           {mode === "card" ? (
             <>
-              <ExpandChatIcon size={12} color={theme.text.secondary} />
+              <ExpandChatIcon size={12} color={theme.accent.primary} />
               {t("chat.expandChat")}
             </>
           ) : (
             <>
-              <CollapseIcon size={12} color={theme.text.secondary} />
+              <CollapseIcon size={12} color={theme.accent.primary} />
               {t("chat.collapseShort")}
             </>
           )}
@@ -1128,6 +1305,18 @@ export default function ChatPanel({
           {t("chat.pinShort")}
         </button>
 
+        {/* 分隔线：把破坏性的「关闭」与常态操作分开，避免误点 */}
+        <span
+          aria-hidden="true"
+          style={{
+            width: 1,
+            height: 12,
+            margin: `0 ${uiSpace[2]}px`,
+            flexShrink: 0,
+            background: theme.border.default
+          }}
+        />
+
         <button
           onClick={onClose}
           onMouseEnter={() => setHovered("close")}
@@ -1155,10 +1344,11 @@ export default function ChatPanel({
           overscrollBehavior: "contain",
           padding:
             mode === "card"
-              ? `${uiSpace[10]}px ${uiSpace[14]}px ${uiSpace[12]}px`
-              : uiSpace[6],
+              ? `${uiSpace[12]}px ${uiSpace[16]}px ${uiSpace[14]}px`
+              : `${uiSpace[12]}px ${uiSpace[14]}px`,
           display: "block",
-          background: theme.bg.surfaceAlt,
+          // 消息区不另铺底：面板本体就是毛玻璃，靠 hairline 分区（头部 / 消息 / 输入区）
+          background: "transparent",
           minHeight: 0
         }}>
         {visibleMessages.length === 0 && !isStreaming ? (
@@ -1178,25 +1368,32 @@ export default function ChatPanel({
           </div>
         ) : null}
 
-        {visibleMessages.map((item, index) => (
+        {visibleMessages.map((item) => (
           <MessageBubble
             key={item.id}
             item={item}
             isStreaming={isStreaming}
             theme={theme}
             variant={mode}
-            cardSeparated={mode === "card" && index < visibleMessages.length - 1}
           />
         ))}
 
         {isStreaming ? (
           <div
             style={{
-              color: theme.text.secondary,
-              ...createStatusMessageStyle(theme, "info"),
-              display: "flex",
+              // 生成中提示做成「一个内容块」：与助手回答同族的描边 / 淡底 / 圆角，
+              // 宽度自适应（不再是横贯整条的 banner），看起来像回答正在这个位置长出来
+              display: "inline-flex",
               alignItems: "center",
-              gap: uiSpace[6]
+              gap: uiSpace[6],
+              marginTop: visibleMessages.length > 0 ? uiSpace[10] : 0,
+              padding: `${uiSpace[8]}px ${uiSpace[12]}px`,
+              borderRadius: uiRadius.lg,
+              border: `1px solid ${theme.border.hairline}`,
+              background: `${theme.bg.surfaceMuted}80`,
+              color: theme.text.secondary,
+              fontSize: uiTypography.fontSize.sm,
+              lineHeight: 1.4
             }}>
             <ThinkingDot color={theme.accent.primary} />
             {t("chat.generating")}
@@ -1209,8 +1406,8 @@ export default function ChatPanel({
       <div
         style={{
           padding: `${uiSpace[8]}px ${uiSpace[8]}px ${uiSpace[10]}px`,
-          borderTop: `0.5px solid ${theme.border.hairline}`,
-          background: theme.bg.surface,
+          borderTop: `1px solid ${theme.border.hairline}`,
+          background: "transparent",
           flexShrink: 0
         }}>
         {/* composer：一层描边同时包住输入框与发送按钮，聚焦时整体点亮 */}

@@ -8,6 +8,8 @@ export interface UiTheme {
     surfaceMuted: string
     overlay: string
     glass: string
+    /** 悬浮面板本体：半透明表面（配 backdrop-filter 呈毛玻璃，让下方面板内容透出层次） */
+    panel: string
   }
   text: {
     primary: string
@@ -41,6 +43,13 @@ export interface UiTheme {
     successBg: string
     disabled: string
   }
+  /** 思考过程（reasoning）专用语义色：与「回答」在视觉上区分开（保留块 / 标签 / 图标） */
+  reasoning: {
+    accent: string
+    text: string
+    surface: string
+    border: string
+  }
 }
 
 export const uiThemes: Record<UiThemeName, UiTheme> = {
@@ -51,7 +60,8 @@ export const uiThemes: Record<UiThemeName, UiTheme> = {
       surfaceAlt: "#F8F9FA",
       surfaceMuted: "#F1F3F5",
       overlay: "rgba(0, 0, 0, 0.45)",
-      glass: "rgba(255, 255, 255, 0.78)"
+      glass: "rgba(255, 255, 255, 0.78)",
+      panel: "rgba(255, 255, 255, 0.92)"
     },
     text: {
       primary: "#1A1A2E",
@@ -84,6 +94,12 @@ export const uiThemes: Record<UiThemeName, UiTheme> = {
       success: "#10B981",
       successBg: "#ECFDF5",
       disabled: "#9CA3AF"
+    },
+    reasoning: {
+      accent: "#7C3AED",
+      text: "#6D28D9",
+      surface: "rgba(124, 58, 237, 0.05)",
+      border: "rgba(124, 58, 237, 0.18)"
     }
   },
   dark: {
@@ -93,7 +109,8 @@ export const uiThemes: Record<UiThemeName, UiTheme> = {
       surfaceAlt: "#0F0F23",
       surfaceMuted: "#25253D",
       overlay: "rgba(0, 0, 0, 0.65)",
-      glass: "rgba(26, 26, 46, 0.82)"
+      glass: "rgba(26, 26, 46, 0.82)",
+      panel: "rgba(24, 24, 42, 0.92)"
     },
     text: {
       primary: "#F1F5F9",
@@ -126,6 +143,12 @@ export const uiThemes: Record<UiThemeName, UiTheme> = {
       success: "#34D399",
       successBg: "#0A2A1A",
       disabled: "#64748B"
+    },
+    reasoning: {
+      accent: "#A78BFA",
+      text: "#C4B5FD",
+      surface: "rgba(139, 92, 246, 0.10)",
+      border: "rgba(139, 92, 246, 0.22)"
     }
   }
 }

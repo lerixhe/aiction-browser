@@ -121,8 +121,35 @@ export function createFieldLabelStyle(theme: UiTheme): CSSProperties {
   }
 }
 
-export function createOverlayStyle(theme: UiTheme): CSSProperties {
+/**
+ * 悬浮面板外框：毛玻璃表面 + 1px 渐变描边 + 分层投影。
+ *
+ * - 表面：半透明面板色（theme.bg.panel），配合 backdrop-filter 把底下的页面/内容
+ *   模糊后透出来，比一整块不透明卡片轻得多；
+ * - 描边：用「padding-box 铺表面 + border-box 铺渐变」的两层背景技巧画 1px 渐变边
+ *   （避免 ::before + mask-composite 的复杂度与兼容性变数）；
+ * - 投影：远距大柔影 + 近距紧影两层，直接拿 uiShadow.lg 单层会显得“浮”不起来。
+ */
+export function createFloatingPanelStyle(theme: UiTheme, isDark: boolean): CSSProperties {
+  const edge = isDark
+    ? "linear-gradient(160deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.02) 45%, rgba(96, 165, 250, 0.20))"
+    : "linear-gradient(160deg, rgba(255, 255, 255, 0.95), rgba(15, 23, 42, 0.06) 55%, rgba(59, 130, 246, 0.18))"
+
   return {
+    borderRadius: uiRadius.xl,
+    border: "1px solid transparent",
+    backgroundImage: `linear-gradient(${theme.bg.panel}, ${theme.bg.panel}), ${edge}`,
+    backgroundOrigin: "border-box",
+    backgroundClip: "padding-box, border-box",
+    backdropFilter: "blur(18px) saturate(150%)",
+    WebkitBackdropFilter: "blur(18px) saturate(150%)",
+    boxShadow: isDark
+      ? "0 24px 60px -16px rgba(0, 0, 0, 0.66), 0 4px 14px -6px rgba(0, 0, 0, 0.45)"
+      : "0 24px 60px -16px rgba(15, 23, 42, 0.22), 0 4px 14px -6px rgba(15, 23, 42, 0.10)"
+  }
+}
+
+export function createOverlayStyle(theme: UiTheme): CSSProperties {  return {
     position: "fixed",
     inset: 0,
     display: "flex",
@@ -166,7 +193,7 @@ export function createMarkdownStyles(theme: UiTheme): string {
     .markdown-content p {
       font-size: ${uiTypography.fontSize.sm}px;
       color: ${theme.text.primary};
-      line-height: 1.4;
+      line-height: 1.5;
       margin-bottom: ${uiSpace[8]}px;
     }
 
@@ -187,28 +214,46 @@ export function createMarkdownStyles(theme: UiTheme): string {
     .markdown-content li {
       font-size: ${uiTypography.fontSize.sm}px;
       color: ${theme.text.primary};
-      line-height: 1.4;
+      line-height: 1.5;
       margin-bottom: ${uiSpace[2]}px;
     }
 
+    /* 首尾元素不撑外边界：正文落在内容块 / 气泡里时，上下留白由容器统一给，
+       否则首段顶部与末段底部会多出一层 margin，块内垂直居中感会偏 */
+    .markdown-content > :first-child {
+      margin-top: 0;
+    }
+
+    .markdown-content > :last-child {
+      margin-bottom: 0;
+    }
+
+    /* 行内代码：用主色淡底（把「术语 / 代码」从正文里托出来，与强调色同一族） */
     .markdown-content code {
       font-family: ${uiTypography.fontFamilyMono};
       font-size: ${uiTypography.fontSize.sm}px;
-      background: ${theme.bg.surfaceMuted};
+      background: ${theme.accent.primary}1A;
       padding: ${uiSpace[2]}px ${uiSpace[4]}px;
       border-radius: ${uiRadius.sm}px;
       color: ${theme.text.primary};
     }
 
+    /* 代码块：底色用 surface（比所在容器低/高一档，行内代码的主色淡底只服务于行内），
+       配上描边——聊天态气泡底就是 surfaceMuted，两套 token 不同才能在气泡里也看得清块；
+       行高放宽一档，多行代码才有块感 */
     .markdown-content pre {
       margin-bottom: ${uiSpace[8]}px;
       border-radius: ${uiRadius.md}px;
+      background: ${theme.bg.surface};
+      border: 1px solid ${theme.border.subtle};
       overflow-x: auto;
     }
 
     .markdown-content pre code {
       display: block;
       padding: ${uiSpace[12]}px;
+      background: transparent;
+      line-height: 1.5;
     }
 
     .markdown-content blockquote {
