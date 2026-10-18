@@ -43,13 +43,36 @@ const COPY_FEEDBACK_MS = 1600
  * （不改变卡片位置：位置是用户的，只有用户自己拖或形态切换才会动）
  */
 const REVEAL_HIGHLIGHT_MS = 1100
+/** 头部控件的统一直径：icon-only 呈正圆，带文案的呈胶囊 */
+const HEADER_CONTROL_SIZE = 22
+/** 头部上下内边距（相对控件的呼吸量）：与控件高一起决定标题栏高度 */
+const HEADER_PADDING_Y = 6
+/**
+ * 模型名槽位「固定长度」：模型名再长也不推动右侧控件，头部布局与按钮落位不随模型名抖动。
+ * 槽位允许被挤压（flex 收缩 + minWidth 0），极窄面板下优先保证右侧按钮可见；
+ * 取 500 是「尽量完整展示模型名」的意图值，卡片态（480）会被压低到实际可用宽度，属预期行为。
+ */
+const MODEL_SLOT_WIDTH = 500
+/** 模型名字号 */
+const MODEL_SLOT_FONT_SIZE = 14
+/** 模型名超出槽位时右端「渐渐隐去」的宽度 */
+const MODEL_FADE_WIDTH = 26
+/**
+ * 模型名溢出后的右端渐隐遮罩。
+ * 不用 `text-overflow: ellipsis`：省略号是一颗硬截断的符号，`provider/model-name` 这类长名字被腰斩
+ * 后观感是「名字被切了」，且它会随长度左右跳动；渐隐读作「后面还有，只是淡出了」，截断位置恒定。
+ * 短名字不受影响（渐隐区落在槽位空自处），完整名字留在 title 里可悬停查看。
+ */
+const MODEL_NAME_MASK = `linear-gradient(to right, #000 calc(100% - ${MODEL_FADE_WIDTH}px), transparent 100%)`
 
 /**
  * 头部控件统一样式族：icon-only 呈正圆、带文案呈胶囊，几何与交互完全一致。
  * 形态切换 / 钉住 / 关闭三个按钮共用，避免各自手写样式而逐渐走形。
  *
- * 视觉：芯片式——常态只有一圈 hairline 描边（不填底，三个按钮排开也不会把头部压沉），
- * hover 才落一档淡底，active（钉住）主色淡底 + 描边染主色。
+ * 视觉分层（头部只留一枚重音，其余保持中性，三个按钮各喊各的会把头部压沉）：
+ * - `variant="primary"`（形态切换 / 追问）：主色描边 + 主色淡底 + 主色文字，是头部唯一的主行动点；
+ * - 默认（钉住 / 关闭）：surface 底 + hairline 描边 + 次级文字，hover 才落一档实底；
+ * - `active`（钉住已开启）：主色淡底 + 描边染主色，与「已点亮」语义对齐。
  */
 function headerControlStyle(
   theme: ReturnType<typeof useUiTheme>,
@@ -57,10 +80,18 @@ function headerControlStyle(
     withLabel = false,
     hovered = false,
     focused = false,
-    active = false
-  }: { withLabel?: boolean; hovered?: boolean; focused?: boolean; active?: boolean } = {}
+    active = false,
+    variant = "default"
+  }: {
+    withLabel?: boolean
+    hovered?: boolean
+    focused?: boolean
+    active?: boolean
+    variant?: "default" | "primary"
+  } = {}
 ): React.CSSProperties {
-  const size = 24
+  const size = HEADER_CONTROL_SIZE
+  const primary = variant === "primary"
   return {
     display: "flex",
     alignItems: "center",
@@ -71,19 +102,22 @@ function headerControlStyle(
     minWidth: size,
     padding: withLabel ? `0 ${uiSpace[8]}px` : 0,
     borderRadius: uiRadius.pill,
-    // 芯片式：常态一圈 hairline 描边 + 极淡底（不填实底，三个按钮排开也不会把头部压沉），
-    // hover 才落一档实底，active（钉住）主色淡底 + 描边染主色
-    border: `1px solid ${active ? `${theme.accent.primary}40` : theme.border.hairline}`,
-    background: active
-      ? `${theme.accent.primary}1F`
-      : hovered
-        ? theme.bg.surfaceMuted
-        : `${theme.bg.surfaceMuted}80`,
-    color: theme.text.secondary,
+    border: `1px solid ${primary || active ? `${theme.accent.primary}40` : theme.border.hairline}`,
+    background: primary
+      ? hovered
+        ? `${theme.accent.primary}1F`
+        : `${theme.accent.primary}14`
+      : active
+        ? `${theme.accent.primary}1F`
+        : hovered
+          ? theme.bg.surfaceMuted
+          : theme.bg.surface,
+    color: primary ? theme.accent.primary : theme.text.secondary,
     cursor: "pointer",
     flexShrink: 0,
     fontFamily: uiTypography.fontFamily,
     fontSize: uiTypography.fontSize.xs,
+    fontWeight: primary ? uiTypography.fontWeight.semibold : uiTypography.fontWeight.medium,
     lineHeight: 1,
     whiteSpace: "nowrap",
     boxShadow: focused ? createFocusRing(theme.accent.primary) : "none",
@@ -1224,7 +1258,9 @@ export default function ChatPanel({
           display: "flex",
           alignItems: "center",
           gap: uiSpace[6],
-          padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
+          padding: `${HEADER_PADDING_Y}px ${uiSpace[10]}px ${HEADER_PADDING_Y}px ${uiSpace[12]}px`,
+          // 标题栏底色：主色极淡的一层，把模型名与控件从消息区里托起（面板是毛玻璃，叠色后依旧通透）
+          background: themeName === "dark" ? `${theme.accent.primary}1A` : `${theme.accent.primary}14`,
           borderBottom: `1px solid ${theme.border.hairline}`,
           flexShrink: 0,
           cursor: dragging ? "grabbing" : "grab",
@@ -1236,16 +1272,16 @@ export default function ChatPanel({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: uiSpace[6],
-              flexShrink: 1,
+              gap: uiSpace[8],
+              flex: "0 1 auto",
               minWidth: 0
             }}>
-            {/* 状态点：独立在模型芯片之外——芯片本体要裁掉溢出的长模型名，
+            {/* 状态点：独立在模型名槽位之外——槽位要裁掉溢出的长模型名，
                 扩散环放进去会被切掉；独立一颗也让「会话是否在跑」跳出模型信息，
                 成为模块级信号（生成中转主色并向外扩散，空闲为静默绿点） */}
             <span
               aria-hidden="true"
-              style={{ position: "relative", width: 6, height: 6, flexShrink: 0 }}>
+              style={{ position: "relative", width: 7, height: 7, flexShrink: 0 }}>
               <span
                 style={{
                   position: "absolute",
@@ -1266,32 +1302,31 @@ export default function ChatPanel({
                 />
               ) : null}
             </span>
+            {/* 图标与模型名同高：模型名是这一栏的标题级元素，与图标一体而非塞进一颗小胶囊 */}
+            <span
+              aria-hidden="true"
+              style={{ display: "flex", flexShrink: 0, color: theme.text.secondary }}>
+              <ModelIcon size={14} color={theme.text.secondary} />
+            </span>
+            {/* 固定长度槽位：模型名再长也不推动右侧控件，溢出部分在右端渐渐隐去 */}
             <div
-              onMouseEnter={() => setHovered("model")}
-              onMouseLeave={() => setHovered(null)}
+              title={`${t("chat.modelLabel")}: ${modelName}`}
               aria-label={`${t("chat.modelLabel")}: ${modelName}`}
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: uiSpace[6],
-                padding: `2px ${uiSpace[8]}px 2px ${uiSpace[4]}px`,
-                borderRadius: uiRadius.pill,
-                border: `1px solid ${theme.border.hairline}`,
-                background: hovered === "model" ? theme.bg.surfaceMuted : `${theme.bg.surfaceMuted}80`,
-                flexShrink: 1,
+                flex: "0 1 auto",
+                width: MODEL_SLOT_WIDTH,
                 minWidth: 0,
-                transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+                overflow: "hidden",
+                fontFamily: uiTypography.fontFamilyMono,
+                fontSize: MODEL_SLOT_FONT_SIZE,
+                fontWeight: uiTypography.fontWeight.semibold,
+                letterSpacing: uiTypography.letterSpacing.tight,
+                lineHeight: uiTypography.lineHeight.tight,
+                color: theme.text.primary,
+                WebkitMaskImage: MODEL_NAME_MASK,
+                maskImage: MODEL_NAME_MASK
               }}>
-              <ModelIcon size={12} color={theme.text.secondary} />
-              <span
-                style={{
-                  fontFamily: uiTypography.fontFamilyMono,
-                  fontSize: 11,
-                  color: theme.text.secondary,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap"
-                }}>
+              <span style={{ display: "block", whiteSpace: "nowrap", overflow: "hidden" }}>
                 {modelName}
               </span>
             </div>
@@ -1313,16 +1348,17 @@ export default function ChatPanel({
           style={headerControlStyle(theme, {
             withLabel: true,
             hovered: hovered === "mode",
-            focused: focused === "mode"
+            focused: focused === "mode",
+            variant: "primary"
           })}>
           {mode === "card" ? (
             <>
-              <ExpandChatIcon size={12} color={theme.accent.primary} />
+              <ExpandChatIcon size={13} color={theme.accent.primary} />
               {t("chat.expandChat")}
             </>
           ) : (
             <>
-              <CollapseIcon size={12} color={theme.accent.primary} />
+              <CollapseIcon size={13} color={theme.accent.primary} />
               {t("chat.collapseShort")}
             </>
           )}
@@ -1344,7 +1380,7 @@ export default function ChatPanel({
             active: pinned
           })}>
           <PinIcon
-            size={12}
+            size={13}
             color={pinned ? theme.accent.primary : theme.text.secondary}
             pinned={pinned}
           />
@@ -1375,7 +1411,7 @@ export default function ChatPanel({
             hovered: hovered === "close",
             focused: focused === "close"
           })}>
-          <CloseIcon size={12} color={theme.text.secondary} />
+          <CloseIcon size={13} color={theme.text.secondary} />
         </button>
       </div>
 

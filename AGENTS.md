@@ -212,16 +212,29 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   可见文案用短文案 `chat.expandChat` / `chat.collapseShort`（「收起」/「Collapse」，两态宽度才接近）。
   卡片态高度比聊天态矮一个底部栏，`CARD_ASSUME_HEIGHT` 据此取 170。
 - **头部控件统一样式族**：`ChatPanel.tsx` 模块级 `headerControlStyle(theme, {withLabel, hovered,
-  focused, active})` 是形态切换 / 钉住 / 关闭三个按钮的唯一样式来源（高 24、`uiRadius.pill`——
-  icon-only 呈正圆、带文案呈胶囊、图标统一 12、hover = surfaceMuted、focus ring 统一）。
+  focused, active, variant})` 是形态切换 / 钉住 / 关闭三个按钮的唯一样式来源（高 22、`uiRadius.pill`——
+  icon-only 呈正圆、带文案呈胶囊、图标统一 13、focus ring 统一）。
+  `HEADER_CONTROL_SIZE` 与 `HEADER_PADDING_Y` 一起决定标题栏高度（22 + 6×2 = 34）。
   `active` 用于开关已开启态（目前只有钉住）：主色 12% 淡底（`${theme.accent.primary}1F`）。
+  `variant="primary"` 用于头部唯一的主行动点（形态切换 /「追问」）：主色描边 + 主色 8% 淡底 +
+  主色文字 + semibold，hover 加深到 12%；其余控件走默认中性档（surface 底 + hairline 描边 +
+  次级文字，hover 才落 surfaceMuted）——三个按钮各喊各的会把头部压沉，只留一枚重音。
   新增头部按钮时直接调它，不要再手写一份 style。
   形态切换与钉住都带可见文案（`chat.expandChat` / `chat.collapseShort` / `chat.pinShort`），
   关闭按钮保持纯图标（× 语义自明），且与前两个按钮之间有一条 1×12 竖分隔线（破坏性操作
-  与常态操作分开防误点）；形态切换按钮的图标染主色（它是本面板的主行动点，其余图标保持次级色）。
-  模型胶囊左侧的状态点独立于胶囊之外（胶囊要 `overflow: hidden` 裁长模型名，会把扩散环切掉），；钉住是切换型按钮，可见文案**不随态变**（恒为「钉住」/
+  与常态操作分开防误点）。头部底色是主色极淡的一层（dark 10% / light 8% 的 `${accent.primary}`），
+  与消息区的 hairline 分区共同构成标题栏。
+  模型名左侧的状态点独立在模型名槽位之外（槽位要 `overflow: hidden` 裁长模型名，会把扩散环切掉）；钉住是切换型按钮，可见文案**不随态变**（恒为「钉住」/
   "Pin"，避免「钉住/取消钉住」宽度跳变），开关状态靠 `active` 淡底 + 填色图标 + `aria-pressed` 表达，
   描述性长文案留在 `aria-label` / `title`（`chat.pinPanel` / `chat.unpinPanel`）。
+- **模型名槽位固定长度 + 右端渐隐**：模型名从「11px 灰字小胶囊」升级为标题级元素
+  （`MODEL_SLOT_FONT_SIZE` 14 / semibold / `text.primary` / mono / 图标 14 与名字同高），
+  并装入**固定长度槽位**：`MODEL_SLOT_WIDTH = 500`（`flex: 0 1 auto` + `minWidth: 0`，窄面板下可收缩，
+  优先保住右侧按钮）。溢出部分用 `MODEL_NAME_MASK`（`mask-image` 右端 26px 渐隐，`MODEL_FADE_WIDTH`）
+  处理，**不用 `text-overflow: ellipsis`**：省略号是一颗硬截断符号、位置还随名字长度左右跳动，
+  `provider/model-name` 这类长名字被腰斩后观感就是「名字被切了」；渐隐读作「后面还有，只是淡出了」，
+  截断位置恒定。整个头部布局因此不随模型名抖动，右侧控件落位永远对齐；短名字不受影响
+  （渐隐区落在空白处），完整名字留在 `title` / `aria-label` 里可悬停查看。
 - **输入区（composer）统一样式族**：`ChatPanel.tsx` 的 `composerStyle` /
   `composerSendButtonStyle` 是底部输入区的唯一样式来源。一层描边同时包住 textarea 与 28px
   圆形发送按钮（不再是「并排的输入框 + 文字按钮」），聚焦时描边转主色 + 一圈柔光；
@@ -241,7 +254,7 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   定时器。防抖：存在解析 prompt 相同的未关闭会话（同动作同选区重复点击）时**不再新建实例，
   而是让那张卡片闪一圈主色脉冲**（`revealSession`）作为反馈，相应会话被关闭后才能重新生成；
   其余动作不受已开会话（含钉住的）阻断。
-- **对话窗头部交互**：头部左侧为模型胶囊（芯片图标 + 模型名内联显示，可拖拽），
+- **对话窗头部交互**：头部左侧为模型名（芯片图标 + 模型名内联，固定长度槽位、溢出右端渐隐，可拖拽），
   右侧为图钉钉住按钮、× 关闭；钉住（顶针图标填色 + 45° 旋转变实心）后点击窗外
   不再关闭（Esc / × 仍可关闭），且在新触发时**继续驻留与其他实例并存**（钉住状态
   由父级持有：ChatPanel 受控 props → ChatSession → useChatSessions 回写）。
