@@ -24,6 +24,75 @@ function validateActions(items: unknown[]): ExtensionSettings["actions"] {
 }
 
 /**
+ * 系统提示词的历史默认值指纹表（仅用于老用户升级）。
+ * 与内置动作同一套判定：存储值仍等于「当前默认」或「任一历史默认」时，视为用户未自定义该系统提示词，
+ * 升级为当前默认；否则保留用户值。
+ * 每次替换默认系统提示词，都要把被替换掉的旧值追加到这里。
+ * 注意：空字符串表示「用户清空 → 运行时回退内置默认」（见 prompt.ts 的 buildSystemPrompt），
+ * 它不等于任何默认值，所以清空过的用户不会被写回默认文本。
+ */
+const LEGACY_SYSTEM_PROMPTS: string[] = [
+  `# Role
+
+You are a professional AI assistant dedicated to helping users understand and work with web content. Your core capabilities include:
+- Content analysis: deeply understand the user's selected text and its context
+- Information extraction: extract key information from web pages and organize it in a structured way
+- Knowledge Q&A: answer user questions based on the selected content
+- Code assistance: understand and explain code snippets, provide programming advice
+- Writing assistance: help users improve text and provide writing suggestions
+
+# Guidelines
+
+## Answer style
+1. Accuracy first: ensure the information you provide is correct; state clearly when uncertain
+2. Concise and clear: avoid lengthy explanations; answer the core question directly
+3. Structured delivery: use headings, lists, code blocks, and other formatting to improve readability
+4. Context-aware: make full use of the provided page info and selected content
+5. Proactive suggestions: when the user might need more information, proactively offer relevant suggestions
+
+## Interaction
+1. Respect user intent: carefully understand what the user actually needs; avoid over-inferring
+2. Stay professional: use professional yet friendly language
+3. Acknowledge limits: be honest when a request is beyond your capabilities
+
+# Output format
+- Use Markdown to ensure good readability
+- Annotate code blocks with the language name
+- Use lists and tables to organize information
+- Use bold to emphasize important content
+
+# Language preference
+- Always reply to the user in {uiLanguage}
+- Keep code terminology and technical terms in their original language
+- Write code comments in {uiLanguage}
+
+# Domain-specific guidance
+
+## Programming
+- Code review: check readability, performance, security, and best practices
+- Code explanation: explain the key logic line by line and describe design patterns
+- Code generation: generate code consistent with the project's style and add necessary comments
+
+## Writing
+- Text improvement: preserve the original meaning while improving grammar and expression
+- Summarization: extract the key points and keep the logic coherent
+- Translation: preserve the original style while adapting to target-language conventions
+
+# Page context
+
+## Page info
+- Title: {pageTitle}
+- URL: {pageUrl}
+- Description: {metaDescription}
+
+## Selected content
+> {selection}
+
+## Surrounding context
+{surround}`
+]
+
+/**
  * 内置动作的历史默认值指纹表（仅用于老用户升级）。
  * 字段值仍等于「当前默认」或「任一历史默认」时，视为用户未自定义该字段，可升级为新默认；
  * 否则一律保留用户值——避免改版覆盖用户自己改过的 label / template。
@@ -32,8 +101,37 @@ function validateActions(items: unknown[]): ExtensionSettings["actions"] {
  * 所以这里的指纹统一按 {selection} 形式书写。
  */
 const LEGACY_BUILTIN_DEFAULTS: Record<string, Array<Partial<Pick<ActionTemplate, "label" | "template">>>> = {
-  explain: [{ label: "解释", template: "帮我解释选中内容「{selection}」" }],
-  translate: [{ label: "翻译", template: "请将以下内容翻译为简体中文：\n{selection}" }]
+  explain: [
+    { label: "解释", template: "帮我解释选中内容「{selection}」" },
+    {
+      // v0.3.x 默认模板（逐条编号的四段式，对简单选区过度展开，已替换）
+      template: `解释下面选中的内容：
+
+> {selection}
+
+按顺序作答：
+1. 一句话结论。
+2. 要点拆解，点明彼此的因果 / 对比 / 前提关系。
+3. 术语、缩写、符号与代码写法的解释（术语保留原文）。
+4. 成立条件与歧义（没有则省略）。
+
+不要复述原文，不要补充原文没有的内容。`
+    }
+  ],
+  translate: [
+    { label: "翻译", template: "请将以下内容翻译为简体中文：\n{selection}" },
+    {
+      // v0.3.x 默认模板（四条编号规则）
+      template: `把下面选中的内容在中英文之间翻译：
+
+> {selection}
+
+1. 方向：原文主要为英文 → 译为简体中文；原文主要为中文 → 译为英文。以正文主体语言判定，忽略代码、URL、变量名；非中英内容译为简体中文。
+2. 只输出译文，保留原有段落层级与 Markdown 格式。
+3. 代码、命令、路径、变量名、URL 与专有名词保留原文，不译不改。
+4. 文体与原文一致；有歧义时取最贴合语境的译法，并括号标注原词。`
+    }
+  ]
 }
 
 /**
@@ -184,8 +282,13 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
 
   const tts = normalizeTts(saved.tts)
 
-  // 合并默认值：旧用户存储无 systemPrompt 字段时也能拿到默认模板
-  const systemPrompt = typeof saved.systemPrompt === "string" ? saved.systemPrompt : DEFAULT_SETTINGS.systemPrompt
+  // 合并默认值：旧用户存储无 systemPrompt 字段时也能拿到默认模板；
+  // 未被自定义过的旧默认值同样升级为当前默认（见 LEGACY_SYSTEM_PROMPTS）
+  const savedSystemPrompt = typeof saved.systemPrompt === "string" ? saved.systemPrompt : DEFAULT_SETTINGS.systemPrompt
+  const systemPrompt =
+    savedSystemPrompt === DEFAULT_SETTINGS.systemPrompt || LEGACY_SYSTEM_PROMPTS.includes(savedSystemPrompt)
+      ? DEFAULT_SETTINGS.systemPrompt
+      : savedSystemPrompt
 
   const validLanguages: LanguagePreference[] = ["system", "en", "zh_CN"]
   const language = validLanguages.includes(saved.language as LanguagePreference) ? (saved.language as LanguagePreference) : DEFAULT_SETTINGS.language

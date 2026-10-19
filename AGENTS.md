@@ -56,6 +56,9 @@ const items = (() => {
 （用户只改了名称时，模板照样能升级）。**每次替换内置默认 label / template，都要把旧值追加进指纹表**，
 否则那批用户永远停留在老版本。注意旧模板在 `validateActions` 里已被 `{text}` → `{selection}` 迁移，
 指纹统一按 `{selection}` 形式书写。
+系统提示词同理：`storage.ts` 的 `LEGACY_SYSTEM_PROMPTS` 是它的指纹表，改 `DEFAULT_SYSTEM_PROMPT` 时把旧值追加进去。
+注意空串代表「用户清空 → 运行时回退内置默认」（`prompt.ts` 的 `buildContextSystemMessage`），
+不等于任何默认值，因此清空过的用户不会被写回默认文本。
 
 ### 模型元数据是「provider 副本」的，上限类参数不可照搬
 **场景**：用户报 `400 INVALID_REQUEST_BODY: max_tokens (current value: 943718) must be between 0 and 393216`。
