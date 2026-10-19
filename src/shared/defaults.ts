@@ -4,14 +4,31 @@ export const DEFAULT_ACTIONS: ActionTemplate[] = [
   {
     id: "explain",
     label: "解释",
-    template: "帮我解释选中内容「{selection}」",
+    template: `解释下面选中的内容：
+
+> {selection}
+
+按顺序作答：
+1. 一句话结论。
+2. 要点拆解，点明彼此的因果 / 对比 / 前提关系。
+3. 术语、缩写、符号与代码写法的解释（术语保留原文）。
+4. 成立条件与歧义（没有则省略）。
+
+不要复述原文，不要补充原文没有的内容。`,
     enabled: true,
     icon: "tabler:bulb"
   },
   {
     id: "translate",
-    label: "翻译",
-    template: "请将以下内容翻译为简体中文：\n{selection}",
+    label: "中英互译",
+    template: `把下面选中的内容在中英文之间翻译：
+
+> {selection}
+
+1. 方向：原文主要为英文 → 译为简体中文；原文主要为中文 → 译为英文。以正文主体语言判定，忽略代码、URL、变量名；非中英内容译为简体中文。
+2. 只输出译文，保留原有段落层级与 Markdown 格式。
+3. 代码、命令、路径、变量名、URL 与专有名词保留原文，不译不改。
+4. 文体与原文一致；有歧义时取最贴合语境的译法，并括号标注原词。`,
     enabled: true,
     icon: "tabler:language"
   }

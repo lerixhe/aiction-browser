@@ -1,6 +1,6 @@
-import { DEFAULT_CUSTOM_MODEL_PROVIDER, DEFAULT_SETTINGS, DEFAULT_TTS_SETTINGS } from "@/shared/defaults"
+import { DEFAULT_ACTIONS, DEFAULT_CUSTOM_MODEL_PROVIDER, DEFAULT_SETTINGS, DEFAULT_TTS_SETTINGS } from "@/shared/defaults"
 import { migrateLegacyActionTemplate } from "@/shared/prompt"
-import type { ExtensionSettings, LanguagePreference, ModelParams, ProviderConfig, QuickAction, QuickActionType, ThemePreference, TtsProvider, TtsSettings, UserIconData } from "@/shared/types"
+import type { ActionTemplate, ExtensionSettings, LanguagePreference, ModelParams, ProviderConfig, QuickAction, QuickActionType, ThemePreference, TtsProvider, TtsSettings, UserIconData } from "@/shared/types"
 
 export { DEFAULT_SETTINGS }
 
@@ -21,6 +21,38 @@ function validateActions(items: unknown[]): ExtensionSettings["actions"] {
         icon: typeof record.icon === "string" ? record.icon : undefined
       }
     })
+}
+
+/**
+ * 内置动作的历史默认值指纹表（仅用于老用户升级）。
+ * 字段值仍等于「当前默认」或「任一历史默认」时，视为用户未自定义该字段，可升级为新默认；
+ * 否则一律保留用户值——避免改版覆盖用户自己改过的 label / template。
+ * 每次替换内置动作的默认 label / template，都要把被替换掉的旧值追加到这里。
+ * 注意：存储里的旧模板已由 migrateLegacyActionTemplate 把 {text} 迁移为 {selection}，
+ * 所以这里的指纹统一按 {selection} 形式书写。
+ */
+const LEGACY_BUILTIN_DEFAULTS: Record<string, Array<Partial<Pick<ActionTemplate, "label" | "template">>>> = {
+  explain: [{ label: "解释", template: "帮我解释选中内容「{selection}」" }],
+  translate: [{ label: "翻译", template: "请将以下内容翻译为简体中文：\n{selection}" }]
+}
+
+/**
+ * 内置动作内容升级：label 与 template 各自独立判定（用户只改了其中一项时，另一项仍可升级）。
+ * 非内置 id（自定义动作）原样返回。
+ */
+function upgradeBuiltinAction(action: ActionTemplate): ActionTemplate {
+  const current = DEFAULT_ACTIONS.find((item) => item.id === action.id)
+  if (!current) return action
+
+  const history = LEGACY_BUILTIN_DEFAULTS[action.id] ?? []
+  const isUntouchedDefault = (value: string, field: "label" | "template") =>
+    value === current[field] || history.some((entry) => entry[field] === value)
+
+  return {
+    ...action,
+    label: isUntouchedDefault(action.label, "label") ? current.label : action.label,
+    template: isUntouchedDefault(action.template, "template") ? current.template : action.template
+  }
 }
 
 const VALID_QUICK_ACTION_TYPES: QuickActionType[] = ["copyToClipboard", "speakText"]
@@ -123,11 +155,13 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
   const validThemes: ThemePreference[] = ["auto", "light", "dark"]
   const theme = validThemes.includes(saved.theme as ThemePreference) ? (saved.theme as ThemePreference) : DEFAULT_SETTINGS.theme
 
-  const actions = Array.isArray(saved.actions)
-    ? validateActions(saved.actions)
-    : Array.isArray(saved.customActions)
-      ? validateActions(saved.customActions)
-      : DEFAULT_SETTINGS.actions
+  const actions = (
+    Array.isArray(saved.actions)
+      ? validateActions(saved.actions)
+      : Array.isArray(saved.customActions)
+        ? validateActions(saved.customActions)
+        : DEFAULT_SETTINGS.actions
+  ).map(upgradeBuiltinAction)
 
   const quickActions = (() => {
     const savedActions = Array.isArray(saved.quickActions)
