@@ -412,23 +412,29 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
 
 WXT reads `src/assets/icon.png` via `@wxt-dev/auto-icons` and copies it to the output. **Source PNG should be >=256px** to avoid upscaling artifacts.
 
-Two files define the icon — keep them in sync:
+Icons are generated from the design source — do not hand-edit the outputs:
 
 | File | Role |
 |------|------|
-| `src/assets/icon.png` | High-res PNG source of truth (256x256, sharp + lanczos3 downscale) |
-| `src/shared/ui/icons.tsx` | `BrandIcon` React component (renders `src/assets/icon.png`) |
+| `logo_raw.jpg` | 设计源（1024×1024 满版方形蓝底，不透明四角） |
+| `scripts/generate-icons.ts` | `npm run icons`：用 sharp 从设计源生成下面全部产物 |
+| `src/assets/icon.png` | 512×512 构建源（auto-icons 据此生成 manifest 的 `icons/16,32,48,128`），也是 `BrandIcon` 渲染的图 |
+| `src/shared/ui/icons.tsx` | `BrandIcon` React 组件（渲染 `src/assets/icon.png`，`borderRadius: 20%`） |
+| `store/icons/icon-{16,32,48,128}.png` | Chrome Web Store 上架用图标（128 为商店列表图标，必需） |
 
 ### Steps to update the icon
 
-1. Replace `src/assets/icon.png` with a new PNG (>=256px, transparent corners).
-2. `npm run build` — WXT copies the icon to output.
-3. Verify corners are transparent and edges are sharp.
+1. 替换 `logo_raw.jpg`（正方形、>=1024px 更佳）。
+2. `npm run icons` — 重新生成 `src/assets/icon.png` 与 `store/icons/*`。
+3. `npm run build` — WXT 据此生成 `.output/chrome-mv3/icons/{16,32,48,128}.png`。
+4. 抽看 `.output/chrome-mv3/icons/16.png`（工具栏小尺寸最易糊）与 `128.png` 的边缘是否干净。
 
 ### Notes
 - Do **not** use `qlmanage` — it produces blurry low-quality output.
-- Use sharp with `density: 600` for crisp edges when generating PNG from SVG.
-- The PNG should have transparent corners (use `clipPath` with rounded rect if converting from SVG).
+- 缩放统一用 sharp 的 `lanczos3`（`.resize(size, size, { kernel: "lanczos3", fit: "cover" })`），不要用 `sips`。
+- 当前 logo 是**满版方形**（蓝底铺满、四角不透明），因此**不做圆角/透明四角裁剪**：Chrome 工具栏、扩展管理页与商店列表都会自行套圆角。仅当设计源本身带透明四角时才保留 alpha。
+- 输出 PNG 用 64 色调色板（`{ palette: true, colors: 64, quality: 100 }`）：图形只有蓝白两色，观感无损，512 图标从真彩 116 KB 降到 ~37 KB（`BrandIcon` 在 popup/设置页每帧都要加载它）。
+- 商店还要求（非图标、需产品真实截图 + 排版，现未生成）：截图 1280×800 或 640×400、小宣传图 440×280、Marquee 1400×560。
 
 ## Icon Caching System
 

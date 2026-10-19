@@ -14,7 +14,8 @@
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
     "typecheck": "tsc --noEmit",
-    "postinstall": "wxt prepare"
+    "postinstall": "wxt prepare",
+    "icons": "npx tsx scripts/generate-icons.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.81",
