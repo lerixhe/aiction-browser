@@ -16,13 +16,13 @@
   .row:last-child { margin-bottom: 0; }
   .cell { display: flex; flex-direction: column; align-items: center; gap: 12px; }
   .cell .label { font-size: 12px; opacity: .55; }
-  .pill { display: inline-flex; align-items: center; justify-content: center; height: 32px; padding: 0 14px; border-radius: 16px; background: rgba(13,148,136,.10); }
-  .dark .pill { background: rgba(45,212,191,.12); }
+  .pill { display: inline-flex; align-items: center; justify-content: center; height: 32px; padding: 0 14px; border-radius: 16px; background: rgba(59,130,246,.10); }
+  .dark .pill { background: rgba(96,165,250,.12); }
 </style>
 </head>
 <body>
 <h1>SmileyFace 简笔预览（最早设计 + 三态扩展，临时文件看完可删）</h1>
-<p class="tip">简笔线条：描边圆 + 豆眼 + 线条嘴，随主题品牌色（此处以 teal 近似）。结构与动画与 <code>SmileyFace.tsx</code> 自动保持镜像。另有 <code>design/smiley/</code> 存档黄豆人与蜜桃奶油团子两个完整设计。</p>
+<p class="tip">简笔线条：描边圆 + 豆眼 + 线条嘴，取色随主题主色（light #3B82F6 / dark #60A5FA）。结构与动画与 <code>SmileyFace.tsx</code> 自动保持镜像。另有 <code>design/smiley/</code> 存档黄豆人与蜜桃奶油团子两个完整设计。</p>
 <div class="board light">
   <h2>Light 背板</h2>
   <div class="row"><div class="cell pill" data-demo="idle-21"></div><div class="cell pill" data-demo="think-17"></div><div class="cell pill" data-demo="speak-16"></div></div>
@@ -46,8 +46,8 @@ function smileySVG({ size, mood, label, doc }) {
   const isSpeaking = mood === "speaking"
   const NS = "http://www.w3.org/2000/svg"
   const el = (t, attrs) => { const n = document.createElementNS(NS, t); for (const k in attrs) n.setAttribute(k, attrs[k]); return n }
-  // 主题品牌色近似：light = teal-500 / dark = teal-400
-  const stroke = doc.classList.contains("light") ? "#14B8A6" : "#2DD4BF"
+  // 主题主色：light #3B82F6 / dark #60A5FA
+  const stroke = doc.classList.contains("light") ? "#3B82F6" : "#60A5FA"
 
   const cell = document.createElement("div")
   cell.className = "cell"

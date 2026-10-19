@@ -22,13 +22,6 @@ export interface UiTheme {
     subtle: string
     hairline: string
   }
-  brand: {
-    primary: string
-    primaryHover: string
-    primaryActive: string
-    secondary: string
-    secondaryHover: string
-  }
   accent: {
     primary: string
     primaryHover: string
@@ -74,13 +67,6 @@ export const uiThemes: Record<UiThemeName, UiTheme> = {
       subtle: "#F3F4F6",
       hairline: "rgba(0, 0, 0, 0.06)"
     },
-    brand: {
-      primary: "#0D9488",
-      primaryHover: "#0F766E",
-      primaryActive: "#115E59",
-      secondary: "#E0F5F0",
-      secondaryHover: "#CCEBEB"
-    },
     accent: {
       primary: "#3B82F6",
       primaryHover: "#2563EB",
@@ -122,13 +108,6 @@ export const uiThemes: Record<UiThemeName, UiTheme> = {
       strong: "#F1F5F9",
       subtle: "#1E293B",
       hairline: "rgba(255, 255, 255, 0.06)"
-    },
-    brand: {
-      primary: "#2DD4BF",
-      primaryHover: "#14B8A6",
-      primaryActive: "#0D9488",
-      secondary: "#1A3A35",
-      secondaryHover: "#1F4A44"
     },
     accent: {
       primary: "#60A5FA",

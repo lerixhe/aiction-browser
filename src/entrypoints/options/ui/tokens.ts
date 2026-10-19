@@ -3,7 +3,7 @@
  *
  * `src/shared/ui/tokens.ts` 被 popup 与内容脚本共用，规则是「只新增、不改既有值」，
  * 因此设置页的语义 token（控件高度、内容列宽、行距等）集中放在这里。
- * 颜色语义一律取 `uiThemes[themeName]`（蓝色为唯一品牌 / 交互色，禁止再用 theme.brand.*）。
+ * 颜色语义一律取 `uiThemes[themeName]`（`accent` 是唯一的品牌 / 交互色）。
  */
 
 export const optLayout = {

@@ -560,7 +560,7 @@ function ThinkingBlock({
           fontFamily: uiTypography.fontFamily,
           fontSize: uiTypography.fontSize.sm,
           textAlign: "left",
-          outline: focused ? `2px solid ${theme.brand.primary}` : "none",
+          outline: focused ? `2px solid ${theme.accent.primary}` : "none",
           outlineOffset: -2
         }}>
         {/* 展开箭头：整行均可点击展开，箭头仅作提示（展开时旋转 90°） */}

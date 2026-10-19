@@ -144,11 +144,12 @@ export function TtsCircleContent({ player }: { player: SpeechPlayerInstance }) {
   const theme = useUiTheme()
   const { state } = player
 
-  if (state.status === "loading") return <Spinner color={theme.brand.primary} />
+  // 悬浮 UI（工具栏 / 对话面板 / 朗读控件）一律用主题色 accent
+  if (state.status === "loading") return <Spinner color={theme.accent.primary} />
   if (state.status === "failed") return <AlertGlyph size={13} color={theme.state.error} />
-  if (state.status === "finished") return <DoneGlyph size={13} color={theme.state.success} />
-  if (state.status === "paused") return <PauseGlyph size={12} color={theme.brand.primary} />
-  return <WaveBars color={theme.brand.primary} barHeight={9} />
+  if (state.status === "finished") return <DoneGlyph size={13} color={theme.accent.primary} />
+  if (state.status === "paused") return <PauseGlyph size={12} color={theme.accent.primary} />
+  return <WaveBars color={theme.accent.primary} barHeight={9} />
 }
 
 /** 朗读退场倒计时圆环：铺满 32px 圆球边缘，5s 内从满环收到零（linear）。
@@ -188,7 +189,7 @@ export function TtsCountdownRing() {
           cy="16"
           r={r}
           fill="none"
-          stroke={theme.brand.primary}
+          stroke={theme.accent.primary}
           strokeWidth="2"
           strokeLinecap="round"
           strokeDasharray={c}
@@ -283,7 +284,7 @@ export function TtsControlBar({ player }: { player: SpeechPlayerInstance }) {
         onClick={() => player.togglePause()}
         disabled={isLoading}
         style={{ ...iconBtnStyle, cursor: isLoading ? "default" : "pointer", opacity: isLoading ? 0.4 : 1 }}>
-        {isPlaying ? <PauseGlyph color={theme.brand.primary} /> : <PlayGlyph color={theme.brand.primary} />}
+        {isPlaying ? <PauseGlyph color={theme.accent.primary} /> : <PlayGlyph color={theme.accent.primary} />}
       </button>
 
       {/* 进度：Edge 显示时间，系统语音显示句数 */}

@@ -326,6 +326,9 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   触摸屏点击圆球同样展开；morph 时用 left/top 与宽高一起过渡，
   以 placement 的 `{cx, cy}` 为中心——不靠 `transform` 补偿（否则与入场 keyframes
   的 transform 打架）。
+  取色一律用**主题色 `accent.primary`**（`uiThemes` 里 `accent` 是唯一的品牌 / 交互色）：
+  圆球态波形/暂停/加载环/播放完毕对钩、倒计时圆环、控制条播放暂停图标与进度条都取 `accent.primary`
+  （「播放完毕」用对钩而非 `state.success` 绿，否则圆球上会混出第二种颜色）；仅失败态保留 `state.error` 红。
 - **朗读岛固定视口顶部**：容器用 `position: fixed` + 视口坐标落位
   （`placement = {cx, cy}` 保存视口坐标，渲染时按当前尺寸反推 left/top），
   所以视觉上恒定贴在视口顶部中间，且滚动由合成线程同步、零 JS 开销（只监听 resize

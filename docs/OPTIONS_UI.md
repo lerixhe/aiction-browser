@@ -20,7 +20,7 @@
 |------|----------|
 | 版面 | 内容列 `maxWidth: 1400` 铺满，控件被拉到 1000+px；卡片靠 `minHeight: 420` 撑出死白；长文案（关于页）单行 100+ 字符 |
 | 层级 | 侧栏高亮 + 顶栏 h1 + 卡片 h2 三处重复标题；卡片套卡片但层次不清（关于页同一标题出现两次） |
-| 一致性 | 蓝色（`accent`）与青绿（`brand`）双主色并存；圆角 4/6/8 混用；按钮/分段控件/输入框各自手写；`uiSpace[16]` 出现 44 次；中文界面残留 `AI Actions`、`Max Tokens`、未本地化的 copyright |
+| 一致性 | 主色、圆角与控件尺寸各自为政：圆角 4/6/8 混用；按钮/分段控件/输入框各自手写；`uiSpace[16]` 出现 44 次；中文界面残留 `AI Actions`、`Max Tokens`、未本地化的 copyright |
 | 交互 | 即时保存与显式保存两套心智并存且无反馈；删除动作无二次确认；`outline:none` 14 处导致键盘焦点不可见；无 toast / 无 loading 态 |
 
 架构层面的根因：**全部样式是 inline style**（无 CSS 文件），因此 `:hover` / `:focus-visible` / `::placeholder` / 滚动条 / 媒体查询都无法使用，hover 靠 `onMouseEnter` 手写状态模拟。这一条决定了第 2 阶段必须先铺 CSS 地基。
@@ -29,10 +29,9 @@
 
 ## 2. 设计决策
 
-### 2.1 色彩：蓝色是唯一品牌 / 交互色
+### 2.1 色彩：`accent` 是唯一品牌 / 交互色
 
-- 主色 = `uiThemes[].accent.primary`（light `#3B82F6` / dark `#60A5FA`）。
-- **青绿（`uiThemes[].brand`）在设置页一律不使用**：它是早期设计的残留（当前全项目仅朗读控件少量引用）。设置页内不得再出现 `theme.brand.*`。
+- 主色 = `uiThemes[].accent.primary`（light `#3B82F6` / dark `#60A5FA`），**全项目唯一主色**（设置页、内容脚本、popup 同源）。新增 UI 一律取它，不要再引入第二主色。
 - 语义色只用于语义：`state.error` 仅用于危险操作与错误，`state.warning` 仅用于"模板缺少占位符"这类可修复问题。
 
 ### 2.2 版面：全宽行式
