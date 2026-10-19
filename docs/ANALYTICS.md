@@ -6,11 +6,11 @@
 
 | 项目 | 值 |
 |------|-----|
-| 最后更新 | 2026-10-18（对照 `package.json` version `0.3.0`） |
+| 最后更新 | 2026-10-19（对照 `package.json` version `0.5.0`） |
 | 数据接收端 | PostHog（`https://us.i.posthog.com`，项目 token 常量见 `src/shared/analytics.ts`） |
 | 埋点唯一入口 | `src/shared/analytics.ts`（所有上报必须经过它，禁止在业务代码里直接 `fetch` PostHog） |
 | 事件定义分散位置 | content / pdf-viewer / popup / options / background（见下方清单） |
-| 当前事件数 | 39 |
+| 当前事件数 | 40 |
 | 用户开关 | `settings.telemetryEnabled`（Options → 关于 → 协助改善用户体验，默认 `true`） |
 | 隐私承诺 | `docs/PRIVACY_POLICY.md`「Analytics Provider: PostHog」章节 |
 
@@ -70,7 +70,7 @@
 
 ---
 
-## 2. 现存事件清单（共 39 个）
+## 2. 现存事件清单（共 40 个）
 
 > 表格中的「触发位置」写函数/组件名而非行号，避免代码变动后失效。
 
@@ -95,6 +95,7 @@
 | `provider_configured` | `provider_type`(`models_dev`/`custom`), `models_dev_id`(仅 models_dev), `trigger`(`api_test`/`chat`), `provider_count`(trigger=chat 时), `is_first: true` | `background.ts` `reportProviderConfigured()`：① API 测试成功分支 ② 首次对话成功产出内容后 | 装 → 配好 → 能用的转化；只算一次，`trigger` 区分用户是「测过连接」还是「直接对话成功」 |
 | `action_triggered_without_provider` | `source` | `background.ts` `streamChat`（`activeService.apiKey` 为空的分支） | **关键流失点**：装了但没配 provider 就触发动作 |
 | `popup_opened` | `source: "popup"` | `popup/Popup.tsx` 挂载 | Popup 使用量（入口取舍依据） |
+| `popup_ask_clicked` | `result`(`opened`/`unsupported`), `source: "popup"` | `popup/Popup.tsx` `handleAsk`（`requestOpenChatInActiveTab()` 成功 / 被 reject 两个分支） | 「在当前页面提问」入口的可用率：`unsupported` 即页面没有可用的 content script（`chrome://`、扩展商店、未刷新的旧标签页），用来判断这条入口的失败面有多大 |
 | `options_opened` | `entry`(`popup`/`direct`), `source: "options"` | `options/OptionsPage.tsx` 挂载（读 `aiction:optionsEntry` 后清除） | Options 到达率；`entry` 区分是否由 Popup 跳转 |
 | `pdf_viewer_opened` | `scheme`(`file`/`http`) | `background.ts` `contextMenus.onClicked`（`open-pdf-with-aiction` 命中且拿到 URL 时） | PDF 场景使用量（决定是否继续投入 PDF 阅读器） |
 
@@ -171,7 +172,7 @@
 | 事件名 | 属性 | 触发位置 | 用途 |
 |--------|------|----------|------|
 | `provider_created` | `provider_type`(`custom`/`models_dev`), `models_dev_id`(仅 models_dev), `provider_count`, `source` | `options/useProviderManager.ts` `selectProviderAndCreate` / `selectModelsDevProvider` | 用户偏好哪类服务商 |
-| `provider_switched` | `from_provider_type`, `to_provider_type`(`models_dev`/`custom`/`none`), `to_models_dev_id`(仅 models_dev), `provider_count`(仅 options), `source`(`options`/`popup`) | `options/useProviderManager.ts` `toggleProviderActive`；`popup/Popup.tsx` `handleServiceChange` | 切换行为（**不再上报展示名**）；`source` 区分用户主要在哪个界面切换 |
+| `provider_switched` | `from_provider_type`, `to_provider_type`(`models_dev`/`custom`/`none`), `to_models_dev_id`(仅 models_dev), `provider_count`(仅 options), `source`(`options`/`popup`) | `options/useProviderManager.ts` `toggleProviderActive`；`popup/Popup.tsx` `handleProviderChange` | 切换行为（**不再上报展示名**）；`source` 区分用户主要在哪个界面切换 |
 | `api_test_completed` | `success`, `latency_ms` | `background.ts`（消息处理 `AICTION_API_TEST`） | 连通性成功率与延迟 |
 | `model_selected` | `provider_type`, `source_list`(`models_dev`/`fetched`/`manual`), `from_search`, `model`(仅列表选择), `source` | `options/ModelPicker.tsx`（三条选择路径：devModels 列表点选 / 接口拉取的下拉 / 手输框 blur 且值真的变了） | 最常用模型排行；`from_search` 说明用户是靠搜索还是浏览；手输路径**不上报模型名** |
 
@@ -318,6 +319,7 @@
 | A3 | 未配置就使用 | Trends（Bar，按天） | `action_triggered_without_provider`（Total events），拆分 `source` | 多少人装了就用、还没配好 —— A2 第 2 步流失的旁证 |
 | A4 | 首次配置路径 | Trends（Bar，按周） | `provider_configured`（Unique users），拆分 `trigger`（`api_test` / `chat`） | 用户是靠「测试连接」还是「直接开聊」验证配置成功的 |
 | A5 | 入口分布 | Trends（Bar，按周） | `popup_opened` / `options_opened`（拆分 `entry`）/ `pdf_viewer_opened`（拆分 `scheme`） | Popup、设置页、PDF 阅读器的相对使用量 |
+| A6 | 提问入口可用率 | Trends（Bar，按周） | `popup_ask_clicked`（Total events），拆 `result`（`opened` / `unsupported`） | 点「在当前页面提问」后落到不可注入页面（`chrome://` / 商店页）的比例 —— 决定这条入口是否还需要更细的引导 |
 
 ### 6.3 Dashboard B — 使用与留存
 
@@ -407,5 +409,6 @@
 | 2026-10-18 | P2 完成（+3 → 36 个事件） | 新增 `speech_started` / `speech_finished`（`reportSpeechEnd`，`interrupted` 区分自然播完与中途关闭）/ `speech_dismissed`（闲置退场，`elapsed_ms`）；`useSpeechPlayer` 新增 `source` 参数，`SpeechWidget` 新增 `source` prop；顺带修正 edge 合成失败降级后会话内 engine 未同步的问题 |
 | 2026-10-18 | P3 部分落地（+2 → 38 个事件） | 新增 `daily_active`（SW 被唤醒当日一次，本地时区日期 + promise 双重去重）与 `telemetry_toggled`（含「关闭先上报、开启先落盘」的顺序处理）；`provider_switched` 新增 Popup 上报分支（`source: popup`）；provider 类型判定抽到 `src/shared/provider-type.ts`，`useChatState` / `useProviderManager` / `Popup` 三处共用 |
 | 2026-10-18 | P3 续（+1 → 39 个事件） | 新增 `model_selected`（三条路径：models.dev 列表 / 接口拉取下拉 / 手输 blur，**手输不上报模型名**）；`system_prompt_save` 追加属性 `is_empty` / `is_default` / `length_bucket` / `used_placeholders`（不新建重复语义的 `system_prompt_customized`） |
+| 2026-10-19 | Popup 重设计（+1 → 40 个事件） | 新增 `popup_ask_clicked`（`result`: `opened`/`unsupported`, `source: popup`），配套新功能「在当前页面提问」（`MESSAGE_TYPES.OPEN_CHAT` → content script 开一个空白聊天态面板并聚焦输入框，`messaging.ts` `requestOpenChatInActiveTab()`）；`popup_opened` / `provider_switched` / `action_enabled_toggled` 的事件与属性**零增删**；顺带修正 §2.6 里 `provider_switched` 的 Popup 分支函数名引用（`handleServiceChange` → `handleProviderChange`） |
 | 2026-10-19 | 设置页 UI 重构（`docs/OPTIONS_UI.md`）后同步 | **事件与属性零增删**；仅更新触发位置引用：自定义动作相关事件从 `ActionsSection.tsx` 迁到 `CustomActionsCard.tsx`（`updateCustomAction` → `updateActionDraft`）；`action_updated` 的取值改为「草稿优先」的有效值（编辑不再逐字落盘），时机（2s 静默 / 保存 / 删除前 / 卸载）不变 |
 | 2026-10-18 | 建图清单（新增 §6） | 补齐 PostHog Dashboard 清单：口径前提（设备级 distinct_id / 无 pageview / 本地 vs 项目时区）、四个 Dashboard（A 增长与激活含核心漏斗、B 使用与留存、C 功能采用、D 质量与性能）共 31 条 Insight、建图注意事项与登记表；原 §6/§7 顺延为 §7/§8 |

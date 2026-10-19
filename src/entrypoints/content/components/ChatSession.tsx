@@ -18,11 +18,17 @@ export interface ChatSessionInit {
   context: SelectionContext
   /**
    * 会话首个 prompt（动作模板解析 / 自由输入拼装的结果）：
-   * - 挂载即自动发送
+   * - 非空时挂载即自动发送
    * - 同时充当防抖键：同一动作在同一选区上的重复点击（prompt 相同），
    *   只要本会话未关闭，父级就不重复响应；命中时本实例会闪一圈脉冲作为反馈
+   * - 空串：Popup「在当前页面提问」开出的空白面板（不自动发送，等用户输入）
    */
   initialPrompt: string
+  /**
+   * 初始形态：默认卡片态（划词触发的场景先看结果）。
+   * 「在当前页面提问」传 "chat" —— 它的目的就是让人接着输入，直接以聊天态开+聚焦输入框
+   */
+  initialMode?: "card" | "chat"
 }
 
 interface Props {
@@ -59,8 +65,11 @@ export default function ChatSession({ init, source, pinned, revealNonce, onPinne
     // 写入选区上下文（后续追问 sendPrompt 的兜底 context 取自 hook 内部 state）
     chat.setContext(init.context)
 
-    // 会话创建即发送动作解析出的首个 prompt
-    void chat.sendPrompt(init.initialPrompt, init.context)
+    // 会话创建即发送动作解析出的首个 prompt；
+    // 空 prompt（「在当前页面提问」开出的空白面板）不发送，等用户自己输入
+    if (init.initialPrompt) {
+      void chat.sendPrompt(init.initialPrompt, init.context)
+    }
     // 仅在挂载时执行一次：sendPrompt 的首帧闭包即足够（prompt/context 均来自快照）
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -82,6 +91,7 @@ export default function ChatSession({ init, source, pinned, revealNonce, onPinne
       onStop={chat.stopStreaming}
       onClose={onClose}
       revealNonce={revealNonce}
+      initialMode={init.initialMode}
     />
   )
 }

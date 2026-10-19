@@ -97,6 +97,15 @@ console.log(sf.parseDiagnostics)
 **edit 工具的多段编辑是原子性的**
 一次 edit 调用里多条 edits[]，任一 oldText 匹配失败会导致整个调用回滚。不要假设“前几条已生效”而基于错误状态继续编辑；多段编辑失败后必须重新读文件确认每段的实际状态。另外多段编辑容易连带丢失换行或改错相邻字符（本次 `}}>` 被误改就是多段编辑引入的）。
 
+### 声明了却没绑到元素的 `useRef` 是纯静默死代码
+
+**症状**：`inputRef.current?.focus()` / `const el = inputRef.current; if (!el) return` 这类写法在 ref 未绑定时**完全无报错、无警告**（可选链与 early return 把 null 吞了），表现是「某个功能就是不动」，且与代码意图完全对不上。
+
+**排查**：对一个 `useRef` 起疑时，先 `rg "ref=\{.*Ref\}"` 确认它真的赋给了元素。TS 不会提示「声明了但没用」。
+
+**实例**：`ChatPanel.tsx` 的 `inputRef` 曾经只声明、textarea 上漏了 `ref={inputRef}`，于是**三处功能一起静默失效**——输入框自增高（`el` 为 null 直接 return）、展开聊天态自动聚焦（`inputRef.current?.focus()` no-op）、切回卡片态 blur（防残留焦点落空）。一直没人发现，直到 Popup「在当前页面提问」把「打开即聚焦输入框」当硬需求，才在合成页测试里以 `shadowRoot.activeElement === null` 暴露。
+**教训**：新增依赖 ref 的交互（聚焦 / 测量 / 滚动）时，先确认 ref 已绑定；这类需求靠人眼看 UI 「差不多」是验不出来的，必须在能读 `activeElement` / `getBoundingClientRect()` 的环境里断言。
+
 **useCallback/hook 间依赖注意声明顺序**
 后声明的 `const collapse = useCallback(...)` 被先声明的 `scheduleCollapse` 依赖时，依赖数组里的 `collapse` 处于 TDZ，运行时 ReferenceError。被依赖的 callback 必须声明在前。
 
@@ -150,7 +159,7 @@ console.log(sf.parseDiagnostics)
   - `AboutSection.tsx`: About section
   - `ConfirmDialog.tsx`: Confirmation dialog
   - `useProviderManager.ts`: Provider management hook
-- `src/entrypoints/popup/`: Browser Action Popup (HTML entry + React component).
+- `src/entrypoints/popup/`: Browser Action Popup (HTML entry + React component)。职责边界：**只做三件事**——确认当前 AI 引擎（provider + 模型，可切换）、开始提问（「在当前页面提问」）、开关划词动作；其余配置一律归设置页（`打开完整设置` 是唯一全屏入口，跳转前写入 `OPTIONS_ENTRY_STORAGE_KEY`，必须 `await` 后才能 `window.close()`）。布局常量：宽度 360、动作列表可视高度 204（6 × 34）、筛选条仅在动作 > 6 个时出现——动作再多也内部滚动，popup 总高不随动作数增长（Chrome popup 上限 600px）。
 - `src/entrypoints/pdf-viewer/`: PDF Viewer Page (HTML entry + React component).
 
 ## Architecture
@@ -163,6 +172,7 @@ Three runtime contexts communicate via `chrome.runtime.onMessage` and `chrome.ru
 ### Communication flow
 - **Streaming (chat):** Content script opens a `chrome.runtime.connect` port (`AICTION_STREAM`). Background listens on `chrome.runtime.onConnect`, calls `streamText()` with streaming, and `port.postMessage`s events back.
 - **Non-streaming (API test, fetch models):** Uses `chrome.runtime.sendMessage` and background responds via `sendResponse`.
+- **Popup → content script (open chat):** Popup 用 `chrome.tabs.sendMessage` 发 `AICTION_OPEN_CHAT`（`messaging.ts` 的 `requestOpenChatInActiveTab()`），content script 的 `App.tsx` 同步应答并开一个**空白聊天态**会话。页面没有可用的 content script（`chrome://`、商店页、未刷新的旧标签）时该调用 **reject**，由 Popup 显式提示而非静默失败；这条路径**不经过 background**，也不要把它搬进 background（response 必须同步，Popup 收到就关自己好把系统焦点还给页面）。
 
 Shared logic in `src/shared/*`: `types.ts`, `selection.ts`, `prompt.ts`, `messaging.ts`, `storage.ts`, `constants.ts`, `defaults.ts`, `errors.ts`, `analytics.ts`, `model-provider.ts`, `models-dev.ts`, `model-params.ts`（模型参数→请求参组装/上下文裁剪）, `openrouter.ts`（OpenRouter 模型数据源，智能填充参数用，与 models.dev 同样的 24h 缓存策略）。
 
@@ -196,6 +206,7 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
 - Keep AI requests in the background context; content script should only message background.
 - Preserve `{selection}` placeholder validation for custom actions before saving (legacy `{text}` templates are auto-migrated on read).
 - Conversation is intentionally per-page in-memory only; refresh/close clears it.
+- 「在当前页面提问」（`AICTION_OPEN_CHAT`）开出的会话 `initialPrompt` 为**空串**：它既是防抖键（同一页面只允许存在一个空白面板），也是「不自动发送」的表达——`ChatSession` 只在 `initialPrompt` 非空时才自动发首轮请求，且这类面板以 `initialMode: "chat"` 挂载（延迟聚焦输入框，等 Popup 关闭交出系统焦点）。
 
 ## Selection UI Pitfalls
 - WXT content-script UI runs inside Shadow DOM. Do not rely on `document.activeElement` alone; use deep active-element traversal through nested `shadowRoot` boundaries.
@@ -296,6 +307,9 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   定时器。防抖：存在解析 prompt 相同的未关闭会话（同动作同选区重复点击）时**不再新建实例，
   而是让那张卡片闪一圈主色脉冲**（`revealSession`）作为反馈，相应会话被关闭后才能重新生成；
   其余动作不受已开会话（含钉住的）阻断。
+  **空白面板（Popup「在当前页面提问」）走同一套会话管理**：`initialPrompt` 为空串（防抖键 +
+  不自动发送）、`anchor: null`（ChatPanel 回退到视口上方居中）、`initialMode: "chat"`
+  （开即聊天态 + `INITIAL_FOCUS_DELAY` 后聚焦输入框，延时是为了等 Popup 关闭、系统焦点回到页面）。
 - **对话窗头部交互**：头部左侧为模型名（芯片图标 + 模型名内联，固定长度槽位、溢出右端渐隐，可拖拽），
   右侧为图钉钉住按钮、× 关闭；钉住（顶针图标填色 + 45° 旋转变实心）后点击窗外
   不再关闭（Esc / × 仍可关闭），且在新触发时**继续驻留与其他实例并存**（钉住状态

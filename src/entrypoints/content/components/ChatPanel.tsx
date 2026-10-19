@@ -43,6 +43,11 @@ const COPY_FEEDBACK_MS = 1600
  * （不改变卡片位置：位置是用户的，只有用户自己拖或形态切换才会动）
  */
 const REVEAL_HIGHLIGHT_MS = 1100
+/**
+ * 初始即聊天态（Popup「在当前页面提问」）时自动聚焦输入框的延时。
+ * 必须晚于入场动画，且晚于 Popup 关闭（聚焦时系统焦点还在 Popup 上，立即 focus 会被抢走）。
+ */
+const INITIAL_FOCUS_DELAY = 260
 /** 头部控件的统一直径：icon-only 呈正圆，带文案的呈胶囊 */
 const HEADER_CONTROL_SIZE = 22
 /** 头部上下内边距（相对控件的呼吸量）：与控件高一起决定标题栏高度 */
@@ -822,6 +827,11 @@ interface Props {
    * 初值 0 表示「还没命中过」，挂载时不会触发。
    */
   revealNonce?: number
+  /**
+   * 初始形态（仅作用于挂载，之后归面板自身的 mode state）：
+   * 「在当前页面提问」传 "chat"，开面板即聊天态并自动聚焦输入框
+   */
+  initialMode?: "card" | "chat"
 }
 
 /**
@@ -841,13 +851,14 @@ export default function ChatPanel({
   onSend,
   onStop,
   onClose,
-  revealNonce = 0
+  revealNonce = 0,
+  initialMode = "card"
 }: Props) {
   const theme = useUiTheme()
   const themeName = useUiThemeName()
   const { t } = useI18n()
-  /** 面板形态：card = 卡片态（仅 AI 生成内容）/ chat = 完整聊天态（消息 + 输入框）。新会话默认卡片态 */
-  const [mode, setMode] = useState<"card" | "chat">("card")
+  /** 面板形态：card = 卡片态（仅 AI 生成内容）/ chat = 完整聊天态（消息 + 输入框）。划词触发的会话默认卡片态 */
+  const [mode, setMode] = useState<"card" | "chat">(initialMode)
   /** 形态切换过渡中（仅此时开启 width/height/left/top 过渡，拖拽仍要跟手） */
   const [morphing, setMorphing] = useState(false)
   /** 视口宽度：聊天态更宽，视口过窄时宽度随之收敛 */
@@ -1107,6 +1118,17 @@ export default function ChatPanel({
       inputRef.current?.blur()
     }
   }, [mode, source, requestState])
+
+  /**
+   * 初始即聊天态（Popup「在当前页面提问」）：挂载后自动聚焦输入框。
+   * 延时执行：此刻 Popup 还持有系统焦点，立即 focus 会被抢走；
+   * Popup 收到响应后自行关闭，稍后再聚焦才能稳稳落到输入框上（同 handleToggleMode 里的 rAF）。
+   */
+  useEffect(() => {
+    if (initialMode !== "chat") return
+    const timer = window.setTimeout(() => inputRef.current?.focus(), INITIAL_FOCUS_DELAY)
+    return () => window.clearTimeout(timer)
+  }, [initialMode])
   /** 用户是否停在消息区底部附近（流式期间仅贴底时才自动跟随滚动） */
   const isNearBottomRef = useRef(true)
 
@@ -1497,6 +1519,7 @@ export default function ChatPanel({
         {/* composer：一层描边同时包住输入框与发送按钮，聚焦时整体点亮 */}
         <div style={composerStyle(theme, { focused: focused === "input" })}>
           <textarea
+            ref={inputRef}
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onFocus={() => setFocused("input")}

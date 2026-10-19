@@ -1,111 +1,137 @@
-import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react"
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { getSettings, saveSettings } from "@/shared/storage"
 import { OPTIONS_ENTRY_STORAGE_KEY } from "@/shared/constants"
+import { requestOpenChatInActiveTab } from "@/shared/messaging"
 import { trackEvent } from "@/shared/analytics"
 import { isBuiltinActionId } from "@/shared/defaults"
 import { providerTypeOf } from "@/shared/provider-type"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
-import { createFieldLabelStyle, createInputStyle } from "@/shared/ui/styles"
 import { ActionIcon } from "@/shared/ui/iconify"
 import { ProviderLogoById } from "@/entrypoints/options/ProviderLogo"
 import { ToggleSwitch } from "@/shared/ui/toggle-switch"
 import { useI18n } from "@/shared/i18n/context"
-import type { ActionTemplate, ExtensionSettings } from "@/shared/types"
+import type { ActionTemplate, ExtensionSettings, ProviderConfig } from "@/shared/types"
 
-function ChevronIcon({ color, expanded }: { color: string; expanded: boolean }) {
+/**
+ * Popup 宽度：比旧版（336）宽 24px，用来容纳「provider 名 + 模型名」两行
+ * 与「动作名 + 开关」同行。
+ */
+const POPUP_WIDTH = 360
+/**
+ * 动作列表可视高度上限 = 6 行（34 × 6）。
+ * 动作再多也内部滚动：popup 总高不随动作数量增长（Chrome popup 上限 600px）。
+ */
+const ACTION_LIST_MAX_HEIGHT = 204
+/** 动作数超过这个值才出现「全部 / 已启用」筛选条（少的时候筛选只是噪音） */
+const ACTION_FILTER_THRESHOLD = 6
+/** provider 下拉浮层的最大高度（旧版是 36 × 2 + 16 + 8 = 88px，只够两行） */
+const PROVIDER_MENU_MAX_HEIGHT = 248
+
+// ---------- 图标（自绘，离线可用；动作图标走 ActionIcon 的 iconify 集合） ----------
+
+function ChevronIcon({ color, expanded, size = 14 }: { color: string; expanded: boolean; size?: number }) {
   return (
     <svg
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
       fill="none"
       aria-hidden="true"
       style={{
+        display: "block",
         transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
         transition: `transform ${uiMotion.durationFast} ${uiMotion.easingStandard}`
       }}>
-      <path d="M3 4.5L6 7.5L9 4.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="m6 9l6 6l6-6"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   )
 }
 
-function CheckIcon({ color }: { color: string }) {
+function SparklesIcon({ color, size = 13 }: { color: string; size?: number }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-      <path d="M3 7L6 10L11 4" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block" }}>
+      <path
+        d="M16 18a2 2 0 0 1 2 2a2 2 0 0 1 2-2a2 2 0 0 1-2-2a2 2 0 0 1-2 2m0-12a2 2 0 0 1 2 2a2 2 0 0 1 2-2a2 2 0 0 1-2-2a2 2 0 0 1-2 2M9 18a6 6 0 0 1 6-6a6 6 0 0 1-6-6a6 6 0 0 1-6 6a6 6 0 0 1 6 6"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   )
 }
 
-const AVATAR_SIZE = 26
-const AVATAR_GAP = 2
-const MAX_VISIBLE_AVATARS = 4
-
-function AvatarStack({
-  actions,
-  themeName,
-  theme
-}: {
-  actions: ActionTemplate[]
-  themeName: string
-  theme: any
-}) {
-  const enabledActions = actions.filter((a) => a.enabled !== false)
-  if (enabledActions.length === 0) return null
-
-  const visibleActions = enabledActions.slice(0, MAX_VISIBLE_AVATARS)
-  const hasOverflow = enabledActions.length > MAX_VISIBLE_AVATARS
-
+function MessageIcon({ color, size = 15 }: { color: string; size?: number }) {
   return (
-    <span
-      aria-hidden="true"
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        marginLeft: 4,
-        flexShrink: 1,
-        overflow: "hidden",
-        minWidth: 0
-      }}>
-      {visibleActions.map((action) => {
-        return (
-          <span
-            key={action.id}
-            style={{
-              width: AVATAR_SIZE,
-              height: AVATAR_SIZE,
-              borderRadius: uiRadius.sm,
-              background: theme.bg.surface,
-              color: theme.accent.primary,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              marginLeft: AVATAR_GAP,
-              flexShrink: 0
-            }}>
-            {action.icon ? (
-              <ActionIcon icon={action.icon} size={16} color={theme.accent.primary} />
-            ) : (
-              <span style={{ fontSize: 10, color: theme.text.secondary }}>?</span>
-            )}
-          </span>
-        )
-      })}
-      {hasOverflow && (
-        <span
-          style={{
-            marginLeft: AVATAR_GAP,
-            flexShrink: 0,
-            fontSize: uiTypography.fontSize.sm,
-            color: theme.text.secondary,
-            fontWeight: uiTypography.fontWeight.semibold
-          }}>
-          …
-        </span>
-      )}
-    </span>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block" }}>
+      <path
+        d="m3 20l1.3-3.9C1.976 12.663 2.874 8.228 6.4 5.726c3.526-2.501 8.59-2.296 11.845.48c3.255 2.777 3.695 7.266 1.029 10.501S11.659 20.922 7.7 19z"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function PlusIcon({ color, size = 15 }: { color: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block" }}>
+      <path d="M12 5v14m-7-7h14" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function AlertIcon({ color, size = 12 }: { color: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block" }}>
+      <path
+        d="M12 9v4m0 4h.01M10.24 3.9L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.76 3.9a2 2 0 0 0-3.52 0z"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function SettingsIcon({ color, size = 14 }: { color: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block" }}>
+      <path
+        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37c1 .608 2.296.07 2.572-1.065"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="3" stroke={color} strokeWidth="2" />
+    </svg>
+  )
+}
+
+/** 搜索镜（动作筛选空态用） */
+function SearchIcon({ color, size = 15 }: { color: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block" }}>
+      <path
+        d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0-14 0m18 11l-6-6"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }
 
@@ -114,16 +140,36 @@ export default function Popup() {
   const theme = uiThemes[themeName]
   const { t } = useI18n()
   const [settings, setSettings] = useState<ExtensionSettings | null>(null)
-  const [changing, setChanging] = useState(false)
-  const [serviceMenuOpen, setServiceMenuOpen] = useState(false)
-  const [actionsMenuOpen, setActionsMenuOpen] = useState(false)
-  const [hoveredItem, setHoveredItem] = useState<string | null>(null)
-  const [pressedBtn, setPressedBtn] = useState<string | null>(null)
-  const serviceMenuRef = useRef<HTMLDivElement | null>(null)
-  const actionsMenuRef = useRef<HTMLDivElement | null>(null)
-  const activeProvider =
-    settings?.providers.find((provider) => provider.id === settings.activeProviderId) ?? null
-  const enabledActionsCount = settings?.actions.filter((a) => a.enabled !== false).length ?? 0
+  /** provider 下拉浮层是否展开（点外关闭；与动作列表互不遮挡） */
+  const [providerMenuOpen, setProviderMenuOpen] = useState(false)
+  /** 动作筛选：动作很多时用来快速确认「实际开着哪些」 */
+  const [actionFilter, setActionFilter] = useState<"all" | "on">("all")
+  const [hovered, setHovered] = useState<string | null>(null)
+  /** 「在当前页面提问」失败提示（页面没有 content script 时） */
+  const [askFailed, setAskFailed] = useState(false)
+  const providerMenuRef = useRef<HTMLDivElement | null>(null)
+
+  const providers = settings?.providers ?? []
+  const actions = settings?.actions ?? []
+  const activeProvider = providers.find((provider) => provider.id === settings?.activeProviderId) ?? null
+  const enabledCount = actions.filter((action) => action.enabled !== false).length
+  const showFilter = actions.length > ACTION_FILTER_THRESHOLD
+  const visibleActions = useMemo(
+    () => (actionFilter === "on" ? actions.filter((action) => action.enabled !== false) : actions),
+    [actionFilter, actions]
+  )
+
+  /**
+   * 引擎警告：与 background 的失败判定保持一致（缺 key 一定 no_api_key，缺 model 请求必失败）。
+   * 提前在 popup 里暴露，而不是让用户第一次划词才知道。
+   */
+  const providerWarnKey = !activeProvider
+    ? null
+    : !activeProvider.apiKey?.trim()
+      ? "popup.missingApiKey"
+      : !activeProvider.model?.trim()
+        ? "popup.missingModel"
+        : null
 
   useEffect(() => {
     void trackEvent("popup_opened", { source: "popup" })
@@ -137,9 +183,9 @@ export default function Popup() {
     document.documentElement.style.background = theme.bg.page
     document.body.style.margin = "0"
     document.body.style.padding = "0"
-    document.body.style.minWidth = "320px"
+    document.body.style.minWidth = `${POPUP_WIDTH}px`
     document.body.style.height = "auto"
-    document.body.style.overflow = "visible"
+    document.body.style.overflow = "hidden"
     document.body.style.background = theme.bg.page
   }, [theme.bg.page])
 
@@ -173,11 +219,8 @@ export default function Popup() {
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
-      if (!serviceMenuRef.current?.contains(event.target as Node)) {
-        setServiceMenuOpen(false)
-      }
-      if (!actionsMenuRef.current?.contains(event.target as Node)) {
-        setActionsMenuOpen(false)
+      if (!providerMenuRef.current?.contains(event.target as Node)) {
+        setProviderMenuOpen(false)
       }
     }
     document.addEventListener("mousedown", handlePointerDown)
@@ -186,16 +229,15 @@ export default function Popup() {
     }
   }, [])
 
-  const handleServiceChange = async (serviceId: string) => {
-    if (!settings || serviceId === settings.activeProviderId) {
+  const handleProviderChange = async (providerId: string) => {
+    if (!settings || providerId === settings.activeProviderId) {
       return
     }
-    const fromProvider = settings.providers.find((p) => p.id === settings.activeProviderId)
-    const toProvider = settings.providers.find((p) => p.id === serviceId)
-    const nextSettings = { ...settings, activeProviderId: serviceId }
+    const fromProvider = providers.find((p) => p.id === settings.activeProviderId)
+    const toProvider = providers.find((p) => p.id === providerId)
+    const nextSettings = { ...settings, activeProviderId: providerId }
     setSettings(nextSettings)
-    setChanging(true)
-    setServiceMenuOpen(false)
+    setProviderMenuOpen(false)
     // 上报放在落盘之前：popup 随时关闭，await 之后的事件会丢（与 options 侧同一事件名）
     void trackEvent("provider_switched", {
       from_provider_type: providerTypeOf(fromProvider),
@@ -203,7 +245,6 @@ export default function Popup() {
       source: "popup"
     })
     await saveSettings(nextSettings)
-    setChanging(false)
   }
 
   const handleActionToggle = useCallback(
@@ -227,6 +268,25 @@ export default function Popup() {
     [settings]
   )
 
+  /**
+   * 「在当前页面提问」：让 content script 开一个空的聊天态面板并聚焦输入框。
+   * 成功即关闭 popup（把系统焦点还给页面，面板那边延时聚焦才落得到输入框上）；
+   * 失败（chrome:// / 商店页 / 未刷新的旧标签页没有 content script）留在 popup 上显式提示，
+   * 不静默失败。
+   */
+  const handleAsk = async () => {
+    setAskFailed(false)
+    try {
+      await requestOpenChatInActiveTab()
+      // 与 provider_switched 同一取舍：popup 关闭会取消未完成的上报，事件仍放在关之前发
+      void trackEvent("popup_ask_clicked", { result: "opened", source: "popup" })
+      window.close()
+    } catch {
+      void trackEvent("popup_ask_clicked", { result: "unsupported", source: "popup" })
+      setAskFailed(true)
+    }
+  }
+
   const openOptionsPage = async () => {
     // 先写入入口标记（供 options 页上报 options_opened.entry 后清除）；
     // 必须 await —— window.close() 会取消未完成的 storage 写入
@@ -239,350 +299,678 @@ export default function Popup() {
     window.close()
   }
 
-  // --- Styles following DESIGN.MD ---
+  // ---------- 样式 ----------
+  // 深色下 warning 本身足够亮；浅色下 #F59E0B 在白底上对比度不足，文字换深一档
+  const warnTextColor = themeName === "dark" ? theme.state.warning : "#B45309"
+  const warnBorderColor = `${theme.state.warning}66`
 
   const shellStyle: CSSProperties = {
-    width: 336,
+    width: POPUP_WIDTH,
     boxSizing: "border-box",
-    padding: uiSpace[16],
-    background: theme.bg.surface,
+    padding: uiSpace[14],
+    background: theme.bg.page,
+    color: theme.text.primary,
     fontFamily: uiTypography.fontFamily,
     display: "flex",
-    flexDirection: "column",
-    borderRadius: uiRadius.lg
+    flexDirection: "column"
   }
 
-  const fieldLabelStyle: CSSProperties = {
-    ...createFieldLabelStyle(theme)
-  }
-
-  // Trigger 按钮左侧 icon 占位宽度: icon-left(10) + icon-size(30) + gap-to-text(8) = 48
-  const TRIGGER_LEFT_PAD = uiSpace[10] + AVATAR_SIZE + 8
-
-  const triggerStyle = (isOpen: boolean): CSSProperties => ({
-    ...createInputStyle(theme, isOpen),
-    height: 40,
-    padding: `0 ${uiSpace[12]}px 0 ${TRIGGER_LEFT_PAD}px`,
-    fontSize: uiTypography.fontSize.sm,
-    cursor: settings?.providers.length ? "pointer" : "default",
+  const headStyle: CSSProperties = {
     display: "flex",
     alignItems: "center",
-    textAlign: "left",
-    position: "relative" as const
-  })
+    gap: uiSpace[8],
+    paddingBottom: uiSpace[12]
+  }
 
-  const triggerLeftIcon: CSSProperties = {
-    position: "absolute" as const,
-    top: "50%",
-    left: uiSpace[10],
-    transform: "translateY(-50%)",
+  const brandMarkStyle: CSSProperties = {
+    width: 22,
+    height: 22,
+    borderRadius: 7,
+    background: `linear-gradient(135deg, ${theme.accent.primary}, ${theme.accent.primaryHover})`,
+    color: theme.text.inverse,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    pointerEvents: "none"
+    flexShrink: 0
   }
 
-  const triggerChevron: CSSProperties = {
-    position: "absolute" as const,
-    top: "50%",
-    right: uiSpace[10],
-    transform: "translateY(-50%)",
-    pointerEvents: "none"
+  const brandNameStyle: CSSProperties = {
+    fontSize: 13.5,
+    fontWeight: uiTypography.fontWeight.semibold,
+    letterSpacing: uiTypography.letterSpacing.tight
+  }
+
+  const versionStyle: CSSProperties = {
+    fontSize: 10,
+    fontWeight: uiTypography.fontWeight.semibold,
+    color: theme.text.secondary,
+    background: theme.bg.surfaceMuted,
+    padding: "1px 6px",
+    borderRadius: uiRadius.pill,
+    fontFamily: uiTypography.fontFamilyMono
+  }
+
+  const labelStyle: CSSProperties = {
+    fontSize: 11,
+    fontWeight: uiTypography.fontWeight.semibold,
+    letterSpacing: "0.02em",
+    color: theme.text.secondary,
+    marginBottom: 7
+  }
+
+  const engineTriggerStyle = (open: boolean): CSSProperties => ({
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    gap: uiSpace[10],
+    padding: `8px ${uiSpace[10]}px`,
+    borderRadius: 10,
+    background: theme.bg.surface,
+    border: `1px solid ${
+      providerWarnKey ? warnBorderColor : open ? theme.accent.primary : theme.border.default
+    }`,
+    boxShadow: uiShadow.sm,
+    cursor: "pointer",
+    fontFamily: uiTypography.fontFamily,
+    textAlign: "left",
+    transition: `border-color ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+  })
+
+  const engineTextStyle: CSSProperties = {
+    flex: 1,
+    minWidth: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: 1
+  }
+
+  const engineNameStyle: CSSProperties = {
+    fontSize: 13,
+    fontWeight: uiTypography.fontWeight.semibold,
+    lineHeight: 1.3,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis"
+  }
+
+  const engineModelStyle: CSSProperties = {
+    fontSize: 11,
+    lineHeight: 1.3,
+    color: theme.text.secondary,
+    fontFamily: uiTypography.fontFamilyMono,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    // 长模型名右端渐隐（不用省略号：省略号是硬截断符号、位置还随名字长度跳动）
+    maskImage: "linear-gradient(90deg, #000 calc(100% - 26px), transparent)",
+    WebkitMaskImage: "linear-gradient(90deg, #000 calc(100% - 26px), transparent)"
+  }
+
+  const warnLineStyle: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: uiSpace[4],
+    fontSize: 10.5,
+    lineHeight: 1.35,
+    color: warnTextColor,
+    marginTop: 2
   }
 
   const menuStyle: CSSProperties = {
-    position: "absolute" as const,
-    top: "100%",
+    position: "absolute",
+    top: "calc(100% + 6px)",
     left: 0,
     right: 0,
+    zIndex: 30,
     padding: uiSpace[4],
-    maxHeight: 36 * 2 + 16 + 8,
+    maxHeight: PROVIDER_MENU_MAX_HEIGHT,
     overflowY: "auto",
-    borderRadius: uiRadius.lg,
+    borderRadius: uiRadius.xl,
     background: theme.bg.surface,
     border: `1px solid ${theme.border.default}`,
-    boxShadow: uiShadow.xl,
+    boxShadow: uiShadow.xl
+  }
+
+  const menuItemStyle = (selected: boolean): CSSProperties => ({
     display: "grid",
-    gap: 2,
-    zIndex: 100,
-    marginTop: uiSpace[4]
+    gridTemplateColumns: "26px 1fr 16px",
+    alignItems: "center",
+    gap: uiSpace[10],
+    width: "100%",
+    padding: `7px ${uiSpace[8]}px`,
+    border: "none",
+    borderRadius: 7,
+    background: "transparent",
+    color: theme.text.primary,
+    cursor: "pointer",
+    textAlign: "left",
+    fontFamily: uiTypography.fontFamily
+  })
+
+  const menuItemNameStyle = (selected: boolean): CSSProperties => ({
+    fontSize: 12.5,
+    fontWeight: selected ? uiTypography.fontWeight.semibold : uiTypography.fontWeight.medium,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis"
+  })
+
+  const emptyCardStyle: CSSProperties = {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    gap: uiSpace[10],
+    padding: `12px ${uiSpace[10]}px`,
+    borderRadius: 10,
+    background: "transparent",
+    border: `1px dashed ${theme.border.default}`,
+    cursor: "pointer",
+    textAlign: "left",
+    fontFamily: uiTypography.fontFamily
   }
 
-  const menuItemStyle = (itemId: string, selected: boolean): CSSProperties => {
-    const isHovered = hoveredItem === itemId
-    return {
-      display: "grid",
-      gridTemplateColumns: `${AVATAR_SIZE}px 1fr auto`,
-      alignItems: "center",
-      gap: uiSpace[8],
-      width: "100%",
-      minHeight: 36,
-      padding: `${uiSpace[6]}px ${uiSpace[10]}px`,
-      border: "none",
-      borderRadius: uiRadius.sm,
-      background: selected ? theme.bg.surfaceMuted : isHovered ? theme.bg.surfaceAlt : "transparent",
-      color: theme.text.primary,
-      cursor: "pointer",
-      textAlign: "left" as const,
-      fontFamily: uiTypography.fontFamily,
-      fontSize: uiTypography.fontSize.sm,
-      fontWeight: selected ? uiTypography.fontWeight.semibold : uiTypography.fontWeight.regular,
-      transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
-    }
+  const emptyPlusStyle: CSSProperties = {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    flexShrink: 0,
+    background: `${theme.accent.primary}1A`,
+    color: theme.accent.primary,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center"
   }
 
-  const avatarStyle = (palette: { background: string; color: string }, size: number = AVATAR_SIZE, textLength: number = 1): CSSProperties => ({
-    width: size,
-    height: size,
-    borderRadius: uiRadius.sm,
-    background: palette.background,
-    color: palette.color,
-    display: "inline-flex",
+  const emptyTitleStyle: CSSProperties = {
+    display: "block",
+    fontSize: 12.5,
+    fontWeight: uiTypography.fontWeight.semibold,
+    color: theme.text.primary
+  }
+
+  const emptyDescStyle: CSSProperties = {
+    display: "block",
+    fontSize: 11,
+    color: theme.text.secondary,
+    marginTop: 2
+  }
+
+  const askDisabled = !activeProvider
+  const askButtonStyle: CSSProperties = {
+    width: "100%",
+    height: 36,
+    marginTop: uiSpace[10],
+    borderRadius: 10,
+    border: "none",
+    background: askDisabled
+      ? theme.bg.surfaceMuted
+      : hovered === "ask"
+        ? theme.accent.primaryHover
+        : theme.accent.primary,
+    color: askDisabled ? theme.text.secondary : theme.text.inverse,
+    fontSize: 12.5,
+    fontWeight: uiTypography.fontWeight.semibold,
+    fontFamily: uiTypography.fontFamily,
+    display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: textLength >= 4 ? 8 : textLength > 1 ? 9 : size >= 24 ? 11 : 10,
+    gap: uiSpace[8],
+    cursor: askDisabled ? "not-allowed" : "pointer",
+    opacity: askDisabled ? 0.85 : 1,
+    transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+  }
+
+  const askErrorStyle: CSSProperties = {
+    marginTop: uiSpace[6],
+    fontSize: 11,
+    lineHeight: 1.4,
+    color: warnTextColor,
+    display: "flex",
+    alignItems: "center",
+    gap: uiSpace[4],
+    justifyContent: "center"
+  }
+
+  const labelRowStyle: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: uiSpace[8],
+    marginTop: uiSpace[16],
+    marginBottom: 7
+  }
+
+  const countStyle: CSSProperties = {
+    fontSize: 11,
+    color: theme.text.secondary,
+    fontVariantNumeric: "tabular-nums",
+    whiteSpace: "nowrap"
+  }
+
+  const filterBarStyle: CSSProperties = {
+    display: "inline-flex",
+    gap: 2,
+    padding: 2,
+    borderRadius: uiRadius.lg,
+    background: theme.bg.surfaceMuted,
+    marginBottom: 7
+  }
+
+  const filterButtonStyle = (active: boolean): CSSProperties => ({
+    border: "none",
+    background: active ? theme.bg.surface : "transparent",
+    color: active ? theme.text.primary : theme.text.secondary,
+    fontFamily: uiTypography.fontFamily,
+    fontSize: 11,
     fontWeight: uiTypography.fontWeight.semibold,
-    letterSpacing: uiTypography.letterSpacing.tight,
+    padding: `4px ${uiSpace[10]}px`,
+    borderRadius: 6,
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    boxShadow: active ? uiShadow.sm : "none"
+  })
+
+  const filterCountStyle: CSSProperties = {
+    fontSize: 10,
+    opacity: 0.75,
+    fontVariantNumeric: "tabular-nums"
+  }
+
+  const actionListStyle: CSSProperties = {
+    position: "relative",
+    background: theme.bg.surface,
+    border: `1px solid ${theme.border.default}`,
+    borderRadius: 10,
+    boxShadow: uiShadow.sm,
+    overflow: "hidden"
+  }
+
+  const actionScrollStyle: CSSProperties = {
+    maxHeight: ACTION_LIST_MAX_HEIGHT,
+    overflowY: "auto",
+    overscrollBehavior: "contain"
+  }
+
+  const actionRowStyle = (enabled: boolean, rowHovered: boolean): CSSProperties => ({
+    display: "flex",
+    alignItems: "center",
+    gap: 9,
+    padding: `0 ${uiSpace[10]}px`,
+    height: 34,
+    borderBottom: `1px solid ${theme.border.hairline}`,
+    background: rowHovered ? theme.bg.surfaceMuted : "transparent",
+    cursor: "pointer",
+    transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+  })
+
+  const actionIconStyle = (enabled: boolean): CSSProperties => ({
+    display: "flex",
+    alignItems: "center",
+    color: enabled ? theme.accent.primary : theme.text.secondary,
+    opacity: enabled ? 1 : 0.75,
     flexShrink: 0
   })
 
-  const menuItemAvatarStyle = (palette: { background: string; color: string }, displayText: string): CSSProperties => ({
-    ...avatarStyle(palette, AVATAR_SIZE, displayText.length),
-    marginRight: uiSpace[12]
+  const actionLabelStyle = (enabled: boolean): CSSProperties => ({
+    flex: 1,
+    fontSize: 12.5,
+    color: enabled ? theme.text.primary : theme.text.secondary,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis"
   })
 
-  const menuItemTextStyle: CSSProperties = {
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap"
+  const listEmptyStyle: CSSProperties = {
+    padding: "22px 16px",
+    textAlign: "center"
+  }
+
+  const listEmptyIconStyle: CSSProperties = {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    margin: "0 auto 9px",
+    background: theme.bg.surfaceMuted,
+    color: theme.text.secondary,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center"
+  }
+
+  const listEmptyTitleStyle: CSSProperties = {
+    display: "block",
+    fontSize: uiTypography.fontSize.xs,
+    fontWeight: uiTypography.fontWeight.semibold,
+    color: theme.text.primary
+  }
+
+  const listEmptyDescStyle: CSSProperties = {
+    display: "block",
+    fontSize: 11,
+    color: theme.text.secondary,
+    marginTop: 3,
+    lineHeight: 1.5
+  }
+
+  const footStyle: CSSProperties = {
+    paddingTop: uiSpace[12]
+  }
+
+  const secondaryButtonStyle: CSSProperties = {
+    width: "100%",
+    height: 34,
+    borderRadius: 9,
+    background: hovered === "settings" ? `${theme.accent.primary}1A` : theme.bg.surfaceMuted,
+    border: `1px solid ${
+      hovered === "settings" ? `${theme.accent.primary}2E` : theme.border.hairline
+    }`,
+    color: hovered === "settings" ? theme.accent.primary : theme.text.primary,
+    fontFamily: uiTypography.fontFamily,
+    fontSize: 12.5,
+    fontWeight: uiTypography.fontWeight.semibold,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    cursor: "pointer",
+    transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}, color ${uiMotion.durationFast} ${uiMotion.easingStandard}, border-color ${uiMotion.durationFast} ${uiMotion.easingStandard}`
+  }
+
+  const renderProviderItem = (provider: ProviderConfig) => {
+    const selected = provider.id === settings?.activeProviderId
+    return (
+      <button
+        key={provider.id}
+        type="button"
+        role="option"
+        aria-selected={selected}
+        onClick={() => {
+          void handleProviderChange(provider.id)
+        }}
+        onMouseEnter={(event) => {
+          event.currentTarget.style.background = theme.bg.surfaceMuted
+        }}
+        onMouseLeave={(event) => {
+          event.currentTarget.style.background = "transparent"
+        }}
+        style={menuItemStyle(selected)}>
+        <ProviderLogoById
+          providerId={provider.modelsDevId || ""}
+          name={provider.name || "Custom"}
+          size={26}
+          theme={theme}
+        />
+        <span style={{ minWidth: 0 }}>
+          <span style={{ ...menuItemNameStyle(selected), display: "block" }}>
+            {provider.name || t("popup.unnamedProvider")}
+          </span>
+          <span
+            style={{
+              display: "block",
+              fontSize: 10.5,
+              color: theme.text.secondary,
+              fontFamily: uiTypography.fontFamilyMono,
+              marginTop: 1,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis"
+            }}>
+            {provider.model || t("popup.missingModel")}
+          </span>
+        </span>
+        <span style={{ color: theme.accent.primary, display: "flex", justifyContent: "center" }}>
+          {selected ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="m5 12l5 5L20 7"
+                stroke={theme.accent.primary}
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          ) : null}
+        </span>
+      </button>
+    )
+  }
+
+  const renderActionRow = (action: ActionTemplate) => {
+    const enabled = action.enabled !== false
+    const rowHovered = hovered === action.id
+    return (
+      <div
+        key={action.id}
+        role="switch"
+        aria-checked={enabled}
+        aria-label={action.label}
+        tabIndex={0}
+        onClick={() => {
+          void handleActionToggle(action.id)
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault()
+            void handleActionToggle(action.id)
+          }
+        }}
+        onMouseEnter={() => setHovered(action.id)}
+        onMouseLeave={() => setHovered(null)}
+        style={actionRowStyle(enabled, rowHovered)}>
+        <span style={actionIconStyle(enabled)}>
+          {action.icon ? (
+            <ActionIcon icon={action.icon} size={16} color="currentColor" />
+          ) : (
+            <SparklesIcon color="currentColor" size={16} />
+          )}
+        </span>
+        <span style={actionLabelStyle(enabled)}>{action.label}</span>
+        <ToggleSwitch
+          checked={enabled}
+          onChange={() => void handleActionToggle(action.id)}
+          theme={theme}
+          stopPropagation
+        />
+      </div>
+    )
+  }
+
+  const renderActionList = () => {
+    if (actions.length === 0) {
+      return (
+        <button type="button" onClick={openOptionsPage} style={emptyCardStyle}>
+          <span style={emptyPlusStyle}>
+            <PlusIcon color="currentColor" />
+          </span>
+          <span>
+            <span style={emptyTitleStyle}>{t("popup.noActions")}</span>
+            <span style={emptyDescStyle}>{t("popup.noActionsDesc")}</span>
+          </span>
+        </button>
+      )
+    }
+
+    if (visibleActions.length === 0) {
+      return (
+        <div style={actionListStyle}>
+          <div style={listEmptyStyle}>
+            <span style={listEmptyIconStyle}>
+              <SearchIcon color="currentColor" />
+            </span>
+            <span style={listEmptyTitleStyle}>{t("popup.noEnabledActions")}</span>
+            <span style={listEmptyDescStyle}>{t("popup.noEnabledActionsDesc")}</span>
+          </div>
+        </div>
+      )
+    }
+
+    const scrollable = visibleActions.length > ACTION_FILTER_THRESHOLD
+    return (
+      <div className={`aiction-popup-list${scrollable ? " scrollable" : ""}`} style={actionListStyle}>
+        <div className="aiction-popup-scroll" style={actionScrollStyle}>
+          {visibleActions.map(renderActionRow)}
+        </div>
+      </div>
+    )
   }
 
   return (
     <div style={shellStyle}>
-      {/* Service Selector */}
-      <div style={{ marginBottom: uiSpace[16] }}>
-        <div style={fieldLabelStyle}>{t("popup.selectProvider")}</div>
+      <style>{`
+        .aiction-popup-scroll::-webkit-scrollbar { width: 9px; }
+        .aiction-popup-scroll::-webkit-scrollbar-track { background: transparent; }
+        .aiction-popup-scroll::-webkit-scrollbar-thumb {
+          background: ${theme.border.default};
+          border-radius: 99px;
+          border: 3px solid transparent;
+          background-clip: padding-box;
+        }
+        .aiction-popup-list.scrollable::after {
+          content: "";
+          position: absolute;
+          left: 1px;
+          right: 1px;
+          bottom: 1px;
+          height: 16px;
+          border-radius: 0 0 9px 9px;
+          pointer-events: none;
+          background: linear-gradient(180deg, transparent, ${theme.bg.surface});
+        }
+      `}</style>
 
-        <div ref={serviceMenuRef} style={{ position: "relative" }}>
-          <button
-            type="button"
-            onClick={() => {
-              if (!settings || settings.providers.length === 0 || changing) {
-                return
-              }
-              setServiceMenuOpen((open) => !open)
-              setActionsMenuOpen(false)
-            }}
-            disabled={!settings || settings.providers.length === 0 || changing}
-            aria-haspopup="listbox"
-            aria-expanded={serviceMenuOpen}
-            style={{
-              ...triggerStyle(serviceMenuOpen),
-              opacity: !settings || changing ? 0.6 : 1
-            }}>
-            <div aria-hidden="true" style={triggerLeftIcon}>
-              <ProviderLogoById
-                providerId={activeProvider?.modelsDevId || ""}
-                name={activeProvider?.name || "Custom"}
-                size={AVATAR_SIZE}
-                theme={theme}
-              />
-            </div>
-            <span style={{ ...menuItemTextStyle, flex: 1 }}>
-              {activeProvider?.name || t("popup.noProvider")}
-            </span>
-            <div style={triggerChevron}>
-              <ChevronIcon color={theme.text.secondary} expanded={serviceMenuOpen} />
-            </div>
-          </button>
-
-          {/* Dropdown Menu */}
-          {serviceMenuOpen && settings?.providers.length ? (
-            <div role="listbox" style={menuStyle}>
-              {settings.providers.map((service) => {
-                const selected = service.id === settings.activeProviderId
-
-                return (
-                  <button
-                    key={service.id}
-                    type="button"
-                    onClick={() => {
-                      void handleServiceChange(service.id)
-                    }}
-                    onMouseEnter={() => setHoveredItem(service.id)}
-                    onMouseLeave={() => setHoveredItem(null)}
-                    style={menuItemStyle(service.id, selected)}>
-                    <span aria-hidden="true" style={{ marginRight: uiSpace[12] }}>
-                      <ProviderLogoById
-                        providerId={service.modelsDevId || ""}
-                        name={service.name || "Custom"}
-                        size={AVATAR_SIZE}
-                        theme={theme}
-                      />
-                    </span>
-                    <span style={menuItemTextStyle}>
-                      {service.name || t("popup.unnamedProvider")}
-                    </span>
-                    {selected ? (
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          display: "flex",
-                          alignItems: "center"
-                        }}>
-                        <CheckIcon color={theme.accent.primary} />
-                      </span>
-                    ) : (
-                      <span style={{ width: 14, height: 14 }} />
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          ) : null}
-        </div>
-      </div>
-
-      {/* Actions Selector */}
-      <div style={{ marginBottom: uiSpace[16] }}>
-        <div style={fieldLabelStyle}>{t("popup.selectAction")}</div>
-
-        <div ref={actionsMenuRef} style={{ position: "relative" }}>
-          <button
-            type="button"
-            onClick={() => {
-              if (!settings || settings.actions.length === 0) {
-                return
-              }
-              setActionsMenuOpen((open) => !open)
-              setServiceMenuOpen(false)
-            }}
-            disabled={!settings || settings.actions.length === 0}
-            aria-haspopup="listbox"
-            aria-expanded={actionsMenuOpen}
-            style={{
-              ...triggerStyle(actionsMenuOpen),
-              paddingLeft: uiSpace[12],
-              opacity: !settings ? 0.6 : 1
-            }}>
-            {/* Text + Avatar Stack */}
-            <span
-              style={{
-                flex: 1,
-                display: "flex",
-                alignItems: "center",
-                minWidth: 0,
-                overflow: "hidden"
-              }}>
-              <span style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-                {enabledActionsCount > 0
-                  ? t("popup.enabledActions", [String(enabledActionsCount)])
-                  : t("popup.noActions")}
-              </span>
-              {settings && (
-                <AvatarStack actions={settings.actions} themeName={themeName} theme={theme} />
-              )}
-            </span>
-
-            <div style={triggerChevron}>
-              <ChevronIcon color={theme.text.secondary} expanded={actionsMenuOpen} />
-            </div>
-          </button>
-
-          {/* Actions Dropdown Menu */}
-          {actionsMenuOpen && settings?.actions.length ? (
-            <div
-              role="listbox"
-              aria-multiselectable="true"
-              style={menuStyle}>
-              {settings.actions.map((action) => {
-                const isEnabled = action.enabled !== false
-
-                return (
-                  <button
-                    key={action.id}
-                    type="button"
-                    role="option"
-                    aria-selected={isEnabled}
-                    onClick={() => {
-                      void handleActionToggle(action.id)
-                    }}
-                    onMouseEnter={() => setHoveredItem(action.id)}
-                    onMouseLeave={() => setHoveredItem(null)}
-                    style={{
-                      ...menuItemStyle(action.id, false),
-                      color: isEnabled ? theme.text.primary : theme.text.secondary,
-                      transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}, color ${uiMotion.durationFast} ${uiMotion.easingStandard}`
-                    }}>
-                    <span aria-hidden="true" style={{
-                      ...menuItemAvatarStyle({ background: theme.bg.surface, color: theme.accent.primary }, "")
-                    }}>
-                      {action.icon ? (
-                        <ActionIcon icon={action.icon} size={16} color={theme.accent.primary} />
-                      ) : (
-                        <span style={{ fontSize: 10, color: theme.text.secondary }}>?</span>
-                      )}
-                    </span>
-                    <span style={menuItemTextStyle}>
-                      {action.label}
-                    </span>
-                    <ToggleSwitch
-                      checked={isEnabled}
-                      onChange={() => void handleActionToggle(action.id)}
-                      theme={theme}
-                      stopPropagation
-                    />
-                  </button>
-                )
-              })}
-            </div>
-          ) : null}
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          paddingTop: uiSpace[10],
-          borderTop: `1px solid ${theme.border.hairline}`
-        }}>
-        <span
-          style={{
-            fontSize: uiTypography.fontSize.xs,
-            color: theme.text.secondary
-          }}>
-          v{chrome.runtime.getManifest().version}
+      {/* 头部：品牌 + 版本 */}
+      <div style={headStyle}>
+        <span style={brandMarkStyle}>
+          <SparklesIcon color={theme.text.inverse} />
         </span>
+        <span style={brandNameStyle}>AIction</span>
+        <span style={versionStyle}>v{chrome.runtime.getManifest().version}</span>
+      </div>
+
+      {/* AI 引擎：当前 provider + 模型（可切换） */}
+      <div style={labelStyle}>{t("popup.engine")}</div>
+      {activeProvider ? (
+        <div ref={providerMenuRef} style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => setProviderMenuOpen((open) => !open)}
+            aria-haspopup="listbox"
+            aria-expanded={providerMenuOpen}
+            style={engineTriggerStyle(providerMenuOpen)}>
+            <ProviderLogoById
+              providerId={activeProvider.modelsDevId || ""}
+              name={activeProvider.name || "Custom"}
+              size={28}
+              theme={theme}
+            />
+            <span style={engineTextStyle}>
+              <span style={engineNameStyle}>{activeProvider.name || t("popup.unnamedProvider")}</span>
+              <span style={engineModelStyle}>{activeProvider.model || t("popup.missingModel")}</span>
+              {providerWarnKey ? (
+                <span style={warnLineStyle}>
+                  <AlertIcon color="currentColor" />
+                  {t(providerWarnKey)}
+                </span>
+              ) : null}
+            </span>
+            <ChevronIcon color={theme.text.secondary} expanded={providerMenuOpen} />
+          </button>
+
+          {providerMenuOpen ? (
+            <div role="listbox" className="aiction-popup-scroll" style={menuStyle}>
+              {providers.map(renderProviderItem)}
+              <div
+                style={{
+                  borderTop: `1px solid ${theme.border.hairline}`,
+                  marginTop: uiSpace[4],
+                  paddingTop: uiSpace[4]
+                }}>
+                <button
+                  type="button"
+                  onClick={openOptionsPage}
+                  style={{ ...menuItemStyle(false), color: theme.text.secondary }}>
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: theme.accent.primary
+                    }}>
+                    <PlusIcon color="currentColor" />
+                  </span>
+                  <span style={{ ...menuItemNameStyle(false), fontSize: 12 }}>
+                    {t("popup.manageProviders")}
+                  </span>
+                  <span />
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <button type="button" onClick={openOptionsPage} style={emptyCardStyle}>
+          <span style={emptyPlusStyle}>
+            <PlusIcon color="currentColor" />
+          </span>
+          <span>
+            <span style={emptyTitleStyle}>{t("popup.addProvider")}</span>
+            <span style={emptyDescStyle}>{t("popup.addProviderDesc")}</span>
+          </span>
+        </button>
+      )}
+
+      {/* 主动作：在当前页面提问（无 provider 时禁用 —— 点开也只会失败） */}
+      <button
+        type="button"
+        onClick={() => void handleAsk()}
+        disabled={askDisabled}
+        onMouseEnter={() => setHovered("ask")}
+        onMouseLeave={() => setHovered(null)}
+        style={askButtonStyle}>
+        <MessageIcon color="currentColor" />
+        {t("popup.askInPage")}
+      </button>
+      {askFailed ? (
+        <div style={askErrorStyle} role="alert">
+          <AlertIcon color="currentColor" />
+          {t("popup.askUnsupported")}
+        </div>
+      ) : null}
+
+      {/* 划词动作 */}
+      <div style={labelRowStyle}>
+        <span style={{ ...labelStyle, marginBottom: 0 }}>{t("popup.actionsTitle")}</span>
+        <span style={countStyle}>
+          {t("popup.actionsEnabledCount", [String(enabledCount), String(actions.length)])}
+        </span>
+      </div>
+
+      {showFilter ? (
+        <div style={filterBarStyle}>
+          <button type="button" onClick={() => setActionFilter("all")} style={filterButtonStyle(actionFilter === "all")}>
+            {t("popup.filterAll")}
+            <span style={filterCountStyle}>{actions.length}</span>
+          </button>
+          <button type="button" onClick={() => setActionFilter("on")} style={filterButtonStyle(actionFilter === "on")}>
+            {t("popup.filterEnabled")}
+            <span style={filterCountStyle}>{enabledCount}</span>
+          </button>
+        </div>
+      ) : null}
+
+      {renderActionList()}
+
+      {/* 底部：设置入口（全屏唯一入口） */}
+      <div style={footStyle}>
         <button
           type="button"
           onClick={openOptionsPage}
-          onMouseDown={() => setPressedBtn("open-settings")}
-          onMouseUp={() => setPressedBtn(null)}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = theme.bg.surfaceAlt
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "transparent"
-            setPressedBtn(null)
-          }}
-          style={{
-            border: "none",
-            borderRadius: uiRadius.pill,
-            padding: `${uiSpace[4]}px ${uiSpace[10]}px`,
-            background: "transparent",
-            color: theme.accent.primary,
-            fontSize: uiTypography.fontSize.sm,
-            fontWeight: uiTypography.fontWeight.semibold,
-            fontFamily: uiTypography.fontFamily,
-            cursor: "pointer",
-            outline: "none",
-            transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}, transform 150ms ${uiMotion.easingSpring}`,
-            transform: pressedBtn === "open-settings" ? "scale(0.96)" : "scale(1)"
-          }}>
-          {t("popup.settings")}
+          onMouseEnter={() => setHovered("settings")}
+          onMouseLeave={() => setHovered(null)}
+          style={secondaryButtonStyle}>
+          <SettingsIcon color="currentColor" />
+          {t("popup.openSettings")}
         </button>
       </div>
     </div>

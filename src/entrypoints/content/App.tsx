@@ -11,6 +11,7 @@ import { useToolbarState } from "@/entrypoints/content/hooks/useToolbarState"
 import { initContentScriptAnalytics, trackEvent, trackFirstTimeEvent } from "@/shared/analytics"
 import { isBuiltinActionId } from "@/shared/defaults"
 import { copyTextFallback } from "@/shared/clipboard"
+import { isOpenChatRequest } from "@/shared/messaging"
 import { resolveActionTemplate, formatFreeInputPrompt } from "@/shared/prompt"
 import { getSettings } from "@/shared/storage"
 import type { SelectionAnchor, SelectionContext, QuickAction } from "@/shared/types"
@@ -189,6 +190,77 @@ export default function App() {
     },
     [selectionContext, findSessionForPrompt, revealSession, openSession, takeToolbarAnchor]
   )
+
+  // ---------- Popup「在当前页面提问」 ----------
+
+  /**
+   * 直接弹出一个空白对话面板（不划词也能问）。
+   * 与划词触发共用同一套会话管理：空 prompt 就是它的防抖键，
+   * 已有一张空面板时闪一圈脉冲作为反馈，而不是再开一个。
+   */
+  const handleOpenChat = useCallback(() => {
+    const existing = findSessionForPrompt("")
+    if (existing) {
+      revealSession(existing.id)
+      return
+    }
+
+    openSession({
+      // 无选区锚点：交给面板回退到视口上方居中
+      anchor: null,
+      capturedText: "",
+      context: {
+        text: "",
+        title: document.title,
+        url: location.href
+      },
+      // 空 prompt：不自动发送，等用户输入；同时充当防抖键
+      initialPrompt: "",
+      // 打开的目的就是让人接着输入：直接聊天态 + 自动聚焦输入框
+      initialMode: "chat"
+    })
+  }, [findSessionForPrompt, revealSession, openSession])
+
+  // Popup 发来的 OPEN_CHAT（页面无 content script 时 Popup 侧会拿到 reject，由它提示用户）
+  //
+  // 用 ref 转发而非把 handleOpenChat 放进依赖：handler 依赖会话列表（handleOpenChat →
+  // findSessionForPrompt → sessions），直接依赖会让每次会话增删都重建 listener。
+  // 虽然同步应答发生在重注册之前（功能上是安全的），把「注册」与「业务状态」解耦
+  // 更省心：少一类「消息恰好落在 listener 重建的间隙里」的隐患。
+  const handleOpenChatRef = useRef(handleOpenChat)
+  useEffect(() => {
+    handleOpenChatRef.current = handleOpenChat
+  }, [handleOpenChat])
+
+  useEffect(() => {
+    const handleMessage: Parameters<typeof chrome.runtime.onMessage.addListener>[0] = (
+      message,
+      _sender,
+      sendResponse
+    ) => {
+      if (!isOpenChatRequest(message)) {
+        return false
+      }
+      handleOpenChatRef.current()
+      // 同步应答：Popup 收到后立即关闭自己，把系统焦点还给页面
+      sendResponse({ ok: true })
+      return false
+    }
+
+    try {
+      chrome.runtime.onMessage.addListener(handleMessage)
+    } catch {
+      // Extension context may have been invalidated
+    }
+
+    return () => {
+      try {
+        chrome.runtime.onMessage.removeListener(handleMessage)
+      } catch {
+        // Extension context may have been invalidated
+      }
+    }
+  }, [])
 
   return (
     <div ref={extensionRootRef} data-aiction-root="true" style={{ pointerEvents: "none" }}>
