@@ -19,10 +19,41 @@ import { buildProviderOptions, truncateMessagesToContext } from "@/shared/model-
 import { fetchModelsDev } from "@/shared/models-dev"
 import { fetchOpenRouterModels } from "@/shared/openrouter"
 
+/**
+ * 取错误的完整文本：AI SDK 的 APICallError 把服务端原文放在 responseBody 里，
+ * message 可能只有 "Request failed" 之类的壳，只看 message 会漏掉真正的原因。
+ */
+function errorText(error: unknown): string {
+  const parts = [error instanceof Error ? error.message : String(error)]
+  if (error && typeof error === "object" && "responseBody" in error) {
+    const body = (error as { responseBody?: unknown }).responseBody
+    if (typeof body === "string") {
+      parts.push(body)
+    }
+  }
+  return parts.join("\n")
+}
+
 /** 端点明确拒绝 Reasoning 参数（不支持禁用思考的模型）时，去掉参数重试一次 */
 function shouldRetryWithoutReasoningOptions(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error)
+  const message = errorText(error)
   return /reasoning/i.test(message) && /does not support|not supported|invalid option/i.test(message)
+}
+
+/**
+ * 端点对输出上限的约束比模型元数据更严时（如
+ * "max_tokens (current value: 943718) must be between 0 and 393216"），
+ * 去掉 maxOutputTokens 重试一次——未填 = 跟随端点默认，语义上等价于放宽这条约束。
+ * 参数名要求精确出现，避免把「上下文长度超限」之类的错误误判成输出上限问题。
+ */
+function shouldRetryWithoutMaxOutputTokens(error: unknown): boolean {
+  const message = errorText(error)
+  if (!/max[\s_-]?(?:output|completion)?[\s_-]?tokens|maxOutputTokens|maxTokens/i.test(message)) {
+    return false
+  }
+  return /must be|out of range|invalid|exceed|less than|greater than|too (?:large|big)|not supported|unsupported/i.test(
+    message
+  )
 }
 import {
   trackBackgroundEvent,
@@ -181,17 +212,44 @@ async function streamChat(
     }
   }
 
-  try {
-    await consumeStream()
-  } catch (error) {
-    // 部分模型不支持关闭思考（如 "Model X does not support reasoning_effort off"）。
-    // 尚未产出任何内容时，去掉 Reasoning 参数重试一次，让请求成功（思考跟随模型默认）。
-    if (!hasContent && shouldRetryWithoutReasoningOptions(error)) {
-      console.warn("[aiction] reasoning option rejected by provider, retrying without it:", error)
-      delete streamParams.providerOptions
+  // 降级重试表：端点拒绝某个「可去掉」的可选参数时，去掉它重试，让请求能成功。
+  // 顺序即优先级，每项最多应用一次；一旦已产出内容就不再重试（不能重复播放已生成的文本）。
+  const degradations: Array<{ label: string; match: (error: unknown) => boolean; drop: () => void }> = [
+    {
+      // 部分模型不支持关闭思考（如 "Model X does not support reasoning_effort off"）
+      label: "reasoning options",
+      match: shouldRetryWithoutReasoningOptions,
+      drop: () => {
+        delete streamParams.providerOptions
+      }
+    },
+    {
+      // 模型元数据/用户填写的输出上限比端点实际允许的更宽松（常见 400 INVALID_REQUEST_BODY）
+      label: "max output tokens",
+      match: shouldRetryWithoutMaxOutputTokens,
+      drop: () => {
+        delete streamParams.maxOutputTokens
+      }
+    }
+  ]
+  const appliedDegradations: string[] = []
+
+  for (;;) {
+    try {
       await consumeStream()
-    } else {
-      throw error
+      break
+    } catch (error) {
+      const next = hasContent
+        ? undefined
+        : degradations.find((item) => !appliedDegradations.includes(item.label) && item.match(error))
+
+      if (!next) {
+        throw error
+      }
+
+      appliedDegradations.push(next.label)
+      console.warn(`[aiction] ${next.label} rejected by provider, retrying without it:`, error)
+      next.drop()
     }
   }
 

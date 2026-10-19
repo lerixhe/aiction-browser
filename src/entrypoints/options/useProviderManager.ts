@@ -354,19 +354,15 @@ export function useProviderManager(
       const current = providerDraft.modelParams
       const fills: Array<[keyof ModelParams, NonNullable<ModelParams[keyof ModelParams]>]> = []
 
-      // maxTokens：models.dev 的 limit.output 优先，OpenRouter 的 top_provider.max_completion_tokens 兑底
-      const maxTokensValue =
-        typeof devKeyed?.limit?.output === "number" ? devKeyed.limit.output : orModel?.maxCompletionTokens
-      if (typeof maxTokensValue === "number" && maxTokensValue > 0 && current.maxTokens === undefined) {
-        fills.push(["maxTokens", maxTokensValue])
-      }
-      if (current.contextSize === undefined) {
-        const contextSize =
-          typeof devKeyed?.limit?.context === "number" ? devKeyed.limit.context : orModel?.contextLength
-        if (typeof contextSize === "number" && contextSize > 0) {
-          fills.push(["contextSize", contextSize])
-        }
-      }
+      // 上限类参数（maxTokens / contextSize）**刻意不自动填**，只做 UI 提示：
+      // 数据源里的 limit.output / limit.context 是「某个 provider 副本」的元数据，不是模型的固有属性——
+      // 同一个模型在不同 provider 上差异极大（如 deepseek-v4.1-flash 在 models.dev 里
+      // 同时存在 131072 / 262144 / 384000 / 393216 / 943718 多档，取哪一档取决于匹配到哪个副本），
+      // 而匹配到的副本未必等于用户实际用的端点。照搬填进 maxTokens 就是拿别人的上限顶本端点的硬上限，
+      // 必然 400（"max_tokens (current value: 943718) must be between 0 and 393216"）；
+      // 填 contextSize 同理会按错误的窗口静默裁剪输入。
+      // 两项留空 = 跟随端点默认 / 不裁剪，语义清晰（模型是否推理、是否支持 effort 档位）的项才自动填。
+      //
       // 思考模式：仅当 provider 明确支持关闭语义时自动填禁用，其余保持空白
       if (supported.reasoning && explicitReasoningOff && current.reasoning === undefined) {
         fills.push(["reasoning", false])

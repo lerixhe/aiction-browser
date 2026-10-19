@@ -57,6 +57,24 @@ const items = (() => {
 否则那批用户永远停留在老版本。注意旧模板在 `validateActions` 里已被 `{text}` → `{selection}` 迁移，
 指纹统一按 `{selection}` 形式书写。
 
+### 模型元数据是「provider 副本」的，上限类参数不可照搬
+**场景**：用户报 `400 INVALID_REQUEST_BODY: max_tokens (current value: 943718) must be between 0 and 393216`。
+
+根因不是取错字段，而是**取错了对象**：models.dev / OpenRouter 里的 `limit.output`、`limit.context`、
+`top_provider.max_completion_tokens` 描述的是**某个 provider 副本**的能力，不是模型固有属性。
+同一个模型在数据源里同时存在多档（`deepseek-v4.1-flash`：131072 / 262144 / 384000 / 393216 / 943718），
+取到哪一档取决于 provider 的 `modelsDevId` 或 OpenRouter 后缀匹配命中哪个副本，**与用户实际配置的端点无关**
+（自定义 provider 无 `modelsDevId` 时走 OpenRouter 兜底，最容易命中最宽松的那一档）。
+
+**约定**：
+1. 智能填充（`useProviderManager.handleSmartFillParams`）只填**语义明确**的项：`reasoning`（仅当 provider 明确支持关闭语义）、`reasoningEffort`（仅当明确接受 `reasoning_effort`）。
+   `maxTokens` / `contextSize` **刻意不自动填**（留空 = 跟随端点默认 / 不裁剪）——填错上限的失败模式是请求直接 400 或输入被静默裁剪。
+   数据源里的上限数字只作为 UI 提示展示（文案须写明「以端点实际限制为准」）。
+2. 用户手填的上限仍可能被端点拒绝：background 有**降级重试表**（`degradations`，`streamChat` 内），
+   命中 `shouldRetryWithoutReasoningOptions` / `shouldRetryWithoutMaxOutputTokens` 时去掉对应参数重试一次
+   （各降级最多一次，已有内容产出则不重试）。匹配用的错误文本取 `errorText()`（message + `responseBody`），
+   AI SDK 的 `APICallError` 有时只在 `responseBody` 里带服务端原文。
+
 ### JSX “幽灵报错”：少一个 `}` 的定位方法（灵动岛重构期间沉淀，适用于任意 JSX 浮层）
 
 **JSX “幽灵报错”：少一个 `}` 的定位方法**

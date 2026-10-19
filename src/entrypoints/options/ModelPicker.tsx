@@ -150,7 +150,8 @@ export function ModelPicker({
           variant="secondary"
           icon={<SparkleIcon />}
           disabled={smartFilling}
-          onClick={onSmartFillParams}>
+          onClick={onSmartFillParams}
+          title={t("options.connection.smartFillHint")}>
           {smartFilling ? t("options.connection.smartFilling") : t("options.connection.smartFillParams")}
         </Button>
       </div>
@@ -201,6 +202,7 @@ export function ModelPicker({
           <StatusMessage tone="success">
             {t("options.connection.smartFillSuccess", [String(smartFillStatus.count)])}
           </StatusMessage>
+          <p className="opt-hint">{t("options.connection.smartFillHint")}</p>
           {smartFillStatus.notice ? (
             <p className="opt-hint">{t("options.connection.smartFillNotice", [smartFillStatus.notice])}</p>
           ) : null}

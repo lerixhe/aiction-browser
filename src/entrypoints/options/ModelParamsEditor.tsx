@@ -27,12 +27,12 @@ export function ModelParamsEditor({
 
   const maxTokensDesc = [t("options.connection.paramUnlimited")]
   if (modelOutputLimit) {
-    maxTokensDesc.unshift(`max: ${modelOutputLimit.toLocaleString()}`)
+    maxTokensDesc.unshift(t("options.connection.paramSourceLimit", [modelOutputLimit.toLocaleString()]))
   }
 
   const contextSizeDesc = [t("options.connection.paramContextSizeDesc")]
   if (modelContextLimit) {
-    contextSizeDesc.push(`(max: ${modelContextLimit.toLocaleString()})`)
+    contextSizeDesc.push(t("options.connection.paramSourceLimit", [modelContextLimit.toLocaleString()]))
   }
 
   return (
@@ -60,6 +60,7 @@ export function ModelParamsEditor({
             value={modelParams.contextSize}
             min={1}
             max={modelContextLimit}
+            placeholder={t("options.connection.paramNoTruncate")}
             onValueChange={(value) => onParamChange("contextSize", value)}
           />
         </SettingRow>
