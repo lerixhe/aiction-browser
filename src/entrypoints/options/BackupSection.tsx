@@ -1,13 +1,11 @@
-import { useRef, useState, type CSSProperties } from "react"
+import { useRef, useState } from "react"
 
-import { getUserIcons, normalizeSettings, saveSettings, saveUserIcon } from "@/shared/storage"
 import { trackEvent } from "@/shared/analytics"
-import { useUiThemeName } from "@/shared/ui/theme"
-import { uiMotion, uiRadius, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
-import { createButtonStyle, createCardStyle, createStatusMessageStyle } from "@/shared/ui/styles"
 import { useI18n } from "@/shared/i18n/context"
+import { getUserIcons, normalizeSettings, saveSettings, saveUserIcon } from "@/shared/storage"
 import type { ExtensionSettings, UserIconData } from "@/shared/types"
 import { ConfirmDialog } from "@/entrypoints/options/ConfirmDialog"
+import { Button, FieldGroup, SectionCard, SettingRow, StatusMessage } from "./ui"
 
 interface BackupSectionProps {
   settings: ExtensionSettings
@@ -15,13 +13,11 @@ interface BackupSectionProps {
   onImportComplete: () => void
 }
 
+/** 备份与迁移：纯按钮操作（导出 / 导入），卡片不带保存条 */
 export function BackupSection({ settings, setSettings, onImportComplete }: BackupSectionProps) {
   const { t } = useI18n()
-  const themeName = useUiThemeName()
-  const theme = uiThemes[themeName]
 
   const [saving, setSaving] = useState(false)
-  const [pressedBtn, setPressedBtn] = useState<string | null>(null)
   const [backupStatus, setBackupStatus] = useState<{ success: boolean; message: string } | null>(null)
   const [pendingImportSettings, setPendingImportSettings] = useState<ExtensionSettings | null>(null)
   const [pendingImportUserIcons, setPendingImportUserIcons] = useState<Record<string, UserIconData> | null>(null)
@@ -48,7 +44,10 @@ export function BackupSection({ settings, setSettings, onImportComplete }: Backu
     URL.revokeObjectURL(url)
 
     setBackupStatus({ success: true, message: t("options.connection.configExported") })
-    void trackEvent("settings_exported", { provider_count: settings.providers.length, action_count: settings.actions.length })
+    void trackEvent("settings_exported", {
+      provider_count: settings.providers.length,
+      action_count: settings.actions.length
+    })
   }
 
   const handleImportClick = () => {
@@ -65,7 +64,9 @@ export function BackupSection({ settings, setSettings, onImportComplete }: Backu
 
     try {
       const content = await file.text()
-      const parsed = JSON.parse(content) as ExtensionSettings | { settings?: unknown; userIcons?: Record<string, UserIconData> }
+      const parsed = JSON.parse(content) as
+        | ExtensionSettings
+        | { settings?: unknown; userIcons?: Record<string, UserIconData> }
       const imported = normalizeSettings("settings" in parsed ? parsed.settings : parsed)
       const userIcons = "userIcons" in parsed ? parsed.userIcons ?? {} : {}
 
@@ -89,27 +90,30 @@ export function BackupSection({ settings, setSettings, onImportComplete }: Backu
 
     const saveUserIconsPromise = pendingImportUserIcons
       ? Promise.all(
-          Object.entries(pendingImportUserIcons).map(([iconName, data]) =>
-            saveUserIcon(iconName, data)
-          )
+          Object.entries(pendingImportUserIcons).map(([iconName, data]) => saveUserIcon(iconName, data))
         )
       : Promise.resolve()
 
-    void saveUserIconsPromise.then(() =>
-      saveSettings({
-        ...pendingImportSettings,
-        providers: pendingImportSettings.providers.map((provider) => ({
-          ...provider,
-          name: provider.name.trim(),
-          apiBaseUrl: provider.apiBaseUrl?.trim() || undefined,
-          apiKey: provider.apiKey.trim(),
-          model: provider.model.trim()
-        }))
-      })
-    )
+    void saveUserIconsPromise
+      .then(() =>
+        saveSettings({
+          ...pendingImportSettings,
+          providers: pendingImportSettings.providers.map((provider) => ({
+            ...provider,
+            name: provider.name.trim(),
+            apiBaseUrl: provider.apiBaseUrl?.trim() || undefined,
+            apiKey: provider.apiKey.trim(),
+            model: provider.model.trim()
+          }))
+        })
+      )
       .then(() => {
         setBackupStatus({ success: true, message: t("options.connection.configImported") })
-        void trackEvent("settings_imported", { provider_count: pendingImportSettings.providers.length, action_count: pendingImportSettings.actions.length, has_user_icons: Boolean(pendingImportUserIcons && Object.keys(pendingImportUserIcons).length > 0) })
+        void trackEvent("settings_imported", {
+          provider_count: pendingImportSettings.providers.length,
+          action_count: pendingImportSettings.actions.length,
+          has_user_icons: Boolean(pendingImportUserIcons && Object.keys(pendingImportUserIcons).length > 0)
+        })
         onImportComplete()
       })
       .catch((error: unknown) => {
@@ -123,113 +127,34 @@ export function BackupSection({ settings, setSettings, onImportComplete }: Backu
       })
   }
 
-  // --- Shared styles ---
-  const cardStyle: CSSProperties = {
-    ...createCardStyle(theme)
-  }
-
-  const primaryBtnStyle: CSSProperties = {
-    ...createButtonStyle(theme, "primary", { compact: true })
-  }
-
-  const insetCardStyle: CSSProperties = {
-    border: `1px solid ${theme.border.hairline}`,
-    borderRadius: uiRadius.md,
-    padding: uiSpace[16],
-    background: theme.bg.surfaceMuted
-  }
-
   return (
-    <section style={{ ...cardStyle }}>
-      <div style={{ marginBottom: uiSpace[20] }}>
-        <h2
-          style={{
-            margin: `0 0 ${uiSpace[4]}px`,
-            fontSize: uiTypography.fontSize.lg,
-            fontWeight: uiTypography.fontWeight.semibold,
-            letterSpacing: uiTypography.letterSpacing.tight
-          }}>
-          {t("options.backup.title")}
-        </h2>
-        <p style={{ margin: 0, color: theme.text.secondary, fontSize: uiTypography.fontSize.md }}>
-          {t("options.backup.desc")}
-        </p>
-      </div>
+    <>
+      <SectionCard title={t("options.backup.title")} description={t("options.backup.cardDesc")}>
+        <FieldGroup>
+          <SettingRow title={t("options.backup.exportTitle")} desc={t("options.backup.exportRowDesc")}>
+            <Button variant="primary" onClick={() => void handleExportSettings()}>
+              {t("options.backup.exportButton")}
+            </Button>
+          </SettingRow>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: uiSpace[16],
-          marginBottom: uiSpace[16]
-        }}>
-        <div
-          style={insetCardStyle}>
-          <h3
-            style={{
-              margin: `0 0 ${uiSpace[6]}px`,
-              fontSize: uiTypography.fontSize.md,
-              fontWeight: uiTypography.fontWeight.semibold
-            }}>
-            {t("options.backup.exportTitle")}
-          </h3>
-          <p style={{ margin: `0 0 ${uiSpace[14]}px`, color: theme.text.secondary, fontSize: uiTypography.fontSize.sm, lineHeight: 1.6 }}>
-            {t("options.backup.exportDesc")}
-          </p>
-          <button
-            type="button"
-            onClick={handleExportSettings}
-            onMouseDown={() => setPressedBtn("export-settings")}
-            onMouseUp={() => setPressedBtn(null)}
-            onMouseLeave={() => setPressedBtn(null)}
-            style={{
-              ...primaryBtnStyle,
-              transform: pressedBtn === "export-settings" ? "scale(0.96)" : "scale(1)"
-            }}>
-            {t("options.backup.exportButton")}
-          </button>
-        </div>
+          <SettingRow title={t("options.backup.importTitle")} desc={t("options.backup.importRowDesc")}>
+            <Button variant="secondary" disabled={saving} onClick={handleImportClick}>
+              {t("options.backup.importButton")}
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json,.json"
+              onChange={(event) => void handleImportFile(event)}
+              style={{ display: "none" }}
+            />
+          </SettingRow>
+        </FieldGroup>
 
-        <div
-          style={insetCardStyle}>
-          <h3
-            style={{
-              margin: `0 0 ${uiSpace[6]}px`,
-              fontSize: uiTypography.fontSize.md,
-              fontWeight: uiTypography.fontWeight.semibold
-            }}>
-            {t("options.backup.importTitle")}
-          </h3>
-          <p style={{ margin: `0 0 ${uiSpace[14]}px`, color: theme.text.secondary, fontSize: uiTypography.fontSize.sm, lineHeight: 1.6 }}>
-            {t("options.backup.importDesc")}
-          </p>
-          <button
-            type="button"
-            onClick={handleImportClick}
-            onMouseDown={() => setPressedBtn("import-settings")}
-            onMouseUp={() => setPressedBtn(null)}
-            onMouseLeave={() => setPressedBtn(null)}
-            style={{
-              ...createButtonStyle(theme, "secondary", { compact: true }),
-              transform: pressedBtn === "import-settings" ? "scale(0.96)" : "scale(1)"
-            }}>
-            {t("options.backup.importButton")}
-          </button>
-          <input ref={fileInputRef} type="file" accept="application/json,.json" onChange={(event) => void handleImportFile(event)} style={{ display: "none" }} />
-        </div>
-      </div>
-
-      {backupStatus ? (
-        <div
-          role="status"
-          aria-live="polite"
-          style={{
-            marginTop: uiSpace[16],
-            ...createStatusMessageStyle(theme, backupStatus.success ? "success" : "error")
-          }}>
-          {backupStatus.message}
-        </div>
-      ) : null}
+        {backupStatus ? (
+          <StatusMessage tone={backupStatus.success ? "success" : "error"}>{backupStatus.message}</StatusMessage>
+        ) : null}
+      </SectionCard>
 
       {pendingImportSettings ? (
         <ConfirmDialog
@@ -239,9 +164,8 @@ export function BackupSection({ settings, setSettings, onImportComplete }: Backu
           cancelLabel={t("options.connection.cancel")}
           onConfirm={confirmImportSettings}
           onCancel={() => setPendingImportSettings(null)}
-          themeName={themeName}
         />
       ) : null}
-    </section>
+    </>
   )
 }

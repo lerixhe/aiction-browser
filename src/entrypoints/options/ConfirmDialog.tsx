@@ -1,7 +1,6 @@
-import { type CSSProperties, useEffect } from "react"
-import type { UiThemeName } from "@/shared/ui/tokens"
-import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography, uiLayer } from "@/shared/ui/tokens"
-import { createButtonStyle, createCardStyle, createOverlayStyle } from "@/shared/ui/styles"
+import { useEffect, useRef } from "react"
+
+import { Button } from "./ui"
 
 interface ConfirmDialogProps {
   title: string
@@ -10,98 +9,88 @@ interface ConfirmDialogProps {
   cancelLabel: string
   onConfirm: () => void
   onCancel: () => void
-  themeName: UiThemeName
+  /** 确认按钮的语义色：危险操作（默认）或主色 */
+  tone?: "danger" | "primary"
 }
 
-export function ConfirmDialog({ title, message, confirmLabel, cancelLabel, onConfirm, onCancel, themeName }: ConfirmDialogProps) {
-  const theme = uiThemes[themeName]
-  const titleId = "confirm-dialog-title"
-  const descriptionId = "confirm-dialog-description"
+/**
+ * 二次确认弹层：打开时焦点落到「取消」，Tab 在弹层内循环（focus trap），Esc 取消。
+ */
+export function ConfirmDialog({
+  title,
+  message,
+  confirmLabel,
+  cancelLabel,
+  onConfirm,
+  onCancel,
+  tone = "danger"
+}: ConfirmDialogProps) {
+  const titleId = "opt-confirm-title"
+  const descriptionId = "opt-confirm-description"
+
+  const cardRef = useRef<HTMLDivElement>(null)
+  const cancelRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
+    cancelRef.current?.focus()
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault()
         onCancel()
+        return
+      }
+      if (event.key !== "Tab") {
+        return
+      }
+      const nodes = cardRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+      if (!nodes || nodes.length === 0) {
+        return
+      }
+      const list = Array.from(nodes)
+      const first = list[0]
+      const last = list[list.length - 1]
+      const active = document.activeElement
+      if (event.shiftKey && (active === first || !cardRef.current?.contains(active))) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault()
+        first.focus()
       }
     }
+
     document.addEventListener("keydown", handleKeyDown)
     return () => document.removeEventListener("keydown", handleKeyDown)
   }, [onCancel])
 
-  const overlayStyle: CSSProperties = {
-    ...createOverlayStyle(theme),
-    zIndex: uiLayer.overlay,
-    animation: `fadeIn ${uiMotion.durationFast} ${uiMotion.easingStandard}`
-  }
-
-  const cardStyle: CSSProperties = {
-    ...createCardStyle(theme),
-    maxWidth: 400,
-    width: "calc(100% - 48px)",
-    padding: `${uiSpace[28]}px`,
-    borderRadius: uiRadius.lg,
-    boxShadow: uiShadow.xl,
-    animation: `slideUp ${uiMotion.durationNormal} ${uiMotion.easingSpring}`
-  }
-
-  const cancelBtnStyle = createButtonStyle(theme, "secondary")
-  const confirmBtnStyle = createButtonStyle(theme, "danger")
-
   return (
-    <div style={overlayStyle} onClick={onCancel}>
+    <div className="opt-modal-overlay" onClick={onCancel}>
       <div
+        ref={cardRef}
+        className="opt-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
-        style={cardStyle}
-        onClick={(e) => e.stopPropagation()}>
-        <h2
-          id={titleId}
-          style={{
-            margin: 0,
-            fontSize: uiTypography.fontSize.xxl,
-            fontWeight: uiTypography.fontWeight.bold,
-            letterSpacing: uiTypography.letterSpacing.tight,
-            color: theme.text.primary
-          }}>
+        onClick={(event) => event.stopPropagation()}>
+        <h2 id={titleId} className="opt-dialog-title">
           {title}
         </h2>
-        <p
-          id={descriptionId}
-          style={{
-            margin: `${uiSpace[8]}px 0 0`,
-            fontSize: uiTypography.fontSize.md,
-            color: theme.text.secondary,
-            lineHeight: 1.55
-          }}>
+        <p id={descriptionId} className="opt-dialog-message">
           {message}
         </p>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: uiSpace[12],
-            marginTop: uiSpace[24]
-          }}>
-          <button style={cancelBtnStyle} onClick={onCancel}>
+        <div className="opt-dialog-actions">
+          <button ref={cancelRef} type="button" className="opt-btn opt-btn--secondary" onClick={onCancel}>
             {cancelLabel}
           </button>
-          <button style={confirmBtnStyle} onClick={onConfirm}>
+          <Button variant={tone} onClick={onConfirm}>
             {confirmLabel}
-          </button>
+          </Button>
         </div>
       </div>
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0 }
-          to { opacity: 1 }
-        }
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(12px) scale(0.97) }
-          to { opacity: 1; transform: translateY(0) scale(1) }
-        }
-      `}</style>
     </div>
   )
 }

@@ -1,19 +1,18 @@
-import type { CSSProperties } from "react"
-
-import { ToggleSwitch } from "@/shared/ui/toggle-switch"
-import { saveSettings } from "@/shared/storage"
 import { trackEvent } from "@/shared/analytics"
-import { useUiThemeName } from "@/shared/ui/theme"
-import { uiRadius, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
-import { createCardStyle } from "@/shared/ui/styles"
 import { useI18n } from "@/shared/i18n/context"
+import { saveSettings } from "@/shared/storage"
+import { ToggleSwitch } from "@/shared/ui/toggle-switch"
+import { uiThemes } from "@/shared/ui/tokens"
+import { useUiThemeName } from "@/shared/ui/theme"
 import type { ExtensionSettings } from "@/shared/types"
+import { FieldGroup, SectionCard, SettingRow } from "./ui"
 
 interface AboutSectionProps {
   settings: ExtensionSettings
   saveSettingsNow: (updater: (current: ExtensionSettings) => ExtensionSettings) => void
 }
 
+/** 关于：版本信息 + 社区 + 遥测开关（唯一即时项），卡片不带保存条 */
 export function AboutSection({ settings, saveSettingsNow }: AboutSectionProps) {
   const { t } = useI18n()
   const themeName = useUiThemeName()
@@ -45,170 +44,49 @@ export function AboutSection({ settings, saveSettingsNow }: AboutSectionProps) {
     void trackEvent("telemetry_toggled", { enabled: true, source: "options" })
   }
 
-  const cardStyle: CSSProperties = {
-    ...createCardStyle(theme)
-  }
+  const features = [
+    t("options.about.feature1"),
+    t("options.about.feature2"),
+    t("options.about.feature3"),
+    t("options.about.feature4"),
+    t("options.about.feature5")
+  ]
 
   return (
-    <>
-      <section style={{ ...cardStyle, marginBottom: uiSpace[16] }}>
-        <h2
-          style={{
-            margin: `0 0 ${uiSpace[4]}px`,
-            fontSize: uiTypography.fontSize.lg,
-            fontWeight: uiTypography.fontWeight.semibold,
-            letterSpacing: uiTypography.letterSpacing.tight
-          }}>
-          {t("options.about.title")}
-        </h2>
-        <p
-          style={{
-            margin: `0 0 ${uiSpace[16]}px`,
-            color: theme.text.secondary,
-            fontSize: uiTypography.fontSize.md,
-            lineHeight: 1.7
-          }}>
-          {t("options.about.description")}
-        </p>
+    <SectionCard title={t("options.about.title")} description={t("options.about.description")}>
+      <FieldGroup>
+        <SettingRow title="AIction" desc={t("options.about.tagline")}>
+          <span style={{ fontSize: 12, color: theme.text.secondary }}>
+            v{chrome.runtime.getManifest().version}
+          </span>
+        </SettingRow>
 
-        <div
-          style={{
-            marginTop: uiSpace[8]
-          }}>
-          <div style={{ fontWeight: uiTypography.fontWeight.semibold, fontSize: uiTypography.fontSize.md, color: theme.text.primary, marginBottom: uiSpace[8] }}>
-            {t("options.about.featuresTitle")}
-          </div>
-          <div
-            style={{
-              fontSize: uiTypography.fontSize.md,
-              color: theme.text.secondary,
-              lineHeight: 1.7
-            }}>
-            <div style={{ display: "flex", alignItems: "baseline", marginBottom: uiSpace[4] }}>
-              <span style={{ color: theme.brand?.primary || theme.accent?.primary || "#0D9488", marginRight: uiSpace[8] }}>·</span>
-              {t("options.about.feature1")}
-            </div>
-            <div style={{ display: "flex", alignItems: "baseline", marginBottom: uiSpace[4] }}>
-              <span style={{ color: theme.brand?.primary || theme.accent?.primary || "#0D9488", marginRight: uiSpace[8] }}>·</span>
-              {t("options.about.feature2")}
-            </div>
-            <div style={{ display: "flex", alignItems: "baseline", marginBottom: uiSpace[4] }}>
-              <span style={{ color: theme.brand?.primary || theme.accent?.primary || "#0D9488", marginRight: uiSpace[8] }}>·</span>
-              {t("options.about.feature3")}
-            </div>
-            <div style={{ display: "flex", alignItems: "baseline", marginBottom: uiSpace[4] }}>
-              <span style={{ color: theme.brand?.primary || theme.accent?.primary || "#0D9488", marginRight: uiSpace[8] }}>·</span>
-              {t("options.about.feature4")}
-            </div>
-            <div style={{ display: "flex", alignItems: "baseline" }}>
-              <span style={{ color: theme.brand?.primary || theme.accent?.primary || "#0D9488", marginRight: uiSpace[8] }}>·</span>
-              {t("options.about.feature5")}
-            </div>
-          </div>
-        </div>
+        <SettingRow title={t("options.about.communityTitle")} desc={t("options.about.communityDesc")}>
+          <span style={{ fontSize: 12, color: theme.text.secondary }}>{t("options.about.emailLabel")}</span>
+          <a
+            className="opt-btn opt-btn--secondary opt-btn--sm"
+            href="https://github.com/lerixhe/aiction-browser"
+            target="_blank"
+            rel="noopener noreferrer">
+            {t("options.about.viewRepo")}
+          </a>
+        </SettingRow>
 
-        <div
-          style={{
-            marginTop: uiSpace[16],
-            fontSize: uiTypography.fontSize.md,
-            color: theme.text.secondary,
-            lineHeight: 1.7
-          }}>
-          <div style={{ fontWeight: uiTypography.fontWeight.semibold, color: theme.text.primary, marginBottom: uiSpace[4] }}>
-            {t("options.about.communityTitle")}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", marginBottom: uiSpace[4] }}>
-            <span style={{ color: theme.brand?.primary || theme.accent?.primary || "#0D9488", marginRight: uiSpace[8] }}>·</span>
-            <span>{t("options.about.githubLabel")}: </span>
-            <a
-              href="https://github.com/lerixhe/aiction-browser"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                color: theme.accent.primary,
-                textDecoration: "none",
-                marginLeft: uiSpace[4]
-              }}
-            >
-              github.com/lerixhe/aiction-browser
-            </a>
-          </div>
-          <div style={{ display: "flex", alignItems: "baseline" }}>
-            <span style={{ color: theme.brand?.primary || theme.accent?.primary || "#0D9488", marginRight: uiSpace[8] }}>·</span>
-            {t("options.about.emailLabel")}
-          </div>
-        </div>
-      </section>
+        <SettingRow title={t("options.about.featuresTitle")} width="wide">
+          <ul className="opt-bullets">
+            {features.map((feature) => (
+              <li key={feature}>{feature}</li>
+            ))}
+          </ul>
+        </SettingRow>
 
-      <section style={{ ...cardStyle, marginBottom: uiSpace[16] }}>
-        <h2
-          style={{
-            margin: `0 0 ${uiSpace[16]}px`,
-            fontSize: uiTypography.fontSize.lg,
-            fontWeight: uiTypography.fontWeight.semibold,
-            letterSpacing: uiTypography.letterSpacing.tight
-          }}>
-          {t("options.about.versionTitle")}
-        </h2>
-        <div
-          style={{
-            fontSize: uiTypography.fontSize.md,
-            color: theme.text.secondary,
-            lineHeight: 1.7
-          }}>
-          <div>{t("options.about.versionPrefix", [chrome.runtime.getManifest().version])}</div>
-          <div>{t("options.about.license")}</div>
-        </div>
-      </section>
-
-      <section style={{ ...cardStyle, marginBottom: uiSpace[16] }}>
-        <h2
-          style={{
-            margin: `0 0 ${uiSpace[4]}px`,
-            fontSize: uiTypography.fontSize.lg,
-            fontWeight: uiTypography.fontWeight.semibold,
-            letterSpacing: uiTypography.letterSpacing.tight
-          }}>
-          {t("options.about.telemetryTitle")}
-        </h2>
-        <p
-          style={{
-            margin: `0 0 ${uiSpace[16]}px`,
-            color: theme.text.secondary,
-            fontSize: uiTypography.fontSize.md,
-            lineHeight: 1.7
-          }}>
-          {t("options.about.telemetryDesc")}
-        </p>
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: `${uiSpace[14]}px ${uiSpace[16]}px`,
-            border: `1px solid ${theme.border.hairline}`,
-            borderRadius: uiRadius.md,
-            background: theme.bg.surfaceMuted
-          }}>
-          <div>
-            <div
-              style={{
-                fontSize: uiTypography.fontSize.md,
-                fontWeight: uiTypography.fontWeight.semibold,
-                color: theme.text.primary,
-                marginBottom: uiSpace[2]
-              }}>
-              {t("options.about.telemetryToggle")}
-            </div>
-            <div
-              style={{
-                fontSize: uiTypography.fontSize.sm,
-                color: theme.text.secondary
-              }}>
-              {settings.telemetryEnabled ? t("options.about.telemetryEnabled") : t("options.about.telemetryDisabled")}
-            </div>
-          </div>
+        <SettingRow
+          title={t("options.about.telemetryTitle")}
+          desc={t("options.about.telemetryDesc")}
+          width="narrow">
+          <span style={{ fontSize: 12, color: theme.text.secondary }}>
+            {settings.telemetryEnabled ? t("options.about.telemetryEnabled") : t("options.about.telemetryDisabled")}
+          </span>
           <ToggleSwitch
             checked={settings.telemetryEnabled}
             onChange={() => {
@@ -216,8 +94,8 @@ export function AboutSection({ settings, saveSettingsNow }: AboutSectionProps) {
             }}
             theme={theme}
           />
-        </div>
-      </section>
-    </>
+        </SettingRow>
+      </FieldGroup>
+    </SectionCard>
   )
 }

@@ -1,28 +1,38 @@
-import { useRef, useState } from "react"
-import { trackEvent } from "@/shared/analytics"
-import { uiMotion, uiRadius, uiSpace, uiTypography, type UiTheme } from "@/shared/ui/tokens"
-import { createButtonStyle, createInputStyle, createStatusMessageStyle } from "@/shared/ui/styles"
-import type { ModelsDevModel } from "@/shared/models-dev"
-import { useI18n } from "@/shared/i18n/context"
+import { useRef } from "react"
 
-function SparkleIcon({ size, color }: { size: number; color: string }) {
+import { trackEvent } from "@/shared/analytics"
+import { useI18n } from "@/shared/i18n/context"
+import type { ModelsDevModel } from "@/shared/models-dev"
+import { Button, SelectField, StatusMessage, cx } from "./ui"
+
+function SparkleIcon() {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M8 1.5L9.3 6.7L14.5 8L9.3 9.3L8 14.5L6.7 9.3L1.5 8L6.7 6.7L8 1.5Z" stroke={color} strokeWidth={1.1} strokeLinejoin="round" />
+    <svg width={14} height={14} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M8 1.5L9.3 6.7L14.5 8L9.3 9.3L8 14.5L6.7 9.3L1.5 8L6.7 6.7L8 1.5Z"
+        stroke="currentColor"
+        strokeWidth={1.1}
+        strokeLinejoin="round"
+      />
     </svg>
   )
 }
 
-function RefreshIcon({ size, color }: { size: number; color: string }) {
+function RefreshIcon() {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M13.5 8A5.5 5.5 0 1 1 8 2.5M13.5 2.5V6.5H9.5" stroke={color} strokeWidth={1.2} strokeLinecap="round" strokeLinejoin="round" />
+    <svg width={14} height={14} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M13.5 8A5.5 5.5 0 1 1 8 2.5M13.5 2.5V6.5H9.5"
+        stroke="currentColor"
+        strokeWidth={1.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   )
 }
 
 interface ModelPickerProps {
-  theme: UiTheme
   currentModel: string
   hasModelsDevId: boolean
   devModels: ModelsDevModel[]
@@ -30,7 +40,6 @@ interface ModelPickerProps {
   fetchingModels: boolean
   fetchError: string | null
   modelSearchQuery: string
-  focusedField: string | null
   smartFilling: boolean
   smartFillStatus: { count: number; notice?: string | null } | null
   onModelChange: (model: string) => void
@@ -38,12 +47,10 @@ interface ModelPickerProps {
   onSmartFillParams: () => void
   onClearFetchedModels: () => void
   onSearchQueryChange: (query: string) => void
-  onFocusField: (field: string) => void
-  onBlurField: () => void
 }
 
+/** 模型选择控件（放在「基础」组的 Model 行里，不含标题与说明） */
 export function ModelPicker({
-  theme,
   currentModel,
   hasModelsDevId,
   devModels,
@@ -51,28 +58,19 @@ export function ModelPicker({
   fetchingModels,
   fetchError,
   modelSearchQuery,
-  focusedField,
   smartFilling,
   smartFillStatus,
   onModelChange,
   onFetchModels,
   onSmartFillParams,
   onClearFetchedModels,
-  onSearchQueryChange,
-  onFocusField,
-  onBlurField
+  onSearchQueryChange
 }: ModelPickerProps) {
   const { t } = useI18n()
 
-  const secondaryBtnStyle = createButtonStyle(theme, "secondary", { compact: true })
-  const createInput = (fieldName: string): React.CSSProperties => createInputStyle(theme, focusedField === fieldName)
-
-  const hasDevModels = devModels.length > 0
   const query = modelSearchQuery.trim().toLowerCase()
   const filtered = query
-    ? devModels.filter(
-        (m) => m.id.toLowerCase().includes(query) || m.name.toLowerCase().includes(query)
-      )
+    ? devModels.filter((model) => model.id.toLowerCase().includes(query) || model.name.toLowerCase().includes(query))
     : devModels
 
   /** 手输模型名时记录聚焦前的值：blur 时真的变了才算一次「选择」（避免逐字上报） */
@@ -94,256 +92,119 @@ export function ModelPicker({
     })
   }
 
-  return (
-    <div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: uiSpace[6]
-        }}>
-        <label htmlFor="provider-model" style={{ marginBottom: 0 }}>
-          {t("options.connection.model")}
-        </label>
-        <div style={{ display: "flex", gap: uiSpace[8], alignItems: "center" }}>
-          {!hasModelsDevId ? (
-            <button
-              type="button"
-              onClick={onFetchModels}
-              disabled={fetchingModels}
-              style={{
-                ...secondaryBtnStyle,
-                display: "flex",
-                alignItems: "center",
-                gap: uiSpace[4],
-                opacity: fetchingModels ? 0.5 : 1,
-                cursor: fetchingModels ? "not-allowed" : "pointer"
-              }}>
-              <RefreshIcon size={14} color={theme.text.primary} />
-              {fetchingModels ? t("options.connection.fetching") : t("options.connection.fetchModels")}
-            </button>
-          ) : null}
-          {/* 智能填充参数：永远存在，点击后提示「成功补充 X 个」 */}
-          <button
-            type="button"
-            onClick={onSmartFillParams}
-            disabled={smartFilling}
-            style={{
-              ...secondaryBtnStyle,
-              display: "flex",
-              alignItems: "center",
-              gap: uiSpace[4],
-              opacity: smartFilling ? 0.5 : 1,
-              cursor: smartFilling ? "not-allowed" : "pointer"
-            }}>
-            <SparkleIcon size={14} color={theme.text.primary} />
-            {smartFilling ? t("options.connection.smartFilling") : t("options.connection.smartFillParams")}
-          </button>
-        </div>
-      </div>
+  const useFetchedSelect = !hasModelsDevId && fetchedModels.length > 0
 
-      {!hasModelsDevId && fetchedModels.length > 0 ? (
-        <div style={{ display: "flex", gap: uiSpace[8] }}>
-          <select
+  return (
+    <div className="opt-stack">
+      <div style={{ display: "flex", gap: 8, width: "100%" }}>
+        {useFetchedSelect ? (
+          <SelectField
             id="provider-model"
             value={currentModel}
-            onChange={(e) => {
-              onModelChange(e.target.value)
-              reportModelSelected("fetched", e.target.value)
+            ariaLabel={t("options.connection.model")}
+            onValueChange={(value) => {
+              onModelChange(value)
+              reportModelSelected("fetched", value)
             }}
-            style={{ ...createInput("model"), flex: 1, cursor: "pointer" }}>
-            {fetchedModels.map((id) => (
-              <option key={id} value={id}>
-                {id}
-              </option>
-            ))}
-          </select>
-          <button type="button" onClick={onClearFetchedModels} style={secondaryBtnStyle}>
-            {t("options.connection.manualInput")}
-          </button>
-        </div>
-      ) : (
-        <>
+            options={fetchedModels.map((id) => ({ value: id, label: id }))}
+          />
+        ) : (
           <input
             id="provider-model"
+            className="opt-input opt-mono"
             value={currentModel}
+            placeholder="model-name"
             onFocus={() => {
               manualEntryStartRef.current = currentModel
-              onFocusField("model")
             }}
             onBlur={() => {
               const startValue = manualEntryStartRef.current
               manualEntryStartRef.current = null
-              onBlurField()
               const next = currentModel.trim()
               if (startValue !== null && next && next !== startValue.trim()) {
                 reportModelSelected("manual")
               }
             }}
-            onChange={(e) => onModelChange(e.target.value)}
-            placeholder="model-name"
-            style={createInput("model")}
+            onChange={(event) => onModelChange(event.target.value)}
           />
+        )}
 
-          {hasDevModels ? (
-            <div
-              style={{
-                marginTop: uiSpace[8],
-                border: `1px solid ${theme.border.hairline}`,
-                borderRadius: uiRadius.md,
-                overflow: "hidden",
-                background: theme.bg.surface
-              }}>
-              <input
-                type="text"
-                value={modelSearchQuery}
-                onChange={(e) => onSearchQueryChange(e.target.value)}
-                placeholder={t("options.connection.modelSearchPlaceholder")}
-                style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  padding: `${uiSpace[8]}px ${uiSpace[10]}px`,
-                  fontSize: uiTypography.fontSize.xs,
-                  border: "none",
-                  borderBottom: `1px solid ${theme.border.hairline}`,
-                  background: theme.bg.surfaceMuted,
-                  color: theme.text.primary,
-                  outline: "none",
-                  fontFamily: uiTypography.fontFamily
-                }}
-              />
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: uiSpace[2],
-                  maxHeight: 200,
-                  overflowY: "auto",
-                  padding: `${uiSpace[4]}px 0`
-                }}>
-                {filtered.map((m) => {
-                  const isSelected = currentModel === m.id
-                  return (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => {
-                        onModelChange(m.id)
-                        reportModelSelected("models_dev", m.id)
-                      }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: uiSpace[8],
-                        padding: `${uiSpace[6]}px ${uiSpace[10]}px`,
-                        margin: `0 ${uiSpace[4]}px`,
-                        border: "none",
-                        borderRadius: uiRadius.sm,
-                        background: isSelected ? `${theme.accent.primary}14` : "transparent",
-                        color: isSelected ? theme.accent.primary : theme.text.primary,
-                        fontSize: uiTypography.fontSize.xs,
-                        cursor: "pointer",
-                        outline: "none",
-                        fontFamily: uiTypography.fontFamily,
-                        textAlign: "left",
-                        transition: `all ${uiMotion.durationFast} ${uiMotion.easingStandard}`,
-                        lineHeight: 1.5
-                      }}>
-                      <span
-                        style={{
-                          flex: 1,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap"
-                        }}>
-                        {m.name}
-                      </span>
-                      {m.reasoning ? (
-                        <span
-                          style={{
-                            padding: `1px ${uiSpace[4]}px`,
-                            borderRadius: uiRadius.pill,
-                            background: `${theme.accent.primary}18`,
-                            color: theme.accent.primary,
-                            fontSize: 10,
-                            fontWeight: uiTypography.fontWeight.medium,
-                            flexShrink: 0
-                          }}>
-                          reasoning
-                        </span>
-                      ) : null}
-                      {m.tool_call ? (
-                        <span
-                          style={{
-                            padding: `1px ${uiSpace[4]}px`,
-                            borderRadius: uiRadius.pill,
-                            background: `${theme.state.success ?? "#22c55e"}18`,
-                            color: theme.state.success ?? "#22c55e",
-                            fontSize: 10,
-                            fontWeight: uiTypography.fontWeight.medium,
-                            flexShrink: 0
-                          }}>
-                          tools
-                        </span>
-                      ) : null}
-                      {m.attachment ? (
-                        <span
-                          style={{
-                            padding: `1px ${uiSpace[4]}px`,
-                            borderRadius: uiRadius.pill,
-                            background: `${theme.state.warning ?? "#f59e0b"}18`,
-                            color: theme.state.warning ?? "#f59e0b",
-                            fontSize: 10,
-                            fontWeight: uiTypography.fontWeight.medium,
-                            flexShrink: 0
-                          }}>
-                          attach
-                        </span>
-                      ) : null}
-                    </button>
-                  )
-                })}
-                {filtered.length === 0 ? (
-                  <div
-                    style={{
-                      textAlign: "center",
-                      padding: `${uiSpace[16]}px ${uiSpace[12]}px`,
-                      color: theme.text.secondary,
-                      fontSize: uiTypography.fontSize.xs
-                    }}>
-                    {t("options.connection.noModelsMatching", [modelSearchQuery])}
-                  </div>
-                ) : null}
+        {useFetchedSelect ? (
+          <Button size="sm" variant="secondary" onClick={onClearFetchedModels}>
+            {t("options.connection.manualInput")}
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={<RefreshIcon />}
+            disabled={fetchingModels || hasModelsDevId}
+            onClick={onFetchModels}>
+            {fetchingModels ? t("options.connection.fetching") : t("options.connection.fetchModels")}
+          </Button>
+        )}
+
+        {/* 智能填充参数：永远存在，点击后提示「成功补充 X 个」 */}
+        <Button
+          size="sm"
+          variant="secondary"
+          icon={<SparkleIcon />}
+          disabled={smartFilling}
+          onClick={onSmartFillParams}>
+          {smartFilling ? t("options.connection.smartFilling") : t("options.connection.smartFillParams")}
+        </Button>
+      </div>
+
+      {!useFetchedSelect && devModels.length > 0 ? (
+        <div className="opt-model-list">
+          <input
+            type="text"
+            className="opt-input opt-input--sm"
+            value={modelSearchQuery}
+            placeholder={t("options.connection.modelSearchPlaceholder")}
+            aria-label={t("options.connection.modelSearchPlaceholder")}
+            onChange={(event) => onSearchQueryChange(event.target.value)}
+          />
+          <div className="opt-model-list-body">
+            {filtered.map((model) => {
+              const isSelected = currentModel === model.id
+              return (
+                <button
+                  key={model.id}
+                  type="button"
+                  className={cx("opt-model-option", isSelected && "opt-model-option--selected")}
+                  aria-pressed={isSelected}
+                  onClick={() => {
+                    onModelChange(model.id)
+                    reportModelSelected("models_dev", model.id)
+                  }}>
+                  <span className="opt-model-option-name">{model.name}</span>
+                  {model.reasoning ? <span className="opt-badge opt-badge--accent">reasoning</span> : null}
+                  {model.tool_call ? <span className="opt-badge opt-badge--success">tools</span> : null}
+                  {model.attachment ? <span className="opt-badge opt-badge--warning">attach</span> : null}
+                </button>
+              )
+            })}
+            {filtered.length === 0 ? (
+              <div className="opt-model-list-empty">
+                {t("options.connection.noModelsMatching", [modelSearchQuery])}
               </div>
-            </div>
-          ) : null}
-        </>
-      )}
-
-      {fetchError ? (
-        <div
-          role="status"
-          aria-live="polite"
-          style={{ marginTop: uiSpace[8], ...createStatusMessageStyle(theme, "error") }}>
-          {fetchError}
+            ) : null}
+          </div>
         </div>
       ) : null}
 
+      {fetchError ? <StatusMessage tone="error">{fetchError}</StatusMessage> : null}
+
       {smartFillStatus ? (
-        <div style={{ marginTop: uiSpace[8], display: "flex", flexDirection: "column", gap: uiSpace[4] }}>
-          <div
-            role="status"
-            aria-live="polite"
-            style={{ ...createStatusMessageStyle(theme, "success"), fontSize: uiTypography.fontSize.xs }}>
+        <>
+          <StatusMessage tone="success">
             {t("options.connection.smartFillSuccess", [String(smartFillStatus.count)])}
-          </div>
+          </StatusMessage>
           {smartFillStatus.notice ? (
-            <div style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary }}>
-              {t("options.connection.smartFillNotice", [smartFillStatus.notice])}
-            </div>
+            <p className="opt-hint">{t("options.connection.smartFillNotice", [smartFillStatus.notice])}</p>
           ) : null}
-        </div>
+        </>
       ) : null}
     </div>
   )

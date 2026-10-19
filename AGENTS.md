@@ -20,6 +20,7 @@ Chrome extension (MV3) built with WXT + React + TypeScript. Users select text on
 
 ## Workflow Rules
 - **代码修改后必须验证**：每次修改代码后，必须主动运行 `npm run typecheck` 和 `npm run build`，确保类型正确且构建成功。不要等待用户手动执行。
+- **设置页 UI 必读规范**：改动 `src/entrypoints/options/` 下的 UI 前先读 `docs/OPTIONS_UI.md`；新增设置项按该文档 §7 检查清单执行（即时/草稿归属、行式布局、i18n、埋点同步）。
 - **埋点必须登记**：新增 / 修改 / 删除 PostHog 埋点时，必须同步更新 `docs/ANALYTICS.md`（§2 事件清单 + §7 变更记录）；事件名与属性需遵守该文档 §3 的属性规范（禁止上报自由文本），并检查是否需同步 `docs/PRIVACY_POLICY.md` 与 `options.about.telemetryDesc` 文案。埋点上报统一走 `src/shared/analytics.ts`，不要在业务代码里直接请求 PostHog。
 
 ## 开发经验教训
@@ -102,8 +103,11 @@ console.log(sf.parseDiagnostics)
 ## Entry Points (WXT file-based routing)
 - `src/entrypoints/background.ts`: Background Service Worker (uses `defineBackground()`).
 - `src/entrypoints/content/index.tsx`: Content Script UI (uses `defineContentScript()` + `createShadowRootUi()`).
-- `src/entrypoints/options/`: Options Page (HTML entry + React component). Main components:
-  - `OptionsPage.tsx`: Main options page layout
+- `src/entrypoints/options/`: Options Page (HTML entry + React component). **UI 按 `docs/OPTIONS_UI.md` 定稿规范实现**（行式布局、即时/草稿判定、卡片级保存条）。Main components:
+  - `OptionsPage.tsx`: Main options page layout（`PageShell` 骨架 + hash 深链 + 分区路由）
+  - `ui/`: 设置页组件层 —— `tokens.ts`（尺度）、`css.ts`（页面级 CSS，`opt-` 前缀，仅在 `PageShell` 注入一次）、`primitives.tsx`（Button/控件/结构件）、`shell.tsx`（`SettingRow`/`SectionCard`/`SaveBar`/`PageShell`）
+  - `hooks/draft.ts`: `useDraftState`（单值草稿）/ `useDraftItemMap`（按条目 id 保留的草稿 + 未保存点）/ `useSaveShortcut`（⌘S）
+  - `QuickActionsCard.tsx` / `CustomActionsCard.tsx`: AI 动作分区的两张卡（`ActionsSection.tsx` 现在只是组合件）
   - `ProviderEditor.tsx`: AI provider configuration editor
   - `ProviderList.tsx`: List of configured providers
   - `ProviderSelectModal.tsx`: Modal for selecting providers

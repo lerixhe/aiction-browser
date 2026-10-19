@@ -1,182 +1,121 @@
-import { uiSpace, uiTypography, type UiTheme } from "@/shared/ui/tokens"
-import { createFieldLabelStyle, createInputStyle } from "@/shared/ui/styles"
-import type { ModelParams } from "@/shared/types"
-import type { ModelParamSupport } from "@/shared/models-dev"
 import { useI18n } from "@/shared/i18n/context"
+import type { ModelParamSupport } from "@/shared/models-dev"
+import type { ModelParams } from "@/shared/types"
+import { FieldGroup, NumberField, SelectField, SettingRow } from "./ui"
 
 interface ModelParamsEditorProps {
-  theme: UiTheme
   modelParams: ModelParams
   paramSupport: ModelParamSupport
+  /** 数据源给出的模型上限（仅作提示与 max 约束） */
   modelOutputLimit?: number
   modelContextLimit?: number
-  focusedField: string | null
   onParamChange: (key: keyof ModelParams, value: ModelParams[keyof ModelParams]) => void
-  onFocusField: (field: string) => void
-  onBlurField: () => void
 }
 
-type ParamEntry =
-  | { kind: "number"; key: "maxTokens" | "contextSize"; label: string; desc: string; min: number; max?: number }
-  | { kind: "triState"; key: "reasoning"; label: string; desc: string }
-  | { kind: "effort"; key: "reasoningEffort"; label: string; desc: string }
-
+/**
+ * 模型参数：行式布局，全部属于草稿字段（含下拉 —— 见 docs/OPTIONS_UI.md §2.3 细则 1）。
+ * 未填充 = 该参数不随请求发送。
+ */
 export function ModelParamsEditor({
-  theme,
   modelParams,
   paramSupport,
   modelOutputLimit,
   modelContextLimit,
-  focusedField,
-  onParamChange,
-  onFocusField,
-  onBlurField
+  onParamChange
 }: ModelParamsEditorProps) {
   const { t } = useI18n()
 
-  const fieldLabelStyle = createFieldLabelStyle(theme)
-  const createInput = (fieldName: string) => createInputStyle(theme, focusedField === fieldName)
+  const maxTokensDesc = [t("options.connection.paramUnlimited")]
+  if (modelOutputLimit) {
+    maxTokensDesc.unshift(`max: ${modelOutputLimit.toLocaleString()}`)
+  }
 
-  const unsupportedLimitHint = modelOutputLimit
-    ? `(max: ${modelOutputLimit.toLocaleString()}, ${t("options.connection.paramUnlimited")})`
-    : `(${t("options.connection.paramUnlimited")})`
-  const unsupportedContextHint = modelContextLimit
-    ? `(max: ${modelContextLimit.toLocaleString()})`
-    : ""
-
-  const allParams: ParamEntry[] = [
-    {
-      kind: "number",
-      key: "maxTokens",
-      label: "Max Tokens",
-      desc: `${t("options.connection.paramMaxTokens")} ${unsupportedLimitHint}`,
-      min: 1,
-      max: modelOutputLimit
-    },
-    {
-      kind: "number",
-      key: "contextSize",
-      label: "Context Size",
-      desc: `${t("options.connection.paramContextSizeDesc")} ${unsupportedContextHint}`,
-      min: 1,
-      max: modelContextLimit
-    },
-    {
-      kind: "triState",
-      key: "reasoning",
-      label: "Reasoning",
-      desc: t("options.connection.paramReasoningDesc")
-    },
-    {
-      kind: "effort",
-      key: "reasoningEffort",
-      label: "Reasoning Effort",
-      desc: t("options.connection.paramReasoningEffortDesc")
-    }
-  ]
-
-  const supportedParams = allParams.filter((param) => paramSupport[param.key as keyof ModelParamSupport])
+  const contextSizeDesc = [t("options.connection.paramContextSizeDesc")]
+  if (modelContextLimit) {
+    contextSizeDesc.push(`(max: ${modelContextLimit.toLocaleString()})`)
+  }
 
   return (
-    <div style={{ borderTop: `0.5px solid ${theme.border.hairline}`, paddingTop: uiSpace[20], marginTop: uiSpace[4] }}>
-      <h3
-        style={{
-          margin: `0 0 ${uiSpace[4]}px`,
-          fontSize: uiTypography.fontSize.md,
-          fontWeight: uiTypography.fontWeight.semibold,
-          letterSpacing: uiTypography.letterSpacing.tight
-        }}>
-        {t("options.connection.modelParams")}
-      </h3>
-      <p
-        style={{
-          margin: `0 0 ${uiSpace[16]}px`,
-          color: theme.text.secondary,
-          fontSize: uiTypography.fontSize.sm
-        }}>
-        {t("options.connection.modelParamsDesc")}
-      </p>
+    <FieldGroup title={t("options.connection.groupParams")}>
+      {paramSupport.maxTokens ? (
+        <SettingRow title={t("options.connection.paramMaxTokens")} desc={maxTokensDesc.join(" ")} htmlFor="model-param-maxTokens">
+          <NumberField
+            id="model-param-maxTokens"
+            value={modelParams.maxTokens}
+            min={1}
+            max={modelOutputLimit}
+            placeholder={t("options.connection.paramUnlimited")}
+            onValueChange={(value) => onParamChange("maxTokens", value)}
+          />
+        </SettingRow>
+      ) : null}
 
-      {supportedParams.length === 0 ? (
-        <div style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary, fontStyle: "italic" }}>
-          {t("options.connection.noSupportedParams")}
-        </div>
-      ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: `${uiSpace[12]}px ${uiSpace[16]}px`
-          }}>
-          {supportedParams.map((param) => (
-            <div key={param.key}>
-              <label htmlFor={`model-param-${param.key}`} style={{ ...fieldLabelStyle, marginBottom: uiSpace[4] }}>
-                {param.label}
-              </label>
-              <div style={{ fontSize: uiTypography.fontSize.xs, color: theme.text.secondary, marginBottom: uiSpace[6] }}>
-                {param.desc}
-              </div>
+      {paramSupport.contextSize ? (
+        <SettingRow
+          title={t("options.connection.paramContextSize")}
+          desc={contextSizeDesc.join(" ")}
+          htmlFor="model-param-contextSize">
+          <NumberField
+            id="model-param-contextSize"
+            value={modelParams.contextSize}
+            min={1}
+            max={modelContextLimit}
+            onValueChange={(value) => onParamChange("contextSize", value)}
+          />
+        </SettingRow>
+      ) : null}
 
-              {param.kind === "number" ? (
-                <input
-                  id={`model-param-${param.key}`}
-                  type="number"
-                  /* 数值参数：空 = 未填充（忽略该参数） */
-                  value={modelParams[param.key] ?? ""}
-                  min={param.min}
-                  max={param.max}
-                  onFocus={() => onFocusField(`modelParams-${param.key}`)}
-                  onBlur={onBlurField}
-                  onChange={(event) => {
-                    const raw = event.target.value
-                    if (raw === "") {
-                      onParamChange(param.key, undefined)
-                      return
-                    }
-                    const value = Number(raw)
-                    onParamChange(param.key, Number.isFinite(value) ? value : undefined)
-                  }}
-                  style={createInput(`modelParams-${param.key}`)}
-                />
-              ) : param.kind === "triState" ? (
-                /* 三态选择：未填充（忽略）/ 启用 / 禁用 */
-                <select
-                  id={`model-param-${param.key}`}
-                  value={modelParams[param.key] === true ? "on" : modelParams[param.key] === false ? "off" : ""}
-                  onFocus={() => onFocusField(`modelParams-${param.key}`)}
-                  onBlur={onBlurField}
-                  onChange={(event) => {
-                    const raw = event.target.value
-                    onParamChange(param.key, raw === "on" ? true : raw === "off" ? false : undefined)
-                  }}
-                  style={{ ...createInput(`modelParams-${param.key}`), width: "100%", cursor: "pointer" }}>
-                  <option value=""></option>
-                  <option value="on">{t("options.connection.paramEnabled")}</option>
-                  <option value="off">{t("options.connection.paramDisabled")}</option>
-                </select>
-              ) : (
-                /* 思考力度档位：与思考模式开关解耦，恒可编辑。发送层不变式：
-                   reasoning=false 时档位不随请求发送（传档位会隐式开启思考） */
-                <select
-                  id={`model-param-${param.key}`}
-                  value={modelParams.reasoningEffort ?? ""}
-                  onFocus={() => onFocusField(`modelParams-${param.key}`)}
-                  onBlur={onBlurField}
-                  onChange={(event) => {
-                    const raw = event.target.value
-                    onParamChange("reasoningEffort", raw === "" ? undefined : (raw as "low" | "medium" | "high"))
-                  }}
-                  style={{ ...createInput(`modelParams-${param.key}`), width: "100%", cursor: "pointer" }}>
-                  <option value=""></option>
-                  <option value="low">low</option>
-                  <option value="medium">medium</option>
-                  <option value="high">high</option>
-                </select>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+      {paramSupport.reasoning ? (
+        <SettingRow
+          title={t("options.connection.paramReasoning")}
+          desc={t("options.connection.paramReasoningDesc")}
+          htmlFor="model-param-reasoning">
+          <SelectField
+            id="model-param-reasoning"
+            value={modelParams.reasoning === true ? "on" : modelParams.reasoning === false ? "off" : ""}
+            ariaLabel={t("options.connection.paramReasoning")}
+            onValueChange={(value) =>
+              onParamChange("reasoning", value === "on" ? true : value === "off" ? false : undefined)
+            }
+            options={[
+              { value: "", label: t("options.connection.paramNotSet") },
+              { value: "on", label: t("options.connection.paramEnabled") },
+              { value: "off", label: t("options.connection.paramDisabled") }
+            ]}
+          />
+        </SettingRow>
+      ) : null}
+
+      {/* 思考力度：与思考模式解耦，恒可编辑。发送层不变式：
+          reasoning=false 时档位不随请求发送（传档位会隐式开启思考） */}
+      {paramSupport.reasoningEffort ? (
+        <SettingRow
+          title={t("options.connection.paramReasoningEffort")}
+          desc={t("options.connection.paramReasoningEffortDesc")}
+          htmlFor="model-param-reasoningEffort">
+          <SelectField
+            id="model-param-reasoningEffort"
+            value={modelParams.reasoningEffort ?? ""}
+            ariaLabel={t("options.connection.paramReasoningEffort")}
+            onValueChange={(value) =>
+              onParamChange("reasoningEffort", value === "" ? undefined : (value as "low" | "medium" | "high"))
+            }
+            options={[
+              { value: "", label: t("options.connection.paramNotSet") },
+              { value: "low", label: "low" },
+              { value: "medium", label: "medium" },
+              { value: "high", label: "high" }
+            ]}
+          />
+        </SettingRow>
+      ) : null}
+
+      {!paramSupport.maxTokens &&
+      !paramSupport.contextSize &&
+      !paramSupport.reasoning &&
+      !paramSupport.reasoningEffort ? (
+        <p className="opt-hint">{t("options.connection.noSupportedParams")}</p>
+      ) : null}
+    </FieldGroup>
   )
 }

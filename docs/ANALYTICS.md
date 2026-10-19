@@ -120,17 +120,19 @@
 
 | 事件名 | 属性 | 触发位置 | 用途 |
 |--------|------|----------|------|
-| `action_created` | `is_first_custom`, `total_actions`, `custom_count`, `source` | `ActionsSection.tsx` `handleAddAction` | 多少人会创建自定义动作、平均建几个；`is_first_custom` 由 `aiction:first:custom_action_created` 标记控制 |
-| `action_updated` | `is_custom`, `changed_fields`(`["label"]`/`["template"]`/两者), `has_selection_placeholder`, `template_length_bucket`, `label_length_bucket`, `enabled`, `source` | `ActionsSection.tsx` `updateCustomAction` → `recordActionEdit` → `flushActionEdits` | 用户改文案还是改模板、模板是否带 `{selection}`、模板有多长（**不含文本本身**） |
-| `action_deleted` | `is_custom`, `remaining_actions`, `remaining_custom`, `source` | `ActionsSection.tsx` `handleDeleteAction` | 删除率；内置动作也能删（`is_custom: false` = 删掉的是内置动作），因此该属性有区分价值 |
-| `action_reordered` | `from_index`, `to_index`, `source` | `ActionsSection.tsx` `handleActionDragEnd`（仅位置真的变化时） | 是否在意动作顺序（决定拖拽排序是否值得维护） |
-| `action_enabled_toggled` | `scope`(`options`/`popup`), `enabled`, `is_custom`, `source` | `ActionsSection.tsx` `updateCustomAction`（详情面板 + 列表项两处开关）、`Popup.tsx` `handleActionToggle` | 启用/禁用行为分布，以及用户主要在哪个界面做这件事 |
-| `action_icon_changed` | `icon_source`(`bundled`/`iconify`), `icon_name`, `is_custom`, `source` | `ActionsSection.tsx` `handleIconPick`（预置库与搜索结果共用） | 图标来源分布（`iconify` = 走远程 API 拉取），以及是否有人真的换图标 |
+| `action_created` | `is_first_custom`, `total_actions`, `custom_count`, `source` | `CustomActionsCard.tsx` `handleAddAction` | 多少人会创建自定义动作、平均建几个；`is_first_custom` 由 `aiction:first:custom_action_created` 标记控制 |
+| `action_updated` | `is_custom`, `changed_fields`(`["label"]`/`["template"]`/两者), `has_selection_placeholder`, `template_length_bucket`, `label_length_bucket`, `enabled`, `source` | `CustomActionsCard.tsx` `updateActionDraft` → `recordActionEdit` → `flushActionEdits` | 用户改文案还是改模板、模板是否带 `{selection}`、模板有多长（**不含文本本身**） |
+| `action_deleted` | `is_custom`, `remaining_actions`, `remaining_custom`, `source` | `CustomActionsCard.tsx` `handleDeleteAction` | 删除率；内置动作也能删（`is_custom: false` = 删掉的是内置动作），因此该属性有区分价值 |
+| `action_reordered` | `from_index`, `to_index`, `source` | `CustomActionsCard.tsx` `handleActionDragEnd`（仅位置真的变化时） | 是否在意动作顺序（决定拖拽排序是否值得维护） |
+| `action_enabled_toggled` | `scope`(`options`/`popup`), `enabled`, `is_custom`, `source` | `CustomActionsCard.tsx` `toggleActionEnabled`（左列表开关；启用是即时项）、`Popup.tsx` `handleActionToggle` | 启用/禁用行为分布，以及用户主要在哪个界面做这件事 |
+| `action_icon_changed` | `icon_source`(`bundled`/`iconify`), `icon_name`, `is_custom`, `source` | `CustomActionsCard.tsx` `handleIconPick`（预置库与搜索结果共用） | 图标来源分布（`iconify` = 走远程 API 拉取），以及是否有人真的换图标 |
 
 实现说明：
-- **`action_updated` 是聚合上报**：`updateCustomAction` 只在 ref 里记录「哪个动作的哪些字段被改」，并在
-  2s 静默（`ACTION_EDIT_FLUSH_MS`）、删除该动作前、切换设置分区（组件卸载）时统一 flush，避免逐字上报。
-- 属性里取的是 **flush 时刻的最新值**（`actionsRef` 通过 `useEffect` 同步，不在渲染期间写 ref）。
+- **`action_updated` 是聚合上报**：`updateActionDraft` 只在 ref 里记录「哪个动作的哪些字段被改」，并在
+  2s 静默（`ACTION_EDIT_FLUSH_MS`）、保存该动作、删除该动作前、切换设置分区（组件卸载）时统一 flush，避免逐字上报。
+- 属性里取的是 **flush 时刻的最新值**。设置页改造后名称 / 模板改为草稿（不再逐字落盘），因此 flush 读的是
+  「草稿优先、回落已保存值」的有效值（`draftsRef` 通过 `useEffect` 同步，不在渲染期间写 ref），
+  否则长度分桶 / 占位符属性会报出旧的已保存值。
 - `lengthBucket()`（`src/shared/analytics.ts`，全项目共用）：`0` / `1-20` / `21-60` / `61-200` / `200+`。
 - 图标名（`tabler:xxx` / `logos:xxx`）是预设枚举而非用户文本，可以上报；**用户的图标搜索关键词不上报**。
 - `handlePreview`（ActionsSection）是 **TTS 试听**而不是动作模板预览，因此没有 `action_template_previewed` 事件；若要统计试听，应新增 `tts_preview_played`（见 §5 P3 剩余候选）。
@@ -405,4 +407,5 @@
 | 2026-10-18 | P2 完成（+3 → 36 个事件） | 新增 `speech_started` / `speech_finished`（`reportSpeechEnd`，`interrupted` 区分自然播完与中途关闭）/ `speech_dismissed`（闲置退场，`elapsed_ms`）；`useSpeechPlayer` 新增 `source` 参数，`SpeechWidget` 新增 `source` prop；顺带修正 edge 合成失败降级后会话内 engine 未同步的问题 |
 | 2026-10-18 | P3 部分落地（+2 → 38 个事件） | 新增 `daily_active`（SW 被唤醒当日一次，本地时区日期 + promise 双重去重）与 `telemetry_toggled`（含「关闭先上报、开启先落盘」的顺序处理）；`provider_switched` 新增 Popup 上报分支（`source: popup`）；provider 类型判定抽到 `src/shared/provider-type.ts`，`useChatState` / `useProviderManager` / `Popup` 三处共用 |
 | 2026-10-18 | P3 续（+1 → 39 个事件） | 新增 `model_selected`（三条路径：models.dev 列表 / 接口拉取下拉 / 手输 blur，**手输不上报模型名**）；`system_prompt_save` 追加属性 `is_empty` / `is_default` / `length_bucket` / `used_placeholders`（不新建重复语义的 `system_prompt_customized`） |
+| 2026-10-19 | 设置页 UI 重构（`docs/OPTIONS_UI.md`）后同步 | **事件与属性零增删**；仅更新触发位置引用：自定义动作相关事件从 `ActionsSection.tsx` 迁到 `CustomActionsCard.tsx`（`updateCustomAction` → `updateActionDraft`）；`action_updated` 的取值改为「草稿优先」的有效值（编辑不再逐字落盘），时机（2s 静默 / 保存 / 删除前 / 卸载）不变 |
 | 2026-10-18 | 建图清单（新增 §6） | 补齐 PostHog Dashboard 清单：口径前提（设备级 distinct_id / 无 pageview / 本地 vs 项目时区）、四个 Dashboard（A 增长与激活含核心漏斗、B 使用与留存、C 功能采用、D 质量与性能）共 31 条 Insight、建图注意事项与登记表；原 §6/§7 顺延为 §7/§8 |

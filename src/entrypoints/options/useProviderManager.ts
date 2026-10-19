@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useDebouncedCallback } from "use-debounce"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { DEFAULT_CUSTOM_MODEL_PROVIDER } from "@/shared/defaults"
 import { saveSettings } from "@/shared/storage"
@@ -27,6 +26,7 @@ import type {
   OpenRouterModelInfo
 } from "@/shared/types"
 import { useI18n } from "@/shared/i18n/context"
+import { useDraftItemMap } from "./hooks/draft"
 
 export function createProviderDraft(): ProviderConfig {
   return {
@@ -38,6 +38,21 @@ export function createProviderDraft(): ProviderConfig {
   }
 }
 
+function isProviderValid(provider: ProviderConfig): boolean {
+  return (
+    Boolean(provider.name.trim()) &&
+    Boolean(provider.apiKey.trim()) &&
+    Boolean(provider.model.trim()) &&
+    (Boolean(provider.modelsDevId) || Boolean(provider.apiBaseUrl?.trim()))
+  )
+}
+
+/**
+ * API 提供商管理（docs/OPTIONS_UI.md §3）：
+ * - 即时项：启用开关、新增 / 删除提供商（直接改 settings）；
+ * - 草稿项：显示名称、API Key、Model、接口地址、模型参数（含下拉）；
+ *   草稿按提供商 id 保留在内存里，切换提供商不清空，只有保存 / 放弃 / 卸载才丢弃。
+ */
 export function useProviderManager(
   settings: ExtensionSettings,
   setSettings: React.Dispatch<React.SetStateAction<ExtensionSettings>>
@@ -47,7 +62,6 @@ export function useProviderManager(
   // --- State ---
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
   const [showProviderSelect, setShowProviderSelect] = useState(false)
-  const [providerDraft, setProviderDraft] = useState<ProviderConfig>(createProviderDraft())
   const [pendingDeleteProviderId, setPendingDeleteProviderId] = useState<string | null>(null)
   const [modelsDevData, setModelsDevData] = useState<ModelsDevData | null>(null)
   const [modelSearchQuery, setModelSearchQuery] = useState("")
@@ -60,12 +74,16 @@ export function useProviderManager(
   const [smartFilling, setSmartFilling] = useState(false)
   const [smartFillStatus, setSmartFillStatus] = useState<{ count: number; notice?: string | null } | null>(null)
 
-  // --- Debounced save ---
-  const debouncedSaveSettings = useDebouncedCallback(
-    (settings: ExtensionSettings) => {
-      void saveSettings(settings)
-    },
-    400
+  // --- 草稿（按提供商 id 保留） ---
+  const drafts = useDraftItemMap<ProviderConfig>(settings.providers, (a, b) =>
+    a.id === b.id &&
+    a.name === b.name &&
+    a.apiKey === b.apiKey &&
+    a.model === b.model &&
+    a.modelsDevId === b.modelsDevId &&
+    (a.apiBaseUrl ?? "") === (b.apiBaseUrl ?? "") &&
+    // modelParams 是浅拷贝链的产物、键顺序稳定；逐字段比较避免全字段 JSON 比较被键顺序污染
+    JSON.stringify(a.modelParams ?? {}) === JSON.stringify(b.modelParams ?? {})
   )
 
   // --- Load models.dev data ---
@@ -75,8 +93,12 @@ export function useProviderManager(
 
   // --- Derived state ---
   const selectedProvider = selectedProviderId
-    ? settings.providers.find((s) => s.id === selectedProviderId)
+    ? settings.providers.find((item) => item.id === selectedProviderId)
     : null
+
+  const providerDraft = (selectedProviderId ? drafts.getEffective(selectedProviderId) : null) ?? createProviderDraft()
+  const providerDirty = selectedProviderId ? drafts.isDirty(selectedProviderId) : false
+  const providerJustSaved = drafts.justSavedId === selectedProviderId
 
   const allProviders = useMemo(() => {
     if (!modelsDevData) return []
@@ -87,15 +109,9 @@ export function useProviderManager(
     if (!providerSearchQuery.trim()) return allProviders
     const query = providerSearchQuery.trim().toLowerCase()
     return allProviders.filter(
-      (p) => p.name.toLowerCase().includes(query) || p.id.toLowerCase().includes(query)
+      (provider) => provider.name.toLowerCase().includes(query) || provider.id.toLowerCase().includes(query)
     )
   }, [allProviders, providerSearchQuery])
-
-  const isProviderDraftValid =
-    Boolean(providerDraft.name.trim()) &&
-    Boolean(providerDraft.apiKey.trim()) &&
-    Boolean(providerDraft.model.trim()) &&
-    (Boolean(providerDraft.modelsDevId) || Boolean(providerDraft.apiBaseUrl?.trim()))
 
   // --- Save helpers (shared with parent) ---
   const saveSettingsNow = useCallback(
@@ -109,18 +125,7 @@ export function useProviderManager(
     [setSettings]
   )
 
-  const saveSettingsDebounced = useCallback(
-    (updater: (current: ExtensionSettings) => ExtensionSettings) => {
-      setSettings((current) => {
-        const next = updater(current)
-        debouncedSaveSettings(next)
-        return next
-      })
-    },
-    [setSettings, debouncedSaveSettings]
-  )
-
-  // --- Provider CRUD ---
+  // --- Provider CRUD（即时项：新增 / 删除） ---
   const openCreateProvider = useCallback(() => {
     setShowProviderSelect(true)
     setProviderSearchQuery("")
@@ -134,7 +139,6 @@ export function useProviderManager(
       activeProviderId: current.activeProviderId || newProvider.id
     }))
     setSelectedProviderId(newProvider.id)
-    setProviderDraft(newProvider)
     setShowProviderSelect(false)
     setModels([])
     setFetchError(null)
@@ -162,7 +166,6 @@ export function useProviderManager(
         activeProviderId: current.activeProviderId || newProvider.id
       }))
       setSelectedProviderId(newProvider.id)
-      setProviderDraft(newProvider)
       setShowProviderSelect(false)
       setModels([])
       setFetchError(null)
@@ -179,18 +182,9 @@ export function useProviderManager(
     [saveSettingsNow, settings.providers.length]
   )
 
-  const closeConnectionEditor = useCallback(() => {
-    setSelectedProviderId(null)
-    setProviderDraft(createProviderDraft())
-    setModels([])
-    setFetchError(null)
-    setTestResult(null)
-    setModelSearchQuery("")
-  }, [])
-
   const selectProvider = useCallback((provider: ProviderConfig) => {
+    // 草稿按 id 保留，切换时不做任何丢弃
     setSelectedProviderId(provider.id)
-    setProviderDraft({ ...provider, modelParams: { ...provider.modelParams } })
     setModels([])
     setFetchError(null)
     setTestResult(null)
@@ -198,85 +192,67 @@ export function useProviderManager(
   }, [])
 
   const saveProviderDraft = useCallback(() => {
-    if (!isProviderDraftValid || !selectedProviderId) return
+    if (!selectedProviderId) return
+    const current = drafts.getEffective(selectedProviderId)
+    if (!current || !isProviderValid(current)) return
 
-    const normalizedDraft: ProviderConfig = {
-      ...providerDraft,
-      name: providerDraft.name.trim(),
-      apiBaseUrl: providerDraft.apiBaseUrl?.trim() || undefined,
-      apiKey: providerDraft.apiKey.trim(),
-      model: providerDraft.model.trim()
+    const normalized: ProviderConfig = {
+      ...current,
+      name: current.name.trim(),
+      apiBaseUrl: current.apiBaseUrl?.trim() || undefined,
+      apiKey: current.apiKey.trim(),
+      model: current.model.trim()
     }
 
-    saveSettingsNow((current) => ({
-      ...current,
-      providers: current.providers.map((provider) =>
-        provider.id === selectedProviderId ? normalizedDraft : provider
+    saveSettingsNow((settingsNow) => ({
+      ...settingsNow,
+      providers: settingsNow.providers.map((provider) =>
+        provider.id === selectedProviderId ? normalized : provider
       )
     }))
-  }, [isProviderDraftValid, selectedProviderId, providerDraft, saveSettingsNow])
+    drafts.markSaved(selectedProviderId)
+  }, [selectedProviderId, drafts, saveSettingsNow])
 
+  const discardProviderDraft = useCallback(() => {
+    if (selectedProviderId) {
+      drafts.discard(selectedProviderId)
+    }
+  }, [selectedProviderId, drafts])
+
+  // --- 草稿字段更新 ---
   const updateProviderField = useCallback(
     (field: string, value: string) => {
       if (!selectedProviderId) return
-
-      setProviderDraft((current) => ({ ...current, [field]: value }))
-
-      saveSettingsDebounced((current) => ({
-        ...current,
-        providers: current.providers.map((provider) =>
-          provider.id === selectedProviderId ? { ...provider, [field]: value } : provider
-        )
-      }))
+      drafts.update(selectedProviderId, (current) => ({ ...current, [field]: value }))
     },
-    [selectedProviderId, saveSettingsDebounced]
+    [selectedProviderId, drafts]
   )
 
   /** 模型参数与模型绑定：切换/修改模型时清空已填充参数 */
   const updateProviderModel = useCallback(
     (model: string) => {
       if (!selectedProviderId) return
-
-      setProviderDraft((current) => ({ ...current, model, modelParams: {} }))
-
-      saveSettingsDebounced((current) => ({
-        ...current,
-        providers: current.providers.map((provider) =>
-          provider.id === selectedProviderId
-            ? { ...provider, model, modelParams: {} }
-            : provider
-        )
-      }))
+      drafts.update(selectedProviderId, (current) => ({ ...current, model, modelParams: {} }))
     },
-    [selectedProviderId, saveSettingsDebounced]
+    [selectedProviderId, drafts]
   )
 
   const updateProviderModelParam = useCallback(
     (key: keyof ModelParams, value: ModelParams[keyof ModelParams]) => {
       if (!selectedProviderId) return
-
-      setProviderDraft((current) => ({
+      drafts.update(selectedProviderId, (current) => ({
         ...current,
         modelParams: { ...current.modelParams, [key]: value }
       }))
-
-      saveSettingsDebounced((current) => ({
-        ...current,
-        providers: current.providers.map((provider) =>
-          provider.id === selectedProviderId
-            ? { ...provider, modelParams: { ...provider.modelParams, [key]: value } }
-            : provider
-        )
-      }))
     },
-    [selectedProviderId, saveSettingsDebounced]
+    [selectedProviderId, drafts]
   )
 
   const toggleProviderActive = useCallback(
     (providerId: string) => {
       const fromProviderId = settings.activeProviderId
-      const fromProvider = settings.providers.find((p) => p.id === fromProviderId)
-      const toProvider = settings.providers.find((p) => p.id === providerId)
+      const fromProvider = settings.providers.find((provider) => provider.id === fromProviderId)
+      const toProvider = settings.providers.find((provider) => provider.id === providerId)
       saveSettingsNow((current) => {
         if (current.activeProviderId === providerId) return current
         return { ...current, activeProviderId: providerId }
@@ -295,27 +271,19 @@ export function useProviderManager(
 
   const deleteProvider = useCallback(
     (providerId: string) => {
+      drafts.discard(providerId)
       saveSettingsNow((current) => {
-        const remainingProviders = current.providers.filter((p) => p.id !== providerId)
+        const remainingProviders = current.providers.filter((provider) => provider.id !== providerId)
         const activeProviderId =
-          current.activeProviderId === providerId
-            ? (remainingProviders[0]?.id ?? "")
-            : current.activeProviderId
+          current.activeProviderId === providerId ? remainingProviders[0]?.id ?? "" : current.activeProviderId
         return { ...current, providers: remainingProviders, activeProviderId }
       })
 
-      const remaining = settings.providers.filter((p) => p.id !== providerId)
-      if (remaining.length > 0) {
-        setSelectedProviderId(remaining[0].id)
-        setProviderDraft({ ...remaining[0], modelParams: { ...remaining[0].modelParams } })
-      } else {
-        setSelectedProviderId(null)
-        setProviderDraft(createProviderDraft())
-      }
-
+      const remaining = settings.providers.filter((provider) => provider.id !== providerId)
+      setSelectedProviderId(remaining.length > 0 ? remaining[0].id : null)
       setPendingDeleteProviderId(null)
     },
-    [settings.providers, saveSettingsNow]
+    [settings.providers, saveSettingsNow, drafts]
   )
 
   // --- 智能填充参数 ---
@@ -323,15 +291,8 @@ export function useProviderManager(
   // 只填充「未填充」的项，用户已填的永不覆盖；点击后永远提示「成功补充 X 个」(X>=0)
   //
   // 思考模式 / effort 的默认值策略（中性默认，不替用户做价值预设）：
-  // - reasoning：默认**不填**（空白 = 跟随端点默认）。仅当 provider 路径存在官方
-  //   「关闭思考」映射（@ai-sdk/openai / @ai-sdk/deepseek / @openrouter/ai-sdk-provider）时
-  //   才自动填禁用——注意这是 provider 级判定，无法区分模型（o1 不可关、DeepSeek-R1 不可关，
-  //   但 gpt-5 可关），模型级数据源缺失。
-  // - reasoningEffort：仅当「明确支持调整 effort」时默认填最低档 low：
-  //   ① OpenRouter 显式声明 supported_parameters 含 reasoning_effort（模型级强信号）；
-  //   ② OpenAI 系 provider（@ai-sdk/openai）且模型为推理模型（models.dev 数据源）。
-  //   其余保持空白： Claude thinking（budget 模式）、Gemini thinking、DeepSeek-R1
-  //   等不接受 reasoning_effort 参数，盲填会直接 400。
+  // - reasoning：默认**不填**（空白 = 跟随端点默认），见原注释；
+  // - reasoningEffort：仅当「明确支持调整 effort」时默认填最低档 low。
   const handleSmartFillParams = useCallback(async () => {
     if (smartFilling) return
     setSmartFilling(true)
@@ -385,22 +346,17 @@ export function useProviderManager(
       // provider 级信号：npm 路径是否存在官方「关闭思考」映射
       const npm = resolveProviderNpm(providerDraft, modelsDevData ?? undefined)
       const explicitReasoningOff =
-        npm === "@ai-sdk/openai" ||
-        npm === "@ai-sdk/deepseek" ||
-        npm === "@openrouter/ai-sdk-provider"
+        npm === "@ai-sdk/openai" || npm === "@ai-sdk/deepseek" || npm === "@openrouter/ai-sdk-provider"
       // 强信号：明确接受 reasoning_effort 参数
       const explicitEffortAdjust =
-        orParams.has("reasoning_effort") ||
-        (npm === "@ai-sdk/openai" && devKeyed?.reasoning === true)
+        orParams.has("reasoning_effort") || (npm === "@ai-sdk/openai" && devKeyed?.reasoning === true)
 
       const current = providerDraft.modelParams
       const fills: Array<[keyof ModelParams, NonNullable<ModelParams[keyof ModelParams]>]> = []
 
       // maxTokens：models.dev 的 limit.output 优先，OpenRouter 的 top_provider.max_completion_tokens 兑底
       const maxTokensValue =
-        typeof devKeyed?.limit?.output === "number"
-          ? devKeyed.limit.output
-          : orModel?.maxCompletionTokens
+        typeof devKeyed?.limit?.output === "number" ? devKeyed.limit.output : orModel?.maxCompletionTokens
       if (typeof maxTokensValue === "number" && maxTokensValue > 0 && current.maxTokens === undefined) {
         fills.push(["maxTokens", maxTokensValue])
       }
@@ -515,14 +471,14 @@ export function useProviderManager(
           setModels(response.models)
           setFetchError(null)
           if (!providerDraft.model.trim() || !response.models.includes(providerDraft.model.trim())) {
-            setProviderDraft((current) => ({ ...current, model: response.models![0], modelParams: {} }))
+            updateProviderModel(response.models[0])
           }
         } else {
           setFetchError(response.error ?? t("options.connection.fetchModelsError"))
         }
       }
     )
-  }, [providerDraft, t])
+  }, [providerDraft, updateProviderModel, t])
 
   // --- Model data helpers ---
   const devModels = useMemo(() => {
@@ -568,18 +524,20 @@ export function useProviderManager(
     selectedProvider,
     allProviders,
     filteredProviders,
-    isProviderDraftValid,
+    isProviderDraftValid: isProviderValid(providerDraft),
     devModels,
     paramSupport,
     modelOutputLimit,
     modelContextLimit,
     smartFilling,
     smartFillStatus,
+    providerDirty,
+    providerJustSaved,
+    dirtyProviderIds: drafts.dirtyIds,
 
     // Setters
     setSelectedProviderId,
     setShowProviderSelect,
-    setProviderDraft,
     setPendingDeleteProviderId,
     setModelSearchQuery,
     setProviderSearchQuery,
@@ -591,9 +549,9 @@ export function useProviderManager(
     openCreateProvider,
     selectProviderAndCreate,
     selectModelsDevProvider,
-    closeConnectionEditor,
     selectProvider,
     saveProviderDraft,
+    discardProviderDraft,
     updateProviderField,
     updateProviderModel,
     updateProviderModelParam,
@@ -604,7 +562,6 @@ export function useProviderManager(
     handleSmartFillParams,
 
     // Save helpers (exposed for parent to reuse)
-    saveSettingsNow,
-    saveSettingsDebounced
+    saveSettingsNow
   }
 }

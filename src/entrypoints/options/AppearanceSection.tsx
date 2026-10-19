@@ -1,159 +1,58 @@
-import type { CSSProperties } from "react"
-
-import { ToggleSwitch } from "@/shared/ui/toggle-switch"
 import { trackEvent } from "@/shared/analytics"
-import { useUiThemeName } from "@/shared/ui/theme"
-import { uiMotion, uiRadius, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
-import { createCardStyle, createFieldLabelStyle } from "@/shared/ui/styles"
 import { useI18n } from "@/shared/i18n/context"
 import type { ExtensionSettings, LanguagePreference, ThemePreference } from "@/shared/types"
+import { FieldGroup, SectionCard, SegmentedControl, SettingRow } from "./ui"
 
 interface AppearanceSectionProps {
   settings: ExtensionSettings
   saveSettingsNow: (updater: (current: ExtensionSettings) => ExtensionSettings) => void
 }
 
+/** 外观：全是即时项（分段选择），因此卡片不带保存条 */
 export function AppearanceSection({ settings, saveSettingsNow }: AppearanceSectionProps) {
   const { t } = useI18n()
-  const themeName = useUiThemeName()
-  const theme = uiThemes[themeName]
 
-  const cardStyle: CSSProperties = {
-    ...createCardStyle(theme)
-  }
+  const themeOptions: { value: ThemePreference; label: string }[] = [
+    { value: "auto", label: t("options.appearance.themeAuto") },
+    { value: "light", label: t("options.appearance.themeLight") },
+    { value: "dark", label: t("options.appearance.themeDark") }
+  ]
+
+  const languageOptions: { value: LanguagePreference; label: string }[] = [
+    { value: "system", label: t("options.appearance.languageSystem") },
+    { value: "en", label: "English" },
+    { value: "zh_CN", label: "简体中文" }
+  ]
 
   return (
-    <section style={{ ...cardStyle, marginBottom: uiSpace[16] }}>
-      <h2
-        style={{
-          margin: `0 0 ${uiSpace[4]}px`,
-          fontSize: uiTypography.fontSize.lg,
-          fontWeight: uiTypography.fontWeight.semibold,
-          letterSpacing: uiTypography.letterSpacing.tight
-        }}>
-        {t("options.appearance.themeTitle")}
-      </h2>
-      <p
-        style={{
-          margin: `0 0 ${uiSpace[16]}px`,
-          color: theme.text.secondary,
-          fontSize: uiTypography.fontSize.md
-        }}>
-        {t("options.appearance.themeDesc")}
-      </p>
+    <SectionCard title={t("options.appearance.cardTitle")} description={t("options.appearance.cardDesc")}>
+      <FieldGroup>
+        <SettingRow title={t("options.appearance.themeTitle")} desc={t("options.appearance.themeDesc")}>
+          <SegmentedControl
+            value={settings.theme}
+            options={themeOptions}
+            ariaLabel={t("options.appearance.themeTitle")}
+            onValueChange={(value) => {
+              const fromTheme = settings.theme
+              saveSettingsNow((current) => ({ ...current, theme: value }))
+              void trackEvent("theme_changed", { from_theme: fromTheme, to_theme: value })
+            }}
+          />
+        </SettingRow>
 
-      <div
-        style={{
-          display: "inline-flex",
-          background: theme.bg.surfaceMuted,
-          borderRadius: uiRadius.sm,
-          padding: 3,
-          gap: 2
-        }}>
-        {(["auto", "light", "dark"] as ThemePreference[]).map((value) => {
-          const isSelected = settings.theme === value
-          const labels: Record<ThemePreference, string> = { auto: t("options.appearance.themeAuto"), light: t("options.appearance.themeLight"), dark: t("options.appearance.themeDark") }
-
-          return (
-            <button
-              key={value}
-              type="button"
-              onClick={() => {
-                const fromTheme = settings.theme
-                saveSettingsNow((current) => ({ ...current, theme: value }))
-                void trackEvent("theme_changed", { from_theme: fromTheme, to_theme: value })
-              }}
-              style={{
-                padding: `${uiSpace[6]}px ${uiSpace[16]}px`,
-                border: "none",
-                borderRadius: uiRadius.sm - 1,
-                background: isSelected ? `${theme.accent.primary}14` : "transparent",
-                color: isSelected ? theme.accent.primary : theme.text.primary,
-                cursor: "pointer",
-                fontSize: uiTypography.fontSize.sm,
-                fontWeight: isSelected ? uiTypography.fontWeight.semibold : uiTypography.fontWeight.regular,
-                fontFamily: uiTypography.fontFamily,
-                outline: "none",
-                boxShadow: "none",
-                transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}, color ${uiMotion.durationFast} ${uiMotion.easingStandard}`
-              }}>
-              {labels[value]}
-            </button>
-          )
-        })}
-      </div>
-
-      <div style={{ marginTop: uiSpace[20] }}>
-        <div
-          style={{
-            borderTop: `0.5px solid ${theme.border.hairline}`,
-            paddingTop: uiSpace[20],
-            marginBottom: uiSpace[20]
-          }}>
-          <h2
-            style={{
-              margin: `0 0 ${uiSpace[4]}px`,
-              fontSize: uiTypography.fontSize.lg,
-              fontWeight: uiTypography.fontWeight.semibold,
-              letterSpacing: uiTypography.letterSpacing.tight
-            }}>
-            {t("options.appearance.languageTitle")}
-          </h2>
-          <p
-            style={{
-              margin: `0 0 ${uiSpace[16]}px`,
-              color: theme.text.secondary,
-              fontSize: uiTypography.fontSize.md
-            }}>
-            {t("options.appearance.languageDesc")}
-          </p>
-
-          <div
-            style={{
-              display: "inline-flex",
-              background: theme.bg.surfaceMuted,
-              borderRadius: uiRadius.sm,
-              padding: 3,
-              gap: 2
-            }}>
-            {(["system", "en", "zh_CN"] as LanguagePreference[]).map((value) => {
-              const isSelected = settings.language === value
-              const labels: Record<LanguagePreference, string> = {
-                system: t("options.appearance.languageSystem"),
-                en: "English",
-                zh_CN: "简体中文"
-              }
-
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => {
-                    const fromLang = settings.language
-                    saveSettingsNow((current) => ({ ...current, language: value }))
-                    void trackEvent("language_changed", { from_language: fromLang, to_language: value })
-                  }}
-                  style={{
-                    padding: `${uiSpace[6]}px ${uiSpace[16]}px`,
-                    border: "none",
-                    borderRadius: uiRadius.sm - 1,
-                    background: isSelected ? `${theme.accent.primary}14` : "transparent",
-                    color: isSelected ? theme.accent.primary : theme.text.primary,
-                    cursor: "pointer",
-                    fontSize: uiTypography.fontSize.sm,
-                    fontWeight: isSelected ? uiTypography.fontWeight.semibold : uiTypography.fontWeight.regular,
-                    fontFamily: uiTypography.fontFamily,
-                    outline: "none",
-                    boxShadow: "none",
-                    transition: `background ${uiMotion.durationFast} ${uiMotion.easingStandard}, color ${uiMotion.durationFast} ${uiMotion.easingStandard}`
-                  }}>
-                  {labels[value]}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      </div>
-    </section>
+        <SettingRow title={t("options.appearance.languageTitle")} desc={t("options.appearance.languageDesc")}>
+          <SegmentedControl
+            value={settings.language}
+            options={languageOptions}
+            ariaLabel={t("options.appearance.languageTitle")}
+            onValueChange={(value) => {
+              const fromLanguage = settings.language
+              saveSettingsNow((current) => ({ ...current, language: value }))
+              void trackEvent("language_changed", { from_language: fromLanguage, to_language: value })
+            }}
+          />
+        </SettingRow>
+      </FieldGroup>
+    </SectionCard>
   )
 }
