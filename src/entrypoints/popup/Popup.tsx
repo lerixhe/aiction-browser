@@ -9,6 +9,7 @@ import { providerTypeOf } from "@/shared/provider-type"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { ActionIcon } from "@/shared/ui/iconify"
+import { BrandIcon } from "@/shared/ui/icons"
 import { ProviderLogoById } from "@/entrypoints/options/ProviderLogo"
 import { ToggleSwitch } from "@/shared/ui/toggle-switch"
 import { useI18n } from "@/shared/i18n/context"
@@ -320,18 +321,6 @@ export default function Popup() {
     alignItems: "center",
     gap: uiSpace[8],
     paddingBottom: uiSpace[12]
-  }
-
-  const brandMarkStyle: CSSProperties = {
-    width: 22,
-    height: 22,
-    borderRadius: 7,
-    background: `linear-gradient(135deg, ${theme.accent.primary}, ${theme.accent.primaryHover})`,
-    color: theme.text.inverse,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0
   }
 
   const brandNameStyle: CSSProperties = {
@@ -841,9 +830,7 @@ export default function Popup() {
 
       {/* 头部：品牌 + 版本 */}
       <div style={headStyle}>
-        <span style={brandMarkStyle}>
-          <SparklesIcon color={theme.text.inverse} />
-        </span>
+        <BrandIcon size={22} />
         <span style={brandNameStyle}>AIction</span>
         <span style={versionStyle}>v{chrome.runtime.getManifest().version}</span>
       </div>
