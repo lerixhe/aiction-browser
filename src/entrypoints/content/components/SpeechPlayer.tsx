@@ -359,16 +359,20 @@ export function TtsControlBar({ player }: { player: SpeechPlayerInstance }) {
         type="button"
         aria-label={t("ui.tts.stop")}
         title={t("ui.tts.stop")}
-        className="aiction-speech-iconbtn"
+        className="aiction-speech-iconbtn aiction-speech-stopbtn"
         onClick={() => player.stop()}
         style={iconBtnStyle}>
-        <StopGlyph color={theme.text.secondary} />
+        <StopGlyph color={theme.state.error} />
       </button>
 
       <style>{`
         ${TTS_ANIMATION_CSS}
         .aiction-speech-iconbtn:hover:not(:disabled) {
           background: ${theme.bg.surfaceMuted};
+        }
+        /* 停止是破坏性操作：悬停整钮点亮红底，与图标同色 */
+        .aiction-speech-stopbtn:hover:not(:disabled) {
+          background: ${theme.state.errorBg};
         }
       `}</style>
     </div>
