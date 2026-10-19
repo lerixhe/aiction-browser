@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AIction · store screenshot composer</title>
+<!--
+  商店截图合成页：把 raw 截图装进一个「虚拟浏览器窗口」，垫一层品牌背景，
+  画布固定 1280×800（Chrome Web Store 规格）。由 frame.mjs 用 headless Chrome 截图。
+
+  用法：frame.html?step=1  (1..4)
+  说明：浏览器头是虚构的（不收真实 URL / 不用真实 Chrome UI），域名与标题均为演示站点。
+-->
+<style>
+  :root {
+    --canvas-w: 1280px;
+    --canvas-h: 800px;
+    --win-w: 1088px;   /* = raw 截图宽度 1280 × 0.85（内容等比缩放，不裁切） */
+    --bar-h: 44px;
+    --radius: 14px;
+    --ui-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    width: var(--canvas-w); height: var(--canvas-h);
+    overflow: hidden;
+  }
+  body {
+    font-family: var(--ui-font);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: geometricPrecision;
+  }
+
+  /* ---------------- 背景 ---------------- */
+  .stage {
+    position: relative;
+    width: var(--canvas-w); height: var(--canvas-h);
+    display: grid; place-items: center;
+    overflow: hidden;
+  }
+  .stage[data-theme="light"] {
+    --dot: rgba(29, 78, 196, 0.16);
+    --win-border: rgba(15, 23, 42, 0.10);
+    --bar-bg: linear-gradient(180deg, #f6f7fa 0%, #eef0f5 100%);
+    --bar-line: rgba(15, 23, 42, 0.10);
+    --pill-bg: #ffffff;
+    --pill-line: rgba(15, 23, 42, 0.10);
+    --url-ink: #4d5666;
+    --icon-ink: #7d8797;
+    --shadow: 0 40px 90px -30px rgba(11, 26, 58, 0.42), 0 14px 32px -16px rgba(11, 26, 58, 0.26);
+    --glow: rgba(255, 255, 255, 0.8);
+    background:
+      radial-gradient(880px 620px at 4% -14%, #c9dcff 0%, rgba(201, 220, 255, 0) 60%),
+      radial-gradient(760px 560px at 99% 0%, #ddd5ff 0%, rgba(221, 213, 255, 0) 56%),
+      radial-gradient(1000px 720px at 46% 116%, #cfe0fb 0%, rgba(207, 224, 251, 0) 62%),
+      radial-gradient(620px 480px at 88% 96%, #d8e3ff 0%, rgba(216, 227, 255, 0) 60%),
+      linear-gradient(158deg, #f3f7ff 0%, #e4ecfa 48%, #d7e3f7 100%);
+  }
+  .stage[data-theme="dark"] {
+    --dot: rgba(147, 197, 253, 0.10);
+    --win-border: rgba(255, 255, 255, 0.14);
+    --bar-bg: linear-gradient(180deg, #1d242e 0%, #171d26 100%);
+    --bar-line: rgba(255, 255, 255, 0.09);
+    --pill-bg: #232a35;
+    --pill-line: rgba(255, 255, 255, 0.10);
+    --url-ink: #b3c0d2;
+    --icon-ink: #8b98aa;
+    --shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.72), 0 14px 32px -16px rgba(0, 0, 0, 0.55);
+    --glow: rgba(96, 140, 230, 0.34);
+    background:
+      radial-gradient(880px 620px at 4% -14%, #1b3358 0%, rgba(27, 51, 88, 0) 60%),
+      radial-gradient(760px 560px at 99% 2%, #2a2358 0%, rgba(42, 35, 88, 0) 56%),
+      radial-gradient(900px 640px at 88% 104%, #122a4d 0%, rgba(18, 42, 77, 0) 60%),
+      linear-gradient(158deg, #0b1018 0%, #0a1220 52%, #070a11 100%);
+  }
+  /* 点阵纹理：中心淡出，不抢主体 */
+  .stage::before {
+    content: "";
+    position: absolute; inset: 0;
+    background-image: radial-gradient(circle, var(--dot) 1px, transparent 1.3px);
+    background-size: 24px 24px;
+    -webkit-mask-image: radial-gradient(120% 105% at 50% 38%, #000 18%, transparent 76%);
+    mask-image: radial-gradient(120% 105% at 50% 38%, #000 18%, transparent 76%);
+  }
+  /* 窗口背后的一层柔光，把主体从背景里托起来 */
+  .stage::after {
+    content: "";
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 1180px; height: 620px;
+    transform: translate(-50%, -46%);
+    background: radial-gradient(closest-side, var(--glow, rgba(255, 255, 255, 0.9)), transparent 72%);
+    filter: blur(28px);
+    opacity: 0.55;
+    pointer-events: none;
+  }
+  .stage[data-theme="dark"]::after { opacity: 0.8; }
+
+  /* ---------------- 虚拟浏览器窗口 ---------------- */
+  .window {
+    position: relative;
+    z-index: 1;
+    width: var(--win-w);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--bar-bg);
+    box-shadow: var(--shadow), 0 0 0 1px var(--win-border);
+  }
+
+  .bar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    height: var(--bar-h);
+    padding: 0 16px;
+    background: var(--bar-bg);
+    border-bottom: 1px solid var(--bar-line);
+  }
+
+  /* 红黄绿三颗窗口按钮 */
+  .lights { display: flex; gap: 8px; flex: 0 0 auto; }
+  .lights i { display: block; width: 12px; height: 12px; border-radius: 50%; }
+  .lights i:nth-child(1) { background: #ff5f57; }
+  .lights i:nth-child(2) { background: #febc2e; }
+  .lights i:nth-child(3) { background: #28c840; }
+
+  .nav { display: flex; align-items: center; gap: 2px; color: var(--icon-ink); flex: 0 0 auto; }
+  .nav svg { display: block; }
+
+  /* 地址栏：在窗口内水平居中（与真实 Chrome 的 omnibox 位置一致） */
+  .omnibox {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    max-width: 620px;
+    height: 27px;
+    padding: 0 13px;
+    border-radius: 999px;
+    background: var(--pill-bg);
+    border: 1px solid var(--pill-line);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  }
+  .omnibox svg { display: block; flex: 0 0 auto; color: var(--icon-ink); }
+  .omnibox span {
+    font-size: 12.5px;
+    line-height: 1;
+    letter-spacing: 0.1px;
+    color: var(--url-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .right { margin-left: auto; display: flex; align-items: center; gap: 12px; flex: 0 0 auto; }
+  .ext-icon { display: block; width: 18px; height: 18px; border-radius: 5px; }
+  .kebab { display: flex; flex-direction: column; gap: 2.5px; }
+  .kebab i { display: block; width: 3px; height: 3px; border-radius: 50%; background: var(--icon-ink); }
+
+  /* 网页内容：raw 截图等比缩放进内容区，底部两角由窗口圆角裁掉 */
+  .shot {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: #fff;
+  }
+</style>
+</head>
+<body>
+  <div class="stage" data-theme="light" id="stage">
+    <div class="window">
+      <div class="bar">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <div class="nav">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.45"><path d="M9 5l7 7-7 7"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 10-2.3 6.3"/><path d="M20 5v6h-6"/></svg>
+        </div>
+
+        <div class="omnibox" id="omnibox">
+          <!-- 锁 / 扩展拼图 由 JS 注入 -->
+          <span id="url">—</span>
+        </div>
+
+        <div class="right">
+          <img class="ext-icon" src="../../store/icons/icon-32.png" alt="" />
+          <div class="kebab"><i></i><i></i><i></i></div>
+        </div>
+      </div>
+      <img class="shot" id="shot" src="" alt="" />
+    </div>
+  </div>
+
+<script>
+  // 每张图对应的虚拟域名（演示站点均为虚构品牌，扩展页用 chrome-extension:// 如实标注）
+  const SHOTS = {
+    1: { file: "01-select-toolbar.png", theme: "light", scheme: "https", url: "inneratlas.press/why-spaced-repetition-beats-cramming" },
+    2: { file: "02-instant-answer.png", theme: "light", scheme: "https", url: "inneratlas.press/why-spaced-repetition-beats-cramming" },
+    3: { file: "03-follow-up-chat.png", theme: "dark", scheme: "https", url: "stacknote.dev/runtimes/node-server-workers" },
+    4: { file: "04-custom-actions.png", theme: "light", scheme: "extension", url: "chrome-extension://aiction/options.html#actions" }
+  }
+
+  const LOCK = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2.5"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>'
+  const PUZZLE = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4a2 2 0 114 0v1.5h3.5A1.5 1.5 0 0119 7v3.5h1a2 2 0 110 4h-1V19a1.5 1.5 0 01-1.5 1.5H14v-1a2 2 0 10-4 0v1H6.5A1.5 1.5 0 015 19v-3.5H4a2 2 0 110-4h1V7a1.5 1.5 0 011.5-1.5H10V4z"/></svg>'
+
+  const step = new URLSearchParams(location.search).get("step") || "1"
+  const conf = SHOTS[step] || SHOTS[1]
+
+  const stage = document.getElementById("stage")
+  stage.dataset.theme = conf.theme
+
+  const omnibox = document.getElementById("omnibox")
+  omnibox.insertAdjacentHTML("afterbegin", conf.scheme === "extension" ? PUZZLE : LOCK)
+  document.getElementById("url").textContent = conf.url
+  document.getElementById("shot").src = "../../store/screenshots/raw/" + conf.file
+
+  // 供 frame.mjs 轮询：图片解码完成才算就绪
+  const shot = document.getElementById("shot")
+  const ready = () => { document.documentElement.dataset.ready = "1" }
+  if (shot.complete && shot.naturalWidth) ready()
+  else shot.addEventListener("load", ready, { once: true })
+</script>
+</body>
+</html>

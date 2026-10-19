@@ -1,10 +1,10 @@
 {
   "extName": {
-    "message": "AIction - Custom AI Actions | PDF & Text Selection | DeepSeek/GPT/Claude",
+    "message": "AIction – Select to Ask AI | Custom Actions",
     "description": "Extension name"
   },
   "extDescription": {
-    "message": "Select text on any webpage to explain, summarize, translate, or chat with AI. Built-in PDF viewer. Turn LLMs into web shortcuts.",
+    "message": "Select text to explain, summarize, translate or chat with actions you define. Bring your own API key and model. Also reads PDFs.",
     "description": "Extension description"
   }
 }

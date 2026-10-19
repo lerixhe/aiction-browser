@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Why spaced repetition beats cramming — Inner Atlas</title>
+<style>
+  :root {
+    --ink: #12151a;
+    --ink-2: #3c4350;
+    --ink-3: #6b7280;
+    --line: #e6e3dc;
+    --paper: #fbfaf7;
+    --accent: #1a56db;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .nav {
+    height: 58px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 44px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(251, 250, 247, 0.9);
+  }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; letter-spacing: -0.01em; font-size: 15px; }
+  .brand .mark {
+    width: 22px; height: 22px; border-radius: 7px;
+    background: linear-gradient(145deg, #1a56db, #0b2f80);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.22);
+  }
+  .nav-links { display: flex; gap: 26px; font-size: 13px; color: var(--ink-3); }
+  .nav-links span:first-child { color: var(--ink); font-weight: 600; }
+  .wrap { display: flex; gap: 56px; max-width: 1180px; margin: 0 auto; padding: 22px 44px 0; }
+  article { width: 690px; flex: 0 0 690px; }
+  .kicker {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 12px;
+  }
+  h1 {
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    font-size: 34px; line-height: 1.15; letter-spacing: -0.018em;
+    margin: 0 0 14px; font-weight: 600;
+  }
+  .byline { font-size: 12.5px; color: var(--ink-3); display: flex; gap: 10px; align-items: center; margin-bottom: 24px; }
+  .avatar { width: 22px; height: 22px; border-radius: 50%; background: linear-gradient(135deg,#d9c7a7,#a8845a); }
+  p { font-size: 17px; line-height: 1.7; color: var(--ink-2); margin: 0 0 18px; }
+  p.lede { font-size: 19px; line-height: 1.66; color: var(--ink); }
+  aside { flex: 1; padding-top: 6px; }
+  .aside-title { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); font-weight: 700; margin-bottom: 14px; }
+  .card { border-top: 1px solid var(--line); padding: 14px 0; }
+  .card .t { font-size: 14.5px; font-weight: 600; line-height: 1.4; margin-bottom: 5px; }
+  .card .m { font-size: 12px; color: var(--ink-3); }
+  ::selection { background: #b9d0ff; }
+</style>
+</head>
+<body>
+  <header class="nav">
+    <div class="brand"><div class="mark"></div>Inner Atlas</div>
+    <div class="nav-links"><span>Essays</span><span>Notes</span><span>Library</span><span>About</span></div>
+  </header>
+  <div class="wrap">
+    <article>
+      <div class="kicker">Memory</div>
+      <h1>Why spaced repetition beats cramming</h1>
+      <div class="byline"><div class="avatar"></div><span>Mara Whitfield</span><span>&middot;</span><span>12 min read</span></div>
+      <p class="lede">Most students study by re-reading. It feels productive, and it is almost useless. What works is unglamorous: review at widening intervals.</p>
+      <p id="target">Spaced repetition exploits two quirks of memory. The first is that retrieval, not restudy, is what strengthens a memory: every time you pull something out of your head, the path back to it gets easier to find. The second is that a memory retrieved just as it is about to be forgotten is strengthened far more than one retrieved while it is still fresh.</p>
+      <p>The practical consequence is a schedule. Review a new fact after a day, then three days, then a week, then a month. Each successful retrieval pushes the next review further out, and the total time you spend is a fraction of what a cramming session costs.</p>
+      <p>Cramming, by contrast, works for the exam on Tuesday and fails for the exam in June. The difference is not effort but timing: massed practice builds fluency without durability, and fluency is easy to mistake for knowledge.</p>
+      <p>None of this requires software, flashcards or a system. It requires that you stop reading and start recalling, and that you let a little forgetting happen in between.</p>
+    </article>
+    <aside>
+      <div class="aside-title">More in Memory</div>
+      <div class="card"><div class="t">The forgetting curve is a feature</div><div class="m">6 min read</div></div>
+      <div class="card"><div class="t">Why fluency feels like knowledge</div><div class="m">9 min read</div></div>
+      <div class="card"><div class="t">Notes on interleaving</div><div class="m">4 min read</div></div>
+    </aside>
+  </div>
+</body>
+</html>

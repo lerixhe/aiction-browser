@@ -1,0 +1,109 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      /* Marquee 1400×560：左侧品牌 + 价值主张，右侧真实产品截图（1:1 不放大，保持清晰） */
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1400px; height: 560px; overflow: hidden; }
+      body {
+        position: relative;
+        font-family: -apple-system, "SF Pro Display", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+        background: linear-gradient(118deg, #16307a 0%, #1d4ed8 42%, #3b82f6 78%, #5aa0f8 100%);
+        -webkit-font-smoothing: antialiased;
+      }
+      .glow {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 96% -6%, rgba(255, 255, 255, 0.36), transparent 52%),
+          radial-gradient(circle at 6% 108%, rgba(6, 18, 56, 0.42), transparent 58%);
+      }
+
+      /* ---------- 左侧文案 ---------- */
+      .copy {
+        position: absolute;
+        left: 74px;
+        top: 50%;
+        width: 472px;
+        transform: translateY(-50%);
+      }
+      .brand { display: flex; align-items: center; gap: 12px; }
+      .mark-wrap {
+        display: inline-flex;
+        padding: 4px;
+        border-radius: 30%;
+        background: #fff;
+        box-shadow: 0 10px 22px rgba(6, 20, 60, 0.3);
+      }
+      .mark { display: block; width: 34px; height: 34px; border-radius: 22%; }
+      .brand span { font-size: 23px; font-weight: 600; letter-spacing: -0.01em; color: rgba(255, 255, 255, 0.94); }
+
+      h1 {
+        margin-top: 26px;
+        font-size: 52px;
+        line-height: 1.1;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        color: #fff;
+      }
+      h1 em { font-style: normal; color: #bfdbfe; }
+
+      p {
+        margin-top: 20px;
+        max-width: 430px;
+        font-size: 17px;
+        line-height: 1.55;
+        color: rgba(255, 255, 255, 0.82);
+      }
+      .chips { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 8px; }
+      .chips span {
+        padding: 6px 13px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.94);
+        background: rgba(255, 255, 255, 0.14);
+        border: 1px solid rgba(255, 255, 255, 0.24);
+      }
+
+      /* ---------- 右侧产品片段 ----------
+         从 02-instant-answer.png 取「文章正文 + 悬浮回答卡片」的完整区域（1:0.78 缩放）：
+         左边界落在正文左边距之外，避免出现半截文字；卡片是毛玻璃，必须带背景上下文才自然。 */
+      .page {
+        position: absolute;
+        left: 570px;
+        top: 65px;
+        width: 810px;
+        height: 430px;
+        border-radius: 14px;
+        overflow: hidden;
+        background-color: #fff;
+        background-image: url("../../../store/screenshots/raw/02-instant-answer.png");
+        background-size: 1000px 625px;
+        background-position: -31px -188px;
+        background-repeat: no-repeat;
+        box-shadow: 0 30px 60px rgba(3, 10, 32, 0.42), 0 0 0 1px rgba(255, 255, 255, 0.28);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="glow"></div>
+
+    <div class="copy">
+      <div class="brand">
+        <span class="mark-wrap"><img class="mark" src="../../../src/assets/icon.png" alt="" /></span>
+        <span>AIction</span>
+      </div>
+      <h1>Select text.<br />Ask AI.<br /><em>Anywhere.</em></h1>
+      <p>Explain, summarize, translate or chat right on the page you are reading.</p>
+      <div class="chips">
+        <span>Your own prompts</span>
+        <span>Any model</span>
+        <span>PDF ready</span>
+      </div>
+    </div>
+
+    <div class="page"></div>
+  </body>
+</html>

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Your Node.js server does not need more workers — Stacknote</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #141a22;
+    --ink: #e8edf5;
+    --ink-2: #a9b4c4;
+    --ink-3: #6f7c8d;
+    --line: #212832;
+    --accent: #7aa2ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .nav {
+    height: 56px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 40px; border-bottom: 1px solid var(--line); background: #0b0f15;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
+  .brand .mark { width: 20px; height: 20px; border-radius: 6px; background: linear-gradient(150deg, #7aa2ff, #3a5bd9); }
+  .nav-links { display: flex; gap: 24px; font-size: 12.5px; color: var(--ink-3); }
+  .nav-links span:first-child { color: var(--ink); }
+  .wrap { display: flex; gap: 52px; max-width: 1160px; margin: 0 auto; padding: 30px 40px 0; }
+  article { width: 520px; flex: 0 0 520px; }
+  .kicker { font-size: 10.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
+  h1 { font-size: 31px; line-height: 1.2; letter-spacing: -0.022em; margin: 0 0 12px; font-weight: 650; }
+  .meta { font-size: 12px; color: var(--ink-3); display: flex; gap: 9px; align-items: center; margin-bottom: 20px; }
+  .dot { width: 20px; height: 20px; border-radius: 50%; background: linear-gradient(135deg, #46536a, #26303f); }
+  p { font-size: 15.5px; line-height: 1.75; color: var(--ink-2); margin: 0 0 16px; }
+  p.lede { color: var(--ink); font-size: 16.5px; }
+  code { font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 13px; background: #1b222c; border: 1px solid #26303c; border-radius: 5px; padding: 1px 5px; color: #cfe0ff; }
+  aside { flex: 1; padding-top: 4px; }
+  .aside-title { font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); font-weight: 700; margin-bottom: 12px; }
+  .row { border-top: 1px solid var(--line); padding: 12px 0; font-size: 13.5px; color: var(--ink-2); }
+  ::selection { background: #2c4b8f; }
+</style>
+</head>
+<body>
+  <header class="nav">
+    <div class="brand"><div class="mark"></div>Stacknote</div>
+    <div class="nav-links"><span>Runtimes</span><span>Databases</span><span>Edge</span><span>Archive</span></div>
+  </header>
+  <div class="wrap">
+    <article>
+      <div class="kicker">Runtimes</div>
+      <h1>Your Node.js server does not need more workers</h1>
+      <div class="meta"><div class="dot"></div><span>Ilia Sokolov</span><span>&middot;</span><span>8 min read</span></div>
+      <p class="lede">Adding processes is the reflex answer to a slow server. It hides the problem. Most of the time, one request is synchronously doing something expensive, and every other request is simply standing behind it.</p>
+      <p>The event loop runs your JavaScript on a single thread. Anything that blocks that thread for longer than a few milliseconds, a synchronous file read, a large <code>JSON.parse</code>, a regex that backtracks, stalls every other request behind it.</p>
+      <p id="target">No matter how many CPU cores the machine has, one paused loop is one paused server.</p>
+      <p>Profiling usually finds the same three culprits: parsing payloads that could be streamed, sorting arrays that could be indexed, and calling a synchronous API inside a hot path. Each one is a one-line fix and each one is invisible in average latency.</p>
+    </article>
+  </div>
+</body>
+</html>

@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      /* 小宣传图 440×280：字少、字大 —— 商店缩略显示时仍可读 */
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      /* 尺寸由视口决定：440×280 与 920×560 两档都铺满（内容用 vh，等比缩放） */
+      html, body { width: 100%; height: 100%; overflow: hidden; }
+      body {
+        font-family: -apple-system, "SF Pro Display", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+        background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 52%, #60a5fa 100%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+        -webkit-font-smoothing: antialiased;
+      }
+      /* 右上柔光 + 左下暗角，避免纯色死板 */
+      .glow {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 84% 6%, rgba(255, 255, 255, 0.42), transparent 58%),
+          radial-gradient(circle at 10% 100%, rgba(8, 25, 74, 0.34), transparent 62%);
+      }
+      .content { position: relative; display: flex; flex-direction: column; align-items: center; }
+      /* 品牌图标是蓝底白图，直接叠在蓝色渐变上会糊成一片：垫一层白底把它托出来 */
+      .mark-wrap {
+        display: inline-flex;
+        padding: 2.1vh;
+        border-radius: 30%;
+        background: #fff;
+        box-shadow: 0 12px 26px rgba(6, 20, 60, 0.32);
+      }
+      .mark { display: block; width: 20.7vh; height: 20.7vh; border-radius: 22%; }
+      .name {
+        margin-top: 5.7vh;
+        font-size: 12.9vh;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        color: #fff;
+      }
+      .tag {
+        margin-top: 2.9vh;
+        font-size: 5.4vh;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+        color: rgba(255, 255, 255, 0.86);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="glow"></div>
+    <div class="content">
+      <span class="mark-wrap"><img class="mark" src="../../../src/assets/icon.png" alt="" /></span>
+      <div class="name">AIction</div>
+      <div class="tag">Select text. Ask AI anywhere.</div>
+    </div>
+  </body>
+</html>

@@ -15,7 +15,9 @@
     "zip:firefox": "wxt zip -b firefox",
     "typecheck": "tsc --noEmit",
     "postinstall": "wxt prepare",
-    "icons": "npx tsx scripts/generate-icons.ts"
+    "icons": "npx tsx scripts/generate-icons.ts",
+    "screenshots": "node scripts/store-screenshots/shoot.mjs",
+    "screenshots:frame": "node scripts/store-screenshots/frame.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.81",
