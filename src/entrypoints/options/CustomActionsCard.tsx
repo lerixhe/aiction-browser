@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { addIcon } from "@iconify/react"
 
 import { consumeFirstTimeFlag, lengthBucket, trackEvent } from "@/shared/analytics"
@@ -31,6 +31,46 @@ import {
 
 /** 编辑聚合上报的静默窗口：用户停手这么久才上报一次（避免逐字上报） */
 const ACTION_EDIT_FLUSH_MS = 2000
+
+/** 图标选择器尺寸：与 css.ts 中 .opt-iconpicker 的 width / max-height 保持一致 */
+const ICON_PICKER_WIDTH = 320
+const ICON_PICKER_MAX_HEIGHT = 272
+/** 弹层与锚点之间的间距 / 弹层与视口边缘的安全距离 */
+const ICON_PICKER_GAP = 6
+const ICON_PICKER_MARGIN = 8
+
+/**
+ * 计算图标选择器落位（视口坐标，fixed 定位）。
+ * 锚点可能在视口任意位置（详情区靠右、窄窗口、锚点贴近底部），必须整体钳进视口：
+ * 水平方向收敛进安全区，垂直方向优先放下方、放不下翻上方、两边都放不下再收回视口内。
+ * 不钳制时弹层会落在安全区之外——看得见一半、点不到图标。
+ */
+function computeIconPickerPos(
+  anchor: { top: number; bottom: number; left: number },
+  size: { width: number; height: number }
+): { top: number; left: number } {
+  const viewportWidth = window.innerWidth
+  const viewportHeight = window.innerHeight
+  const margin = ICON_PICKER_MARGIN
+  // 视口比弹层还小时先压缩尺寸，保证两侧都留得下 margin
+  const width = Math.min(size.width, Math.max(viewportWidth - margin * 2, 0))
+  const height = Math.min(size.height, Math.max(viewportHeight - margin * 2, 0))
+
+  const maxLeft = Math.max(viewportWidth - width - margin, margin)
+  const left = Math.min(Math.max(anchor.left, margin), maxLeft)
+
+  const below = anchor.bottom + ICON_PICKER_GAP
+  const above = anchor.top - ICON_PICKER_GAP - height
+  const maxTop = Math.max(viewportHeight - height - margin, margin)
+  const top =
+    below + height <= viewportHeight - margin
+      ? below
+      : above >= margin
+        ? above
+        : Math.min(below, maxTop)
+
+  return { top, left }
+}
 
 type ActionEditField = "label" | "template"
 
@@ -76,6 +116,8 @@ export function CustomActionsCard({ settings, saveSettingsNow }: CustomActionsCa
   const [iconSearchLoading, setIconSearchLoading] = useState(false)
   const iconSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const iconPickerRef = useRef<HTMLDivElement | null>(null)
+  /** 打开弹层时的触发按钮：滚动 / resize / 尺寸修正都以它为锚点重算 */
+  const iconTriggerRef = useRef<HTMLElement | null>(null)
 
   const drafts = useDraftItemMap<ActionTemplate>(settings.actions, (a, b) =>
     a.id === b.id &&
@@ -93,9 +135,11 @@ export function CustomActionsCard({ settings, saveSettingsNow }: CustomActionsCa
   useEffect(() => {
     if (!showIconPicker) return
     const handleClickOutside = (event: MouseEvent) => {
-      if (iconPickerRef.current && !iconPickerRef.current.contains(event.target as Node)) {
-        setShowIconPicker(false)
-      }
+      const target = event.target as Node
+      // 触发按钮自身交给 click 里的 toggle 处理：mousedown 先关会让按钮点不开也关不掉
+      if (iconPickerRef.current?.contains(target)) return
+      if (iconTriggerRef.current?.contains(target)) return
+      setShowIconPicker(false)
     }
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
@@ -394,11 +438,59 @@ export function CustomActionsCard({ settings, saveSettingsNow }: CustomActionsCa
     })
   }
 
+  /** 以触发按钮当前落位重算弹层位置（首帧用假设尺寸，实测后修正） */
+  const repositionIconPicker = useCallback(() => {
+    const anchorEl = iconTriggerRef.current
+    if (!anchorEl) return
+    const rect = anchorEl.getBoundingClientRect()
+    // 按钮滚出视口后弹层失去参照，直接收起（留在原地会飘在无关内容旁）
+    if (
+      rect.bottom < 0 ||
+      rect.top > window.innerHeight ||
+      rect.right < 0 ||
+      rect.left > window.innerWidth
+    ) {
+      setShowIconPicker(false)
+      return
+    }
+    const picker = iconPickerRef.current
+    const next = computeIconPickerPos(rect, {
+      width: picker?.offsetWidth || ICON_PICKER_WIDTH,
+      height: picker?.offsetHeight || ICON_PICKER_MAX_HEIGHT
+    })
+    setIconPickerPos((prev) =>
+      prev && prev.top === next.top && prev.left === next.left ? prev : next
+    )
+  }, [])
+
   const openIconPicker = (element: HTMLElement) => {
-    const rect = element.getBoundingClientRect()
-    setIconPickerPos({ top: Math.min(rect.bottom + 6, window.innerHeight - 280), left: rect.left })
+    iconTriggerRef.current = element
+    setIconPickerPos(
+      computeIconPickerPos(element.getBoundingClientRect(), {
+        width: ICON_PICKER_WIDTH,
+        height: ICON_PICKER_MAX_HEIGHT
+      })
+    )
     setShowIconPicker((value) => !value)
   }
+
+  // 挂载 / 内容变化后按实测尺寸再修正一次（假设尺寸只用于首帧，避免贴边溢出）
+  useLayoutEffect(() => {
+    if (!showIconPicker) return
+    repositionIconPicker()
+  }, [showIconPicker, repositionIconPicker, iconSearchResults, iconSearchLoading])
+
+  // 滚动（含卡片内部滚动容器）/ 窗口尺寸变化时保持贴住触发按钮
+  useEffect(() => {
+    if (!showIconPicker) return
+    const handleReposition = () => repositionIconPicker()
+    window.addEventListener("scroll", handleReposition, true)
+    window.addEventListener("resize", handleReposition)
+    return () => {
+      window.removeEventListener("scroll", handleReposition, true)
+      window.removeEventListener("resize", handleReposition)
+    }
+  }, [showIconPicker, repositionIconPicker])
 
   const renderIconGrid = (actionId: string, currentIcon?: string) => (
     <div className="opt-iconpicker-grid">

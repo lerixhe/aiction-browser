@@ -982,7 +982,9 @@ export function createOptionsCss(theme: UiTheme): string {
     position: fixed;
     z-index: 120;
     width: 320px;
-    max-height: 272px;
+    /* 窄/矮窗口下不越出安全区（与 CustomActionsCard.tsx 的 ICON_PICKER_* 常量对应） */
+    max-width: calc(100vw - 16px);
+    max-height: min(272px, calc(100vh - 16px));
     overflow-y: auto;
     padding: 12px;
     border: 1px solid ${theme.border.hairline};
