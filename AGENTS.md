@@ -73,10 +73,10 @@ const items = (() => {
 1. 智能填充（`useProviderManager.handleSmartFillParams`）只填**语义明确**的项：`reasoning`（仅当 provider 明确支持关闭语义）、`reasoningEffort`（仅当明确接受 `reasoning_effort`）。
    `maxTokens` / `contextSize` **刻意不自动填**（留空 = 跟随端点默认 / 不裁剪）——填错上限的失败模式是请求直接 400 或输入被静默裁剪。
    数据源里的上限数字只作为 UI 提示展示（文案须写明「以端点实际限制为准」）。
-2. 用户手填的上限仍可能被端点拒绝：background 有**降级重试表**（`degradations`，`streamChat` 内），
-   命中 `shouldRetryWithoutReasoningOptions` / `shouldRetryWithoutMaxOutputTokens` 时去掉对应参数重试一次
-   （各降级最多一次，已有内容产出则不重试）。匹配用的错误文本取 `errorText()`（message + `responseBody`），
-   AI SDK 的 `APICallError` 有时只在 `responseBody` 里带服务端原文。
+2. **不做静默降级重试**：端点拒绝某个可选参数（max_tokens 超上限、不支持关闭思考）时，
+   `streamChat` 直接报错，让用户看到真实原因去设置里改。曾实现过「去掉该参数重试一次」的降级重试表，
+   已移除——请求翻倍与「莫名其妙变慢」的代价，大于自动恢复的收益；错误的配置也永远不会暴露。
+   想加回类似机制前先确认：这个失败真的无法从设置侧修正吗？
 
 ### JSX “幽灵报错”：少一个 `}` 的定位方法（灵动岛重构期间沉淀，适用于任意 JSX 浮层）
 
