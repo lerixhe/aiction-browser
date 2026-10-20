@@ -344,13 +344,15 @@ export function useSpeechPlayer(source: AnalyticsSource = "web") {
 
         const tts = settings.tts
         const chunks = splitText(trimmed)
-        const lang = detectTextLocale(trimmed) ?? (navigator.language || "zh-CN")
+        // 语言检测走浏览器 CLD（异步）；无法检测时回退浏览器 UI 语言
+        const lang = (await detectTextLocale(trimmed)) ?? navigator.language
         const voice =
           tts.provider === "edge"
             ? tts.autoLocale
-              ? resolveVoiceForText(trimmed, tts.edgeVoice)
+              ? await resolveVoiceForText(trimmed, tts.edgeVoice)
               : tts.edgeVoice
             : ""
+        if (generationRef.current !== generation) return
 
         const session: SpeechSession = {
           text: trimmed,

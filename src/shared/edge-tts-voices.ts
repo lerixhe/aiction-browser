@@ -1,6 +1,8 @@
 // Edge 在线语音精选列表（按语言分组）
 // 完整语音列表有 400+ 项，这里精选常用语音；用户仍可在设置中切换组内任意语音。
 
+import { parseLocaleTag } from "@/shared/language-tag"
+
 export interface EdgeTtsVoiceOption {
   /** 语音全名，如 "zh-CN-XiaoxiaoNeural"，直接用于 SSML */
   name: string
@@ -179,70 +181,130 @@ export const LOCALE_DEFAULT_VOICES: Record<string, string> = Object.fromEntries(
   })
 )
 
-/** 常见繁体专用字（简体文本中不会出现）；用于区分 zh-CN / zh-TW */
-const TRADITIONAL_ONLY_RE = /[們個學會來對時開關門長東車馬鳥語書體點國愛難顧飯錢見貝頁風飛龍麼後臺灣說話讀寫買賣兒遠運動靈雲電腦線專區處務員廳藝術觀歷讓證據豐權變確認題調發築資嚴壓適標準備狀況經濟財場競爭執評監檢報導師訊數據庫構計級層]/g
+/** 粤语白话文专用字（含简繁两种写法），用字是封闭字符集 */
+const CANTONESE_ONLY_CHARS = new Set([
+  ...Array.from("嘅咗唔哋嗰喺冇攞佢諗乜嘢嚟搵揾倾傾偈咁啲噉嚿")
+])
 
-/** 粤语白话文特有字（简繁无关）；出现则视为 zh-HK */
-const CANTONESE_ONLY_RE = /[嘅咗唔哋嗰喺冇攞佢谂乜嘢嚟搵傾偈]/g
+/**
+ * 文本语言检测：主判断交给浏览器的 CLD（`chrome.i18n.detectLanguage`），
+ * 不再用 Unicode 区段计数 / 变音符正则去猜语言。
+ *
+ * 保留的唯一规则是粤语：CLD 对粤语白话文只会返回 `zh` / `zh-Hant`，
+ * 无法区分粤语与普通话/台湾国语，而粤语语音读普通话文本会非常难听，
+ * 只能靠粤语专用字（封闭字符集）判定。
+ *
+ * 返回语音组 locale（如 "zh-CN" / "en-US"）；无法判定时返回 null（调用方自行兜底）。
+ */
+export async function detectTextLocale(text: string): Promise<string | null> {
+  const sample = text.slice(0, 500).trim()
+  if (!sample) return null
 
-function countMatches(text: string, re: RegExp): number {
-  return (text.match(re) ?? []).length
+  if (containsCantoneseChar(sample)) return "zh-HK"
+
+  const tag = await detectLanguageTag(sample)
+  if (!tag) return null
+  return matchVoiceLocale(tag)
+}
+
+/** 粤语专用字命中检测（逐码点查集合，不做模式匹配） */
+function containsCantoneseChar(text: string): boolean {
+  for (const char of text) {
+    if (CANTONESE_ONLY_CHARS.has(char)) return true
+  }
+  return false
 }
 
 /**
- * 近似检测文本语言（脚本 + 变音符启发式）。
- * 拉丁语系只能区分出有典型变音特征的（西/德/葡/法/越），其余默认 en-US；
- * 误判时用户可关闭自动匹配。
+ * 调用 CLD 取可信度最高的语言标签；
+ * 无 chrome.i18n（测试/页面注入环境）、无结果或调用报错时返回 null，由调用方兜底。
  */
-export function detectTextLocale(text: string): string | null {
-  const sample = text.slice(0, 500)
-  if (!sample.trim()) return null
+function detectLanguageTag(text: string): Promise<string | null> {
+  if (typeof chrome === "undefined" || !chrome.i18n?.detectLanguage) return Promise.resolve(null)
+  const { detectLanguage } = chrome.i18n
 
-  const han = countMatches(sample, /[\u3400-\u9fff]/g)
-  const kana = countMatches(sample, /[\u3041-\u30ff]/g)
-  const hangul = countMatches(sample, /[\uac00-\ud7af]/g)
+  return new Promise((resolve) => {
+    try {
+      detectLanguage.call(chrome.i18n, text, (result) => {
+        if (chrome.runtime?.lastError) {
+          resolve(null)
+          return
+        }
+        const languages = result?.languages ?? []
+        const top = languages.reduce<(typeof languages)[number] | null>(
+          (best, item) => (best && best.percentage >= item.percentage ? best : item),
+          null
+        )
+        resolve(top?.language || null)
+      })
+    } catch {
+      resolve(null)
+    }
+  })
+}
 
-  if (countMatches(sample, CANTONESE_ONLY_RE) > 0) return "zh-HK"
-  // 有假名即日文（中文不含假名；日语汉字多于假名也成立）
-  if (kana > 0) return "ja-JP"
-  if (hangul > 0 && hangul >= han) return "ko-KR"
-  if (han > 0) {
-    return countMatches(sample, TRADITIONAL_ONLY_RE) >= 2 ? "zh-TW" : "zh-CN"
+/**
+ * CLD 语言标签 → 精选语音组 locale。
+ * 按 `Intl.Locale.maximize()` 归一后比较 language / script / region，逐级放宽：
+ * 完全同地区 > 同书写系统（zh-Hant → zh-TW 而不是 zh-HK，组顺序保底） > 仅同语种。
+ */
+function matchVoiceLocale(tag: string): string | null {
+  const detected = parseLocaleTag(tag)?.maximize()
+  if (!detected) return null
+
+  let bestLocale: string | null = null
+  let bestScore = 0
+  for (const group of EDGE_TTS_VOICE_GROUPS) {
+    const candidate = parseLocaleTag(group.locale)?.maximize()
+    if (!candidate || candidate.language !== detected.language) continue
+    const score =
+      1 +
+      (candidate.script === detected.script ? 2 : 0) +
+      (candidate.region === detected.region ? 4 : 0)
+    // 同分保留先出现者（zh-TW 排在 zh-HK 前，繁体书面语优先台湾国语）
+    if (score > bestScore) {
+      bestScore = score
+      bestLocale = group.locale
+    }
   }
+  return bestLocale
+}
 
-  if (countMatches(sample, /[\u0400-\u04ff]/g) > 0) return "ru-RU"
-  if (countMatches(sample, /[\u0600-\u06ff]/g) > 0) return "ar-SA"
-  if (countMatches(sample, /[\u0900-\u097f]/g) > 0) return "hi-IN"
-  if (countMatches(sample, /[\u0e00-\u0e7f]/g) > 0) return "th-TH"
-
-  // 拉丁语系：越南语特有字符（đ/ơ/ư 及 Vietnamese Extended Additional 声调区）
-  if (countMatches(sample, /[\u0111\u01a0\u01b0\u01af\u1ea0-\u1ef9]/gi) > 0) return "vi-VN"
-  if (/[ñ¿¡]/i.test(sample)) return "es-ES"
-  if (/[ãõ]/i.test(sample)) return "pt-BR"
-  if (/[äöüß]/i.test(sample)) return "de-DE"
-  if (countMatches(sample, /[çœàèùâêôûé]/gi) >= 2) return "fr-FR"
-  if (countMatches(sample, /[a-z\u00c0-\u024f]/gi) >= 2) return "en-US"
-
-  return null
+/**
+ * Azure/Edge 语音名格式为 `${locale}-${VoiceName}Neural`，取前两段作为语言标签解析
+ * （格式由语音提供方定义，非法标签返回 null）。
+ */
+function voiceNameToLocale(voiceName: string): Intl.Locale | null {
+  const [language, region] = voiceName.split("-")
+  if (!language || !region) return null
+  return parseLocaleTag(`${language}-${region}`)
 }
 
 /**
  * 按文本语言解析实际使用的语音：
- * - 语言与配置语音同语种（en-GB vs en-US 这类）→ 保留用户选择
- * - 跨语种（如中文文本配英文语音）→ 切到该语言默认语音
+ * - 同语种不同地区（en-GB 配置 + en-US 检测）→ 保留用户选择
+ * - 粤语与非粤语之间、跨语种 → 切到检测语言的默认语音
  */
-export function resolveVoiceForText(text: string, configuredVoice: string): string {
-  const detected = detectTextLocale(text)
+export async function resolveVoiceForText(text: string, configuredVoice: string): Promise<string> {
+  const detected = await detectTextLocale(text)
   if (!detected) return configuredVoice
 
-  const configuredLocale = configuredVoice.split("-").slice(0, 2).join("-")
-  if (configuredLocale === detected) return configuredVoice
-
-  const sameFamily = configuredLocale.split("-")[0] === detected.split("-")[0]
-  // 粤语语音仅适合粤语白话文，不用于朗读普通话/繁体书面文本
-  if (configuredLocale === "zh-HK" || detected === "zh-HK") {
+  // 粤语语音仅适合粤语白话文，与非粤语文本互不串用
+  const cantoneseDetected = detected === "zh-HK"
+  if (cantoneseDetected !== isCantoneseVoice(configuredVoice)) {
     return LOCALE_DEFAULT_VOICES[detected] ?? configuredVoice
   }
-  if (sameFamily) return configuredVoice
+
+  const configured = voiceNameToLocale(configuredVoice)
+  const detectedLocale = parseLocaleTag(detected)
+  if (configured && detectedLocale && configured.language === detectedLocale.language) {
+    return configuredVoice
+  }
   return LOCALE_DEFAULT_VOICES[detected] ?? configuredVoice
+}
+
+/** 语音是否为粤语（zh-HK）语音：交给 ICU 推导 region，不比对字符串前缀 */
+function isCantoneseVoice(voiceName: string): boolean {
+  const locale = voiceNameToLocale(voiceName)?.maximize()
+  return locale?.language === "zh" && locale?.region === "HK"
 }
