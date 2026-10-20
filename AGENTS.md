@@ -21,7 +21,7 @@ Chrome extension (MV3) built with WXT + React + TypeScript. Users select text on
 ## Workflow Rules
 - **代码修改后必须验证**：每次修改代码后，必须主动运行 `npm run typecheck` 和 `npm run build`，确保类型正确且构建成功。不要等待用户手动执行。
 - **设置页 UI 必读规范**：改动 `src/entrypoints/options/` 下的 UI 前先读 `docs/OPTIONS_UI.md`；新增设置项按该文档 §7 检查清单执行（即时/草稿归属、行式布局、i18n、埋点同步）。
-- **埋点必须登记**：新增 / 修改 / 删除 PostHog 埋点时，必须同步更新 `docs/ANALYTICS.md`（§2 事件清单 + §7 变更记录）；事件名与属性需遵守该文档 §3 的属性规范（禁止上报自由文本），并检查是否需同步 `docs/PRIVACY_POLICY.md` 与 `options.about.telemetryDesc` 文案。埋点上报统一走 `src/shared/analytics.ts`，不要在业务代码里直接请求 PostHog。**唯一禁区是 provider 的 API Key / token**：错误消息与响应体**原文全量上报**（`describeApiError()` → `error_detail` / `response_body`），**不做结构猜测**（不从文本正则抓状态码、不从 JSON 抠 `error.type`）；上报前必须过 `sanitizeErrorMessage()` 抹凭据，新增属性名不得含 `key` / `token` / `secret`（上报出口 `sanitizeProperties()` 会直接剔除，见 `docs/ANALYTICS.md` §3.10–§3.11）。
+- **埋点必须登记**：新增 / 修改 / 删除 PostHog 埋点时，必须同步更新 `docs/ANALYTICS.md`（§2 事件清单 + §8 变更记录）；事件名与属性需遵守该文档 §3 的属性规范（禁止上报自由文本），并检查是否需同步 `docs/PRIVACY_POLICY.md` 与 `options.about.telemetryDesc` 文案。埋点上报统一走 `src/shared/analytics.ts`，不要在业务代码里直接请求 PostHog。**唯一禁区是 provider 的 API Key / token**：错误消息与响应体**原文全量上报**（`describeApiError()` → `error_detail` / `response_body`），**不做结构猜测**（不从文本正则抓状态码、不从 JSON 抠 `error.type`）；上报前必须过 `sanitizeErrorMessage()` 抹凭据，新增属性名不得含 `key` / `token` / `secret`（上报出口 `sanitizeProperties()` 会直接剔除，见 `docs/ANALYTICS.md` §3.10–§3.11）。
 
 ## 开发经验教训
 
