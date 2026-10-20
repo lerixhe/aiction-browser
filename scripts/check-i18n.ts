@@ -10,10 +10,18 @@
 import fs from "node:fs"
 import path from "node:path"
 import {
+  DEFAULT_LANGUAGE_PREFERENCE,
+  AUTO_LANGUAGE,
+  isLanguagePreference,
+  normalizeLanguagePreference,
+  preferenceToLocale
+} from "@/shared/i18n/preference"
+import {
   DEFAULT_LOCALE,
   SUPPORTED_LOCALES,
   getMessages,
   matchLocale,
+  resolveBrowserLocale,
   resolveLocale
 } from "@/shared/i18n/translations"
 import { parseLocaleTag } from "@/shared/language-tag"
@@ -163,6 +171,51 @@ if (declaredDefault) {
   expectEqual("default_locale 与 DEFAULT_LOCALE 一致", declaredDefault, DEFAULT_LOCALE)
   expect("default_locale 存在于 _locales", localeDirs.includes(declaredDefault))
 }
+
+// ── 6. 语言偏好（自动项 = 跟随浏览器） ──────────────────────────────────
+
+section("6. 语言偏好（自动项 = 跟随浏览器）")
+
+// 值域：自动项的当前值 + 历史值迁移
+expectEqual('normalizeLanguagePreference("system")（历史值迁移）', normalizeLanguagePreference("system"), AUTO_LANGUAGE)
+expectEqual('normalizeLanguagePreference("browser")', normalizeLanguagePreference("browser"), AUTO_LANGUAGE)
+expectEqual('normalizeLanguagePreference("en")', normalizeLanguagePreference("en"), "en")
+expectEqual('normalizeLanguagePreference("klingon")', normalizeLanguagePreference("klingon"), null)
+expectEqual("normalizeLanguagePreference(undefined)", normalizeLanguagePreference(undefined), null)
+expectEqual("DEFAULT_LANGUAGE_PREFERENCE", DEFAULT_LANGUAGE_PREFERENCE, AUTO_LANGUAGE)
+expect('isLanguagePreference("system") 为 false（历史值不是合法值）', !isLanguagePreference("system"))
+
+/** 把 `chrome.i18n.getUILanguage()` stub 成指定值（null = 该 API 不可用） */
+function stubUiLanguage(language: string | null): void {
+  ;(globalThis as Record<string, unknown>).chrome =
+    language === null ? undefined : { i18n: { getUILanguage: () => language } }
+}
+
+const UI_CASES: { ui: string | null; expected: string }[] = [
+  { ui: "en-US", expected: "en" },
+  { ui: "zh-CN", expected: "zh_CN" },
+  { ui: "zh-Hans-SG", expected: "zh_CN" },
+  { ui: "zh-TW", expected: hasTraditionalChinese ? "zh_TW" : DEFAULT_LOCALE },
+  { ui: "de-DE", expected: DEFAULT_LOCALE }, // 无译文 → 默认，不猜系统语言
+  { ui: null, expected: DEFAULT_LOCALE } // chrome.i18n 不可用
+]
+for (const { ui, expected } of UI_CASES) {
+  stubUiLanguage(ui)
+  expectEqual(`resolveBrowserLocale()（getUILanguage=${ui ?? "不可用"}）`, resolveBrowserLocale(), expected)
+  expectEqual(`preferenceToLocale(AUTO_LANGUAGE)（getUILanguage=${ui ?? "不可用"}）`, preferenceToLocale(AUTO_LANGUAGE), expected)
+}
+
+// 关键不变量：navigator 语言不得影响结果（「跟随浏览器」≠「跟随系统」）
+stubUiLanguage("en-US")
+Object.defineProperty(globalThis, "navigator", {
+  value: { language: "zh-CN", languages: ["zh-CN"] },
+  configurable: true,
+  writable: true
+})
+expectEqual("英文 UI + 中文 navigator → en（不读 navigator）", resolveBrowserLocale(), "en")
+
+// 固定偏好不受浏览器语言影响
+expectEqual('preferenceToLocale("en") 与浏览器语言无关', preferenceToLocale("en"), "en")
 
 // ── 汇总 ────────────────────────────────────────────────────────────────
 

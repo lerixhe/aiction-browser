@@ -95,7 +95,7 @@ export default {
   "options.appearance.themeDark": "深色",
   "options.appearance.languageTitle": "语言",
   "options.appearance.languageDesc": "扩展界面的显示语言",
-  "options.appearance.languageSystem": "跟随系统",
+  "options.appearance.languageAuto": "自动（跟随浏览器）",
   "options.connection.providerName": "显示名称",
   "options.connection.providerNameDesc": "用于在列表中区分不同账号",
   "options.connection.serviceNamePlaceholder": "例如：OpenAI 主账号",

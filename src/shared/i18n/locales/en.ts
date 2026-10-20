@@ -95,7 +95,7 @@ export default {
   "options.appearance.themeDark": "Dark",
   "options.appearance.languageTitle": "Language",
   "options.appearance.languageDesc": "Display language for the extension UI",
-  "options.appearance.languageSystem": "Follow System",
+  "options.appearance.languageAuto": "Auto (Follow Browser)",
   "options.connection.providerName": "Display Name",
   "options.connection.providerNameDesc": "Used to tell accounts apart in the list",
   "options.connection.serviceNamePlaceholder": "e.g. OpenAI Primary",

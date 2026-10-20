@@ -1,9 +1,11 @@
 import type { ApiErrorDiagnostics, ChatErrorCode } from "@/shared/errors"
+import type { Locale } from "@/shared/i18n/registry"
 import type { ProviderIdentityProps } from "@/shared/provider-type"
 
 export type ThemePreference = "auto" | "light" | "dark"
 
-export type LanguagePreference = "system" | "en" | "zh_CN"
+/** 界面语言偏好：`"browser"` = 跟随浏览器 UI 语言（自动项），其余为具体 locale */
+export type LanguagePreference = "browser" | Locale
 
 export interface ActionTemplate {
   id: string

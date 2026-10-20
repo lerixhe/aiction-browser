@@ -1,4 +1,5 @@
 import { trackEvent } from "@/shared/analytics"
+import { AUTO_LANGUAGE } from "@/shared/i18n/preference"
 import { useI18n } from "@/shared/i18n/context"
 import type { ExtensionSettings, LanguagePreference, ThemePreference } from "@/shared/types"
 import { FieldGroup, SectionCard, SegmentedControl, SettingRow } from "./ui"
@@ -19,7 +20,7 @@ export function AppearanceSection({ settings, saveSettingsNow }: AppearanceSecti
   ]
 
   const languageOptions: { value: LanguagePreference; label: string }[] = [
-    { value: "system", label: t("options.appearance.languageSystem") },
+    { value: AUTO_LANGUAGE, label: t("options.appearance.languageAuto") },
     { value: "en", label: "English" },
     { value: "zh_CN", label: "简体中文" }
   ]

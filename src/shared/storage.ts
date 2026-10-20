@@ -1,6 +1,7 @@
 import { DEFAULT_ACTIONS, DEFAULT_CUSTOM_MODEL_PROVIDER, DEFAULT_SETTINGS, DEFAULT_TTS_SETTINGS } from "@/shared/defaults"
+import { normalizeLanguagePreference } from "@/shared/i18n/preference"
 import { migrateLegacyActionTemplate } from "@/shared/prompt"
-import type { ActionTemplate, ExtensionSettings, LanguagePreference, ModelParams, ProviderConfig, QuickAction, QuickActionType, ThemePreference, TtsProvider, TtsSettings, UserIconData } from "@/shared/types"
+import type { ActionTemplate, ExtensionSettings, ModelParams, ProviderConfig, QuickAction, QuickActionType, ThemePreference, TtsProvider, TtsSettings, UserIconData } from "@/shared/types"
 
 export { DEFAULT_SETTINGS }
 
@@ -290,8 +291,8 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
       ? DEFAULT_SETTINGS.systemPrompt
       : savedSystemPrompt
 
-  const validLanguages: LanguagePreference[] = ["system", "en", "zh_CN"]
-  const language = validLanguages.includes(saved.language as LanguagePreference) ? (saved.language as LanguagePreference) : DEFAULT_SETTINGS.language
+  // 语言偏好：旧值 "system"（旧版「跟随系统」）由 normalizeLanguagePreference 迁移为 "browser"
+  const language = normalizeLanguagePreference(saved.language) ?? DEFAULT_SETTINGS.language
 
   return {
     providers,

@@ -1,3 +1,4 @@
+import { AUTO_LANGUAGE } from "@/shared/i18n/preference"
 import type { ActionTemplate, ExtensionSettings, ModelParams, ProviderConfig, QuickAction, TtsSettings } from "@/shared/types"
 
 export const DEFAULT_ACTIONS: ActionTemplate[] = [
@@ -127,7 +128,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   providers: [],
   activeProviderId: "",
   theme: "auto",
-  language: "system",
+  language: AUTO_LANGUAGE,
   actions: DEFAULT_ACTIONS,
   quickActions: DEFAULT_QUICK_ACTIONS,
   tts: DEFAULT_TTS_SETTINGS,

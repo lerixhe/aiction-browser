@@ -1,6 +1,7 @@
 import type { ExtensionSettings, LanguagePreference, SelectionContext } from "@/shared/types"
 import { DEFAULT_SYSTEM_PROMPT } from "@/shared/defaults"
-import { resolveLocale, resolveSystemLocale, type Locale } from "@/shared/i18n/translations"
+import { DEFAULT_LANGUAGE_PREFERENCE, normalizeLanguagePreference, preferenceToLocale } from "@/shared/i18n/preference"
+import type { Locale } from "@/shared/i18n/registry"
 
 /** 系统提示词支持的占位符（未列出的占位符原样保留） */
 const SYSTEM_PROMPT_PLACEHOLDERS = [
@@ -29,6 +30,7 @@ export function migrateLegacyActionTemplate(template: string): string {
 }
 
 /** Locales 在提示词中的可读描述：让模型明确知道该用什么语言回答 */
+// TODO(P4)：改读 registry 的 `promptName`，删掉这张表（现为历史副本，改文案时以 registry 为准）
 const LOCALE_DISPLAY_NAMES: Record<Locale, string> = {
   en: "English",
   zh_CN: "简体中文（Simplified Chinese）"
@@ -36,12 +38,12 @@ const LOCALE_DISPLAY_NAMES: Record<Locale, string> = {
 
 /**
  * 解析用户语言偏好为当前界面语言的可读描述。
- * 「跟随系统」时读取浏览器 / 系统语言标签；仅内容脚本上下文调用（后台不构建 system 消息）。
+ * 「自动」项读浏览器 UI 语言（`chrome.i18n.getUILanguage()`）；仅内容脚本上下文调用
+ * （后台不构建 system 消息）。
  */
 export function resolveUILanguageLabel(preference?: LanguagePreference | null): string {
-  const pref: LanguagePreference = preference ?? "system"
-  const locale = pref === "system" ? resolveSystemLocale() : resolveLocale(pref)
-  return LOCALE_DISPLAY_NAMES[locale]
+  const pref = normalizeLanguagePreference(preference) ?? DEFAULT_LANGUAGE_PREFERENCE
+  return LOCALE_DISPLAY_NAMES[preferenceToLocale(pref)]
 }
 
 /**

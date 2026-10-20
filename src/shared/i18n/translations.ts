@@ -66,39 +66,32 @@ export function resolveLocale(tag: string | null | undefined): Locale {
 }
 
 /**
- * 当前环境可用的语言标签候选（按可信度排序）。
+ * 浏览器 UI 语言标签：**唯一来源**。
  *
- * 扩展里 `navigator.language` 跟随浏览器 UI 语言，而不是操作系统语言；
- * `chrome.i18n.getUILanguage()` 是 MV3 下最权威的浏览器语言来源。
- * 两者都可能被用户单独改过，所以全部收集起来，由 `resolveSystemLocale()` 决策。
+ * 只认 `chrome.i18n.getUILanguage()`（MV3 权威来源；Firefox 经 WXT 的 browser/chrome 兼容层同样可用）。
+ * 刻意**不读** `navigator.language` / `navigator.languages`：在 macOS 上它们可能反映**系统语言**，
+ * 读进来会让「跟随浏览器」静默退化成「跟随系统」。
+ * 拿不到（非扩展上下文：合成页测试 / 纯网页注入）→ null，由调用方落默认语言。
  */
-export function getSystemLanguageTags(): string[] {
-  const tags: string[] = []
+export function getBrowserUiLanguage(): string | null {
   try {
     // 必须先用 typeof 判断：可选链保护不了「变量未声明」的 ReferenceError
     if (typeof chrome !== "undefined" && chrome.i18n?.getUILanguage) {
-      const uiLanguage = chrome.i18n.getUILanguage()
-      if (uiLanguage) tags.push(uiLanguage)
+      return chrome.i18n.getUILanguage() || null
     }
   } catch {
     // chrome.i18n 在某些上下文（页面注入 / 测试环境）不可用，忽略
   }
-  if (typeof navigator !== "undefined") {
-    if (navigator.language) tags.push(navigator.language)
-    for (const language of navigator.languages ?? []) tags.push(language)
-  }
-  return [...new Set(tags)]
+  return null
 }
 
 /**
- * 「跟随系统」的实际取值：用平台解析全部候选标签，任一来源为中文即中文。
- * 理由：Chrome UI 语言与系统语言可以各自单独设置，「中文系统 + 英文 UI」极常见，
- * 任一来源表明中文都代表用户的中文偏好；纯英文环境不受影响。
+ * 「跟随浏览器」的实际取值：把浏览器 UI 语言解析为受支持 locale，无法识别时回退默认语言。
+ *
+ * ⚠️ 与旧的「跟随系统 + 中文优先」相比是**有意的行为变更**：
+ * 旧的实现会把 `navigator.*`（macOS 上可能是系统语言）也纳入候选并偏爱中文，
+ * 于「英文浏览器 + 中文系统」会得到中文；现在语言偏好以浏览器 UI 语言为准，那批用户会得到英文。
  */
-export function resolveSystemLocale(): Locale {
-  const resolved = getSystemLanguageTags()
-    .map((tag) => matchLocale(tag))
-    .filter((locale): locale is Locale => locale !== null)
-  if (resolved.includes("zh_CN")) return "zh_CN"
-  return resolved[0] ?? DEFAULT_LOCALE
+export function resolveBrowserLocale(): Locale {
+  return matchLocale(getBrowserUiLanguage()) ?? DEFAULT_LOCALE
 }

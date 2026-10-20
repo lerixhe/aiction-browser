@@ -10,6 +10,7 @@ docs/
 ├── ANALYTICS.md       # 数据埋点总览（长期维护，改埋点必须同步）
 ├── OPTIONS_UI.md      # 设置页 UI 设计规范（长期维护，改设置页 UI 必读）
 ├── TOOLING.md         # 素材与设计工具总览（生成图标 / 商店截图 / 宣传图 / 文案）
+├── I18N_LOCALE_REGISTRY_PLAN.md # i18n 语言注册表重构方案（枚举集中化 + 跟随浏览器）
 ├── PRIVACY_POLICY.md  # 隐私政策
 └── images/            # 文档图片资源
 ```
@@ -55,6 +56,17 @@ docs/
 - 「改了什么要重跑哪个工具」对照表 + 环境自检命令
 
 **在写新的素材 / 设计脚本之前必读，避免重复造轮子。**
+
+### [I18N_LOCALE_REGISTRY_PLAN.md](./I18N_LOCALE_REGISTRY_PLAN.md)
+
+i18n 语言注册表重构方案（接入 8 种语言前的准备），包含：
+- 现状盘点：语言清单散落 5 处、`UNSUPPORTED_CHINESE_SCRIPT` 黑名单与「中文优先」的 bug 风险
+- 目标结构：`src/shared/i18n/registry.ts` 作为唯一真源，`Locale` / 校验 / 选项 / 提示词名全部派生
+- 通用匹配算法（书写系统淘汰 + 打分）与「跟随浏览器」判定规则
+- 五处枚举收敛对照表、设置页控件由分段改下拉
+- 验证门禁（`scripts/check-i18n.ts`）、分阶段提交计划、迁移与「加一门语言」checklist
+
+**加语言 / 改语言判定逻辑之前必读。**
 
 ## 相关文档
 

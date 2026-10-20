@@ -1,26 +1,27 @@
 import { useEffect, useState } from "react"
 import { getSettings } from "@/shared/storage"
 import { i18nStore } from "@/shared/i18n/index"
-import { resolveLocale, resolveSystemLocale, type Locale } from "@/shared/i18n/translations"
-import type { LanguagePreference } from "@/shared/types"
+import {
+  DEFAULT_LANGUAGE_PREFERENCE,
+  normalizeLanguagePreference,
+  preferenceToLocale
+} from "@/shared/i18n/preference"
+import type { Locale } from "@/shared/i18n/registry"
 
-function preferenceToLocale(pref: LanguagePreference): Locale {
-  if (pref === "system") {
-    return resolveSystemLocale()
-  }
-  return resolveLocale(pref)
+function resolveLocaleForPreference(value: unknown): Locale {
+  return preferenceToLocale(normalizeLanguagePreference(value) ?? DEFAULT_LANGUAGE_PREFERENCE)
 }
 
 export function useI18nLocale(): Locale {
   const [locale, setLocale] = useState<Locale>(() => {
-    const initial = preferenceToLocale("system")
+    const initial = resolveLocaleForPreference(DEFAULT_LANGUAGE_PREFERENCE)
     i18nStore.setLocale(initial)
     return initial
   })
 
   useEffect(() => {
     void getSettings().then((settings) => {
-      const resolved = preferenceToLocale(settings.language)
+      const resolved = resolveLocaleForPreference(settings.language)
       setLocale(resolved)
       i18nStore.setLocale(resolved)
     })
@@ -29,9 +30,9 @@ export function useI18nLocale(): Locale {
       if (area !== "sync") return
       const raw = changes["aiction:settings"]
       if (!raw?.newValue) return
-      const settings = raw.newValue as { language?: LanguagePreference }
-      const pref = settings.language ?? "system"
-      const resolved = preferenceToLocale(pref)
+      // 直接读存储原文（可能还是旧值 "system"），统一走 normalize
+      const settings = raw.newValue as { language?: unknown }
+      const resolved = resolveLocaleForPreference(settings.language)
       setLocale(resolved)
       i18nStore.setLocale(resolved)
     }
