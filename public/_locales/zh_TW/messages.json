@@ -1,10 +1,10 @@
 {
   "extName": {
-    "message": "AIction – 划词 AI 助手 | 自定义 AI Actions",
-    "description": "扩展名称"
+    "message": "AIction – 選取文字 AI 助手 | 自訂 AI Actions",
+    "description": "擴充功能名稱"
   },
   "extDescription": {
-    "message": "在任意网页划词，一键解释、总结、翻译或追问，动作与提示词完全自定义。无需注册，自带 API Key 直连你自己配置的 AI 服务，选文不经我们的服务器。含 PDF 阅读器。",
-    "description": "扩展描述"
+    "message": "在任意網頁選取文字，一鍵解說、摘要、翻譯或追問，動作與提示詞完全自訂。無需註冊，自備 API 金鑰直連你自己設定的 AI 服務，選取的文字不經我們的伺服器。內建 PDF 檢視器。",
+    "description": "擴充功能描述"
   }
 }
