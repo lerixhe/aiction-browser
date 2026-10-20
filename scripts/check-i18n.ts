@@ -74,6 +74,9 @@ section("2. 语言匹配矩阵")
 /** 注册表里是否已有繁体中文（决定 Hant 系列候选的去向，P4 加 zh_TW 后本脚本无需修改） */
 const hasTraditionalChinese = SUPPORTED_LOCALES.some((row) => row.id === "zh_TW")
 
+/** 注册表里是否已有该语言（让矩阵随注册表生长，而不是写死「当前没有」） */
+const hasLocale = (id: string): boolean => SUPPORTED_LOCALES.some((row) => row.id === id)
+
 const MATRIX: { tag: string | null | undefined; expected: string | null }[] = [
   // 英文：地区变体都归到 en（script 相同即可命中）
   { tag: "en", expected: "en" },
@@ -92,8 +95,10 @@ const MATRIX: { tag: string | null | undefined; expected: string | null }[] = [
   { tag: "zh-Hant", expected: hasTraditionalChinese ? "zh_TW" : null },
   // 未支持的语言：返回 null（不是回退到 en —— 回退由 resolveLocale 负责）
   { tag: "de-DE", expected: null },
-  { tag: "ja", expected: null },
-  { tag: "az", expected: null },
+  { tag: "th-TH", expected: null },
+  // 这些语言一旦加入注册表就应命中自身（加语言时本脚本无需修改）
+  { tag: "ja", expected: hasLocale("ja") ? "ja" : null },
+  { tag: "az", expected: hasLocale("az") ? "az" : null },
   // 非法 / 空标签：不猜
   { tag: null, expected: null },
   { tag: undefined, expected: null },

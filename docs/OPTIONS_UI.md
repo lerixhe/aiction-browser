@@ -56,10 +56,13 @@
 | 即时 | 开关、分段选择、下拉选择、拖拽排序、新增/删除条目、导入导出 | 主题、界面语言、启用提供商、遥测开关、动作排序、新增/删除动作、导出 JSON |
 | 草稿 | 任何进入编辑区产生文本或数值的输入；以及**改草稿的辅助按钮** | 名称、API Key、Model、接口地址、模型参数、动作名称/模板、系统提示词正文、占位符 chips |
 
-两条容易踩错的细则：
+三条容易踩错的细则：
 
 1. **下拉框（`select`）归草稿**。它与数值输入同属"配置值"，若按控件类型切开（select 即时、number 草稿），模型参数区会一半即时一半要保存，用户无法理解。判定依据是本行的语义（它在"配置表单"里），不是它长得像按钮。
 2. **按钮不一定是即时操作**。系统提示词的占位符 chips 是按钮，但它只改草稿 → 属于草稿操作。
+3. **控件形态看选项数量，不看语义**。即时项也不一定用分段：`SegmentedControl` 是等宽按钮，3–4 项正好；
+   界面语言有「自动 + 10 个 locale」共 11 项，等宽分段在 360px 侧栏里必然溢出，因此改用 `SelectField`
+   （原生下拉）。判定不变（仍是即时保存），只是控件形态随数据量选择。
 
 ### 2.4 保存条
 
@@ -129,7 +132,7 @@
 | `SettingRow` | 行式布局单元：`title` / `desc` / `control` / `width?: "fixed" \| "narrow" \| "wide"` |
 | `SaveBar` | 保存条（`dirty` / `onSave` / `onDiscard` / `aria-live`） |
 | `Button` | `variant: primary \| secondary \| ghost \| danger` × `size: sm \| md` |
-| `SegmentedControl` | 替换外观页两处逐字复制的实现 |
+| `SegmentedControl` | 少量固定互斥项（外观页**主题**：跟随系统/浅色/深色）。选项来自数据或会随语种增长的（界面语言：自动 + 10 个 locale）改用 `SelectField` 下拉，见 §2.3 细则 3 |
 | `TextField` / `NumberField` / `SelectField` / `TextArea` | 统一控件外观（可见描边 + 白底 + focus ring），修复"浅色下看不出输入框边界" |
 | `FieldGroup` / `DangerZone` / `EmptyState` / `Skeleton` / `Chip` | 结构件 |
 

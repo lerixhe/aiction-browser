@@ -1,0 +1,10 @@
+{
+  "extName": {
+    "message": "AIction – 划词 AI 助手 | 自定义 AI Actions",
+    "description": "扩展名称"
+  },
+  "extDescription": {
+    "message": "在任意网页划词，一键解释、总结、翻译或追问，动作与提示词完全自定义。无需注册，自带 API Key 直连你自己配置的 AI 服务，选文不经我们的服务器。含 PDF 阅读器。",
+    "description": "扩展描述"
+  }
+}

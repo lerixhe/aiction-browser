@@ -1,15 +1,16 @@
 import { trackEvent } from "@/shared/analytics"
-import { AUTO_LANGUAGE } from "@/shared/i18n/preference"
+import { AUTO_LANGUAGE, normalizeLanguagePreference } from "@/shared/i18n/preference"
+import { SUPPORTED_LOCALES } from "@/shared/i18n/registry"
 import { useI18n } from "@/shared/i18n/context"
 import type { ExtensionSettings, LanguagePreference, ThemePreference } from "@/shared/types"
-import { FieldGroup, SectionCard, SegmentedControl, SettingRow } from "./ui"
+import { FieldGroup, SectionCard, SegmentedControl, SelectField, SettingRow } from "./ui"
 
 interface AppearanceSectionProps {
   settings: ExtensionSettings
   saveSettingsNow: (updater: (current: ExtensionSettings) => ExtensionSettings) => void
 }
 
-/** 外观：全是即时项（分段选择），因此卡片不带保存条 */
+/** 外观：全是即时项（主题用分段、语言用下拉），因此卡片不带保存条 */
 export function AppearanceSection({ settings, saveSettingsNow }: AppearanceSectionProps) {
   const { t } = useI18n()
 
@@ -19,10 +20,11 @@ export function AppearanceSection({ settings, saveSettingsNow }: AppearanceSecti
     { value: "dark", label: t("options.appearance.themeDark") }
   ]
 
+  // 自动项置顶 + 注册表全量语言（顺序 = 注册表声明顺序 = 语言代码字母序）；
+  // 语言数随语种增长（目前 10 个），分段选择放不下，故用下拉
   const languageOptions: { value: LanguagePreference; label: string }[] = [
     { value: AUTO_LANGUAGE, label: t("options.appearance.languageAuto") },
-    { value: "en", label: "English" },
-    { value: "zh_CN", label: "简体中文" }
+    ...SUPPORTED_LOCALES.map((row) => ({ value: row.id, label: row.nativeName }))
   ]
 
   return (
@@ -42,14 +44,17 @@ export function AppearanceSection({ settings, saveSettingsNow }: AppearanceSecti
         </SettingRow>
 
         <SettingRow title={t("options.appearance.languageTitle")} desc={t("options.appearance.languageDesc")}>
-          <SegmentedControl
+          <SelectField
             value={settings.language}
             options={languageOptions}
             ariaLabel={t("options.appearance.languageTitle")}
             onValueChange={(value) => {
+              // 下拉给的是 string，走 normalize 收窄（非法值直接忽略，不写存储）
+              const next = normalizeLanguagePreference(value)
+              if (!next) return
               const fromLanguage = settings.language
-              saveSettingsNow((current) => ({ ...current, language: value }))
-              void trackEvent("language_changed", { from_language: fromLanguage, to_language: value })
+              saveSettingsNow((current) => ({ ...current, language: next }))
+              void trackEvent("language_changed", { from_language: fromLanguage, to_language: next })
             }}
           />
         </SettingRow>

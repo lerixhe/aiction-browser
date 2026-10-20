@@ -1,5 +1,13 @@
+import az from "@/shared/i18n/locales/az"
 import en from "@/shared/i18n/locales/en"
+import es from "@/shared/i18n/locales/es"
+import ja from "@/shared/i18n/locales/ja"
+import ko from "@/shared/i18n/locales/ko"
+import ru from "@/shared/i18n/locales/ru"
+import tr from "@/shared/i18n/locales/tr"
+import vi from "@/shared/i18n/locales/vi"
 import zhCN from "@/shared/i18n/locales/zh_CN"
+import zhTW from "@/shared/i18n/locales/zh_TW"
 
 /**
  * 界面语言注册表：语言清单的**唯一真源**。
@@ -16,8 +24,16 @@ import zhCN from "@/shared/i18n/locales/zh_CN"
  * 数组顺序 = 同分时的匹配优先级，也是设置页下拉的显示顺序（按语言代码字母序，方便人工核对）。
  */
 export const SUPPORTED_LOCALES = [
+  { id: "az", tag: "az", nativeName: "Azərbaycanca", promptName: "Azerbaijani (Azərbaycanca)", messages: az },
   { id: "en", tag: "en", nativeName: "English", promptName: "English", messages: en },
-  { id: "zh_CN", tag: "zh-CN", nativeName: "简体中文", promptName: "简体中文（Simplified Chinese）", messages: zhCN }
+  { id: "es", tag: "es", nativeName: "Español", promptName: "Spanish (Español)", messages: es },
+  { id: "ja", tag: "ja", nativeName: "日本語", promptName: "日本語（Japanese）", messages: ja },
+  { id: "ko", tag: "ko", nativeName: "한국어", promptName: "한국어（Korean）", messages: ko },
+  { id: "ru", tag: "ru", nativeName: "Русский", promptName: "Русский（Russian）", messages: ru },
+  { id: "tr", tag: "tr", nativeName: "Türkçe", promptName: "Turkish (Türkçe)", messages: tr },
+  { id: "vi", tag: "vi", nativeName: "Tiếng Việt", promptName: "Vietnamese (Tiếng Việt)", messages: vi },
+  { id: "zh_CN", tag: "zh-CN", nativeName: "简体中文", promptName: "简体中文（Simplified Chinese）", messages: zhCN },
+  { id: "zh_TW", tag: "zh-TW", nativeName: "繁體中文", promptName: "繁體中文（Traditional Chinese）", messages: zhTW }
 ] as const satisfies readonly LocaleDefinition[]
 
 export interface LocaleDefinition {
