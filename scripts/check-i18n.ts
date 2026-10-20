@@ -237,6 +237,26 @@ expectEqual("英文 UI + 中文 navigator → en（不读 navigator）", resolve
 // 固定偏好不受浏览器语言影响
 expectEqual('preferenceToLocale("en") 与浏览器语言无关', preferenceToLocale("en"), "en")
 
+// ── 7. 占位符一致性 ──────────────────────────────────────────────────────
+
+section("7. 占位符一致性")
+// 翻译时最易漏的东西：漏掉 $1 会让数字消失、漏掉 {selection} 会让动作拿不到选区
+const PLACEHOLDER_PATTERNS = [/\{\w+\}/g, /\$\d+/g]
+const referenceMessages = getLocaleDefinition(DEFAULT_LOCALE).messages
+for (const row of SUPPORTED_LOCALES) {
+  if (row.id === DEFAULT_LOCALE) continue
+  const messages = row.messages as Record<string, string>
+  const mismatched: string[] = []
+  for (const key of Object.keys(referenceMessages)) {
+    for (const pattern of PLACEHOLDER_PATTERNS) {
+      const expected = (referenceMessages[key].match(new RegExp(pattern.source, "g")) ?? []).sort().join(",")
+      const actual = (messages[key]?.match(new RegExp(pattern.source, "g")) ?? []).sort().join(",")
+      if (expected !== actual) mismatched.push(`${key}（期望 ${expected || "无"}，实际 ${actual || "无"}）`)
+    }
+  }
+  expect(`占位符与 ${DEFAULT_LOCALE} 一致：${row.id}`, mismatched.length === 0, mismatched.slice(0, 2).join(" / "))
+}
+
 // ── 汇总 ────────────────────────────────────────────────────────────────
 
 if (failures.length > 0) {

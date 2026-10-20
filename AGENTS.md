@@ -251,7 +251,7 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   `normalizeLanguagePreference()` 在读取时迁移，写回即 `"browser"`。
 - `I18nRoot` wraps the content script React tree; Options and Popup use `useI18n()` hook.
 - All user-facing strings go through `t("key")` — never hardcode UI text.
-- ⚠️ 8 份非中文字典与 `zh_TW` 目前是**占位内容**（英文 / 简体副本），键集完整但待翻译。
+- ⚠️ `ko` / `ru` / `tr` / `vi` / `zh_TW` 五份字典**仍是占位内容**（英文 / 简体副本），键集完整但待翻译；`az` / `es` / `ja` 已翻译。改字典时注意 `$1` / `{selection}` 等占位符必须原样保留（`check:i18n` 第 7 节校验）。
 
 ### Models.dev Integration
 - `src/shared/models-dev.ts` fetches provider metadata (name, logo, models) from `models.dev`.

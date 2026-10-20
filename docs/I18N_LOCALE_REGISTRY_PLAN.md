@@ -9,7 +9,7 @@
 > 验收标准：接入这 10 个 locale 时，**除字典文件与 `_locales` 目录外不需要改任何逻辑代码**。
 >
 > 状态：**P1–P6 已落地**（registry 抽取 / tag 打分匹配 / 跟随浏览器改名与迁移 / 10 个 locale 接入 + 语言下拉 / 字典键集编译期校验与合并兜底 / AGENTS.md 与不变量落文档）。
-> ⚠️ 8 份非中文字典（`az` / `es` / `ja` / `ko` / `ru` / `tr` / `vi`）与 `zh_TW` 目前是**占位内容**（分别为英文 / 简体），键集完整但待翻译，发布前必须替换　撰写日期：基于 `ce1b3a9`　影响面：`src/shared/i18n/`、`types.ts`、`storage.ts`、`prompt.ts`、`options/AppearanceSection.tsx`
+> ⚠️ `az` / `es` / `ja` 已翻译；`ko` / `ru` / `tr` / `vi` 与 `zh_TW` 仍是**占位内容**（英文 / 简体副本），键集完整但待翻译，发布前必须替换　撰写日期：基于 `ce1b3a9`　影响面：`src/shared/i18n/`、`types.ts`、`storage.ts`、`prompt.ts`、`options/AppearanceSection.tsx`
 
 ---
 
