@@ -19,6 +19,7 @@ import {
 import {
   DEFAULT_LOCALE,
   SUPPORTED_LOCALES,
+  getLocaleDefinition,
   getMessages,
   matchLocale,
   resolveBrowserLocale,
@@ -114,16 +115,30 @@ expectEqual("resolveLocale(null) 回退默认", resolveLocale(null), DEFAULT_LOC
 
 // ── 3. 字典键集一致 ─────────────────────────────────────────────────────
 
-section("3. 字典键集")
-const referenceKeys = Object.keys(getMessages(DEFAULT_LOCALE)).sort()
+section("3. 字典键集（原始字典，非合并结果）")
+// 注意用 row.messages（原始字典）：getMessages() 会与默认语言合并，合并后键集恒等于 en，断言会失效
+const referenceKeys = Object.keys(getLocaleDefinition(DEFAULT_LOCALE).messages).sort()
 console.log(`   基准（${DEFAULT_LOCALE}）${referenceKeys.length} 键`)
 for (const row of SUPPORTED_LOCALES) {
-  const keys = Object.keys(getMessages(row.id)).sort()
+  const keys = Object.keys(row.messages).sort()
   const missing = referenceKeys.filter((key) => !keys.includes(key))
   const extra = keys.filter((key) => !referenceKeys.includes(key))
   // 繁体中文必须全量（繁简混排观感最差），其余语言后续允许缺键回退英文
   const detail = `缺 ${missing.length} 项${missing.length ? `（如 ${missing.slice(0, 3).join(", ")}）` : ""}，多 ${extra.length} 项`
   expect(`字典键集与 ${DEFAULT_LOCALE} 一致：${row.id}`, missing.length === 0 && extra.length === 0, detail)
+}
+
+// 合并兜底：非默认语言的 getMessages() 结果必须覆盖 benchmark 全部键（缺键回退英文）
+for (const row of SUPPORTED_LOCALES) {
+  const merged = getMessages(row.id)
+  const missing = referenceKeys.filter((key) => merged[key] === undefined)
+  expect(`getMessages(${row.id}) 无缺失键（合并兜底生效）`, missing.length === 0, `缺 ${missing.slice(0, 3).join(", ")}`)
+}
+
+expect("getMessages(默认) 不额外拷贝字典", getMessages(DEFAULT_LOCALE) === getLocaleDefinition(DEFAULT_LOCALE).messages)
+const nonDefaultRow = SUPPORTED_LOCALES.find((row) => row.id !== DEFAULT_LOCALE)
+if (nonDefaultRow) {
+  expect(`getMessages(${nonDefaultRow.id}) 是合并副本（不污染原始字典）`, getMessages(nonDefaultRow.id) !== nonDefaultRow.messages)
 }
 
 // ── 4. public/_locales 与注册表对齐 ─────────────────────────────────────

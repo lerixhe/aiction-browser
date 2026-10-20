@@ -63,6 +63,15 @@ export function getLocaleDefinition(locale: Locale): LocaleDefinition {
   return SUPPORTED_LOCALES.find((row) => row.id === locale) ?? SUPPORTED_LOCALES[0]
 }
 
+/**
+ * 取某语言的文案字典。
+ *
+ * 非默认语言会**与默认语言合并**：运行时缺键回退英文，而不是把 key 本身显示给用户。
+ * 键集一致已由各字典的 `satisfies Record<MessageKey, string>` 在**编译期**保证
+ * （缺键 / 多键 / 拼错键名都会报错），这里的合并是运行时双保险。
+ */
 export function getMessages(locale: Locale): Record<string, string> {
-  return getLocaleDefinition(locale).messages
+  const definition = getLocaleDefinition(locale)
+  if (locale === DEFAULT_LOCALE) return definition.messages
+  return { ...getLocaleDefinition(DEFAULT_LOCALE).messages, ...definition.messages }
 }

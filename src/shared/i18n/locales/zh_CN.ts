@@ -1,3 +1,5 @@
+import type { MessageKey } from "./en"
+
 export default {
   "errors.noApiKey": "请先在设置台填写 API Key。",
   "errors.streamDisconnected": "流式连接已断开",
@@ -266,4 +268,4 @@ export default {
   "pdf.loadFailed": "加载 PDF 失败: $1",
   "pdf.loading": "加载 PDF 中...",
   "background.openPdfWithAIction": "用 AIction 打开 PDF"
-} as const
+} as const satisfies Record<MessageKey, string>

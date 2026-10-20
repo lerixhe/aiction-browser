@@ -1,5 +1,7 @@
 // TODO(i18n): 待翻译。当前内容为 英文 占位，键集必须与 en.ts 保持一致
 //（scripts/check-i18n.ts 会校验键集；缺键会让设置页显示 key 本身）
+import type { MessageKey } from "./en"
+
 export default {
   "errors.noApiKey": "Please set your API Key in Settings first.",
   "errors.streamDisconnected": "Stream disconnected",
@@ -268,4 +270,4 @@ export default {
   "pdf.loadFailed": "Failed to load PDF: $1",
   "pdf.loading": "Loading PDF...",
   "background.openPdfWithAIction": "Open PDF with AIction"
-} as const
+} as const satisfies Record<MessageKey, string>

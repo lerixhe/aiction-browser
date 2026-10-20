@@ -1,4 +1,4 @@
-export default {
+const messages = {
   "errors.noApiKey": "Please set your API Key in Settings first.",
   "errors.streamDisconnected": "Stream disconnected",
   "errors.requestFailed": "Request failed",
@@ -267,3 +267,11 @@ export default {
   "pdf.loading": "Loading PDF...",
   "background.openPdfWithAIction": "Open PDF with AIction"
 } as const
+
+/**
+ * 文案键集：以英文为准。其余语言的字典用 `satisfies Record<MessageKey, string>`
+ * 约束，缺键 / 多键 / 拼错键名都是编译错误（不必等到运行时才发现显示成 key 本身）。
+ */
+export type MessageKey = keyof typeof messages
+
+export default messages

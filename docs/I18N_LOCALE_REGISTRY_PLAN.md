@@ -8,7 +8,7 @@
 > 下拉按语言代码字母序，自动项置顶），本方案连同清单一起落地（§3.1）。
 > 验收标准：接入这 10 个 locale 时，**除字典文件与 `_locales` 目录外不需要改任何逻辑代码**。
 >
-> 状态：**P1–P4 已落地**（registry 抽取 / tag 打分匹配 / 跟随浏览器改名与迁移 / 10 个 locale 接入 + 语言下拉），P5–P6 待做。
+> 状态：**P1–P5 已落地**（registry 抽取 / tag 打分匹配 / 跟随浏览器改名与迁移 / 10 个 locale 接入 + 语言下拉 / 字典键集编译期校验与合并兜底），P6（AGENTS.md 与不变量落文档）待做。
 > ⚠️ 8 份非中文字典（`az` / `es` / `ja` / `ko` / `ru` / `tr` / `vi`）与 `zh_TW` 目前是**占位内容**（分别为英文 / 简体），键集完整但待翻译，发布前必须替换　撰写日期：基于 `ce1b3a9`　影响面：`src/shared/i18n/`、`types.ts`、`storage.ts`、`prompt.ts`、`options/AppearanceSection.tsx`
 
 ---
@@ -393,7 +393,7 @@ export function resolveBrowserLocale(): Locale {
 
 ---
 
-## 6. 可选增强（P5，与主重构解耦，可单独取舍）
+## 6. 可选增强（P5 —— **已落地**）
 
 1. **字典合并兜底**（已在 §3.2 的 `getMessages` 里体现）：缺键时用英文而非显示 key。
    配合下面第 2 项的键集校验，才不会把漏翻藏起来。
