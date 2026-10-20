@@ -9,6 +9,7 @@
     "dev": "wxt",
     "dev:firefox": "wxt -b firefox",
     "bundle-icons": "npx tsx scripts/bundle-icons.ts",
+    "check:i18n": "npx tsx scripts/check-i18n.ts",
     "build": "npm run bundle-icons && wxt build",
     "build:firefox": "npm run bundle-icons && wxt build -b firefox",
     "zip": "wxt zip",

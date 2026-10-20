@@ -1,53 +1,68 @@
-import en from "@/shared/i18n/locales/en"
-import zhCN from "@/shared/i18n/locales/zh_CN"
+import { DEFAULT_LOCALE, SUPPORTED_LOCALES, type Locale } from "@/shared/i18n/registry"
 import { parseLocaleTag } from "@/shared/language-tag"
 
-export type Locale = "en" | "zh_CN"
+// 语言清单与字典在 registry（唯一真源）；这里原样透出，保持既有 import 路径可用
+export { DEFAULT_LOCALE, SUPPORTED_LOCALES, getLocaleDefinition, getMessages, isLocale } from "@/shared/i18n/registry"
+export type { Locale, LocaleDefinition } from "@/shared/i18n/registry"
 
-export const SUPPORTED_LOCALES: { value: Locale; label: string }[] = [
-  { value: "en", label: "English" },
-  { value: "zh_CN", label: "简体中文" }
-]
-
-const messages: Record<Locale, Record<string, string>> = {
-  en: en as unknown as Record<string, string>,
-  zh_CN: zhCN as unknown as Record<string, string>
+/** 候选 locale 的归一化形态（全部来自注册表的 `tag`，见文件末尾的 CANDIDATES） */
+interface LocaleCandidate {
+  id: Locale
+  language: string
+  script?: string
+  region?: string
 }
-
-export function getMessages(locale: Locale): Record<string, string> {
-  return messages[locale] ?? messages.en
-}
-
-// 语言 → 默认 locale（key 为 ISO 639 主语言子标签，封闭集；未列出的语言一律回退 en）
-const PREFERRED_LOCALE_BY_LANGUAGE = new Map<string, Locale>([
-  ["en", "en"],
-  ["zh", "zh_CN"]
-])
-
-/** 暂无译文的中文书写系统（CLDR 的 script 代码），命中则回退英文 */
-const UNSUPPORTED_CHINESE_SCRIPT = "Hant"
 
 /**
- * 把语言标签解析为受支持的 locale；不认识的语言返回 null（区别于「认识但无译文」）。
+ * 候选预计算：每行的 `tag` 一律 `maximize()` 归一，得到 language / script / region。
  *
- * 简繁判定交给 `Intl.Locale.maximize()`（CLDR likely-subtags 数据）：
- * `zh` → zh-Hans-CN、`zh-SG` / `zh-Hans-SG` → Hans、`zh-TW` / `zh-HK` / `zh-MO` → Hant。
- * 因此不需要自己维护「哪些地区算简体」的名单（那是永远不全的枚举）。
+ * 例：`en` → en-Latn-US、`zh-CN` → zh-Hans-CN、`zh-TW` → zh-Hant-TW、`ja` → ja-Jpan-JP。
+ * 匹配规则只依赖这三个维度，不依赖任何「哪些地区算简体」的名单。
  */
-function matchSupportedLocale(tag: string | null | undefined): Locale | null {
-  const locale = parseLocaleTag(tag)
-  if (!locale) return null
-  const preferred = PREFERRED_LOCALE_BY_LANGUAGE.get(locale.language)
-  if (!preferred) return null
-  if (preferred === "zh_CN" && locale.maximize().script === UNSUPPORTED_CHINESE_SCRIPT) {
-    return "en"
+const CANDIDATES: LocaleCandidate[] = SUPPORTED_LOCALES.map((row) => {
+  const parsed = parseLocaleTag(row.tag)
+  if (!parsed) {
+    throw new Error(`[i18n] locale "${row.id}" 的 tag "${row.tag}" 不是合法的 BCP-47 语言标签`)
   }
-  return preferred
+  const normalized = parsed.maximize()
+  return {
+    id: row.id as Locale,
+    language: normalized.language,
+    script: normalized.script,
+    region: normalized.region
+  }
+})
+
+/**
+ * 语言标签 → 受支持的 locale；不认识、或该书写系统没有译文时返回 **null**（不猜、不跨语言降级）。
+ *
+ * 规则（全部从 `tag` 派生，无特例）：
+ * 1. 主语言不同 → 不是候选。
+ * 2. 书写系统都有值且不同 → 淘汰。`zh-Hant` 与 `zh-CN`(Hans) 冲突；注册表里有 `zh-TW`(Hant) 时
+ *    自动命中它，没有就整体落空（宁可回退默认语言，也不用错字形/术语）。
+ * 3. 同语言内打分：script 相同 +2，region 相同 +1。
+ * 4. 取最高分；同分取 `SUPPORTED_LOCALES` 靠前者（声明顺序即优先级）。
+ */
+export function matchLocale(tag: string | null | undefined): Locale | null {
+  const parsed = parseLocaleTag(tag)
+  if (!parsed) return null
+  const normalized = parsed.maximize()
+  let best: { id: Locale; score: number } | null = null
+  for (const candidate of CANDIDATES) {
+    if (candidate.language !== normalized.language) continue
+    if (candidate.script && normalized.script && candidate.script !== normalized.script) continue
+    let score = 0
+    if (candidate.script && candidate.script === normalized.script) score += 2
+    if (candidate.region && candidate.region === normalized.region) score += 1
+    // 严格大于：同分保留先声明者
+    if (!best || score > best.score) best = { id: candidate.id, score }
+  }
+  return best?.id ?? null
 }
 
-/** 任意语言标签 → 受支持 locale（无法识别时回退 en） */
+/** 任意语言标签 → 受支持 locale（无法识别时回退默认语言） */
 export function resolveLocale(tag: string | null | undefined): Locale {
-  return matchSupportedLocale(tag) ?? "en"
+  return matchLocale(tag) ?? DEFAULT_LOCALE
 }
 
 /**
@@ -82,8 +97,8 @@ export function getSystemLanguageTags(): string[] {
  */
 export function resolveSystemLocale(): Locale {
   const resolved = getSystemLanguageTags()
-    .map((tag) => matchSupportedLocale(tag))
+    .map((tag) => matchLocale(tag))
     .filter((locale): locale is Locale => locale !== null)
   if (resolved.includes("zh_CN")) return "zh_CN"
-  return resolved[0] ?? "en"
+  return resolved[0] ?? DEFAULT_LOCALE
 }
