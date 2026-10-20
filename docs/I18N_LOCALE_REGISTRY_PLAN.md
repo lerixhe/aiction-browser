@@ -9,6 +9,9 @@
 > 验收标准：接入这 10 个 locale 时，**除字典文件与 `_locales` 目录外不需要改任何逻辑代码**。
 >
 > 状态：**P1–P6 已落地**（registry 抽取 / tag 打分匹配 / 跟随浏览器改名与迁移 / 10 个 locale 接入 + 语言下拉 / 字典键集编译期校验与合并兜底 / AGENTS.md 与不变量落文档）。
+> **后续变更（清单缩减）**：`az`（阿塞拜疆语）/ `es`（西班牙语）/ `tr`（土耳其语）已下线，当前为 **7 个 locale**
+> （`en` / `ja` / `ko` / `ru` / `vi` / `zh_CN` / `zh_TW`）。下文提到的「10 个」保留为当时的定稿记录；
+> 缩减只动了注册表、字典文件与 `_locales` 目录，匹配 / 校验 / 下拉逻辑一行未改（派生链本就完整）。
 > 10 份 UI 字典均已翻译（`zh_TW` 采台湾用语）。剩下的是商店元数据：`public/_locales/*/messages.json` 只有 `en` / `zh_CN` / `zh_TW` 是对应语言，其余 7 份仍是英文副本　撰写日期：基于 `ce1b3a9`　影响面：`src/shared/i18n/`、`types.ts`、`storage.ts`、`prompt.ts`、`options/AppearanceSection.tsx`
 
 ---

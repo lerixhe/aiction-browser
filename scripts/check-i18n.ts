@@ -97,9 +97,16 @@ const MATRIX: { tag: string | null | undefined; expected: string | null }[] = [
   // 未支持的语言：返回 null（不是回退到 en —— 回退由 resolveLocale 负责）
   { tag: "de-DE", expected: null },
   { tag: "th-TH", expected: null },
+  // 已下线的语言（az / es / tr）：不得再命中，带 script / region 的地区变体同样落空
+  { tag: "az", expected: null },
+  { tag: "az-Latn", expected: null },
+  { tag: "tr", expected: null },
+  { tag: "tr-Cyrl", expected: null },
+  { tag: "es", expected: null },
+  { tag: "es-419", expected: null },
+  { tag: "es-MX", expected: null },
   // 这些语言一旦加入注册表就应命中自身（加语言时本脚本无需修改）
   { tag: "ja", expected: hasLocale("ja") ? "ja" : null },
-  { tag: "az", expected: hasLocale("az") ? "az" : null },
   // 非法 / 空标签：不猜
   { tag: null, expected: null },
   { tag: undefined, expected: null },
@@ -219,6 +226,10 @@ expectEqual('normalizeLanguagePreference("system")（历史值迁移）', normal
 expectEqual('normalizeLanguagePreference("browser")', normalizeLanguagePreference("browser"), AUTO_LANGUAGE)
 expectEqual('normalizeLanguagePreference("en")', normalizeLanguagePreference("en"), "en")
 expectEqual('normalizeLanguagePreference("klingon")', normalizeLanguagePreference("klingon"), null)
+// 已下线语言的存量配置：不再合法 → null（调用方回退「自动」），不会把界面卡在已删除的字典上
+expectEqual('normalizeLanguagePreference("az")（已下线）', normalizeLanguagePreference("az"), null)
+expectEqual('normalizeLanguagePreference("es")（已下线）', normalizeLanguagePreference("es"), null)
+expectEqual('normalizeLanguagePreference("tr")（已下线）', normalizeLanguagePreference("tr"), null)
 expectEqual("normalizeLanguagePreference(undefined)", normalizeLanguagePreference(undefined), null)
 expectEqual("DEFAULT_LANGUAGE_PREFERENCE", DEFAULT_LANGUAGE_PREFERENCE, AUTO_LANGUAGE)
 expect('isLanguagePreference("system") 为 false（历史值不是合法值）', !isLanguagePreference("system"))
@@ -235,6 +246,7 @@ const UI_CASES: { ui: string | null; expected: string }[] = [
   { ui: "zh-Hans-SG", expected: "zh_CN" },
   { ui: "zh-TW", expected: hasTraditionalChinese ? "zh_TW" : DEFAULT_LOCALE },
   { ui: "de-DE", expected: DEFAULT_LOCALE }, // 无译文 → 默认，不猜系统语言
+  { ui: "es-MX", expected: DEFAULT_LOCALE }, // 已下线语言：浏览器是西语也回默认
   { ui: null, expected: DEFAULT_LOCALE } // chrome.i18n 不可用
 ]
 for (const { ui, expected } of UI_CASES) {

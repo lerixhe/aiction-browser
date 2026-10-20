@@ -241,8 +241,11 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
 ### i18n System
 - **语言清单的唯一真源是 `src/shared/i18n/registry.ts`**：`SUPPORTED_LOCALES`（`id` / `tag` / `nativeName` /
   `promptName` / `messages`），`Locale` 类型、`DEFAULT_LOCALE`、设置校验、下拉选项、提示词显示名全部由它派生。
-  **不要在别处再列一遍语言清单。** 当前 10 个 locale：`az` / `en` / `es` / `ja` / `ko` / `ru` / `tr` / `vi` /
+  **不要在别处再列一遍语言清单。** 当前 7 个 locale：`en` / `ja` / `ko` / `ru` / `vi` /
   `zh_CN` / `zh_TW`（数组顺序 = 下拉顺序 = 匹配同分优先级 = 语言代码字母序）。
+  历史上曾有 `az`（阿塞拜疆语）/ `es`（西班牙语）/ `tr`（土耳其语），已下线：字典与 `_locales` 目录
+  一并删除，存量 `settings.language` 由 `isLocale()` 判定为非法 → `normalizeLanguagePreference()`
+  返回 `null` → 回退「自动（跟随浏览器）」，不需要额外迁移代码。
 - 字典在 `src/shared/i18n/locales/<id>.ts`，英文是键集基准（`en.ts` 导出 `MessageKey`），其余语言用
   `} as const satisfies Record<MessageKey, string>` 约束：**缺键 / 多键 / 拼错键名都是编译错误**。
   `public/_locales/<id>/messages.json` 是商店元数据，键集由 `npm run check:i18n` 校验。
@@ -251,10 +254,10 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   `normalizeLanguagePreference()` 在读取时迁移，写回即 `"browser"`。
 - `I18nRoot` wraps the content script React tree; Options and Popup use `useI18n()` hook.
 - All user-facing strings go through `t("key")` — never hardcode UI text.
-- 10 份字典均已翻译（`zh_TW` 用台湾用语：設定 / 儲存 / 資訊 / 網路 / 預設 / 範本 / 金鑰 / 權杖 / 端點 / 供應商）。
+- 7 份字典均已翻译（`zh_TW` 用台湾用语：設定 / 儲存 / 資訊 / 網路 / 預設 / 範本 / 金鑰 / 權杖 / 端點 / 供應商）。
 - 改字典时注意：`$1` / `{selection}` 等占位符必须原样保留（`check:i18n` 第 7 节逐键校验）；
   `previewTextZh` / `previewTextEn` 是**按所选语音语言**取用的试听句，不要翻成 UI 语言。
-- `public/_locales/*/messages.json`（商店 extName / extDescription）10 份均已按对应语言翻译；
+- `public/_locales/*/messages.json`（商店 extName / extDescription）7 份均已按对应语言翻译；
   Chrome 的长度上限（名称 45 / 描述 132 字符）由 `check:i18n` 第 4 节断言。
 
 ### Models.dev Integration
