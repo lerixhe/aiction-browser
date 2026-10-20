@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react"
 import { getSettings } from "@/shared/storage"
 import { i18nStore } from "@/shared/i18n/index"
-import { resolveLocale, type Locale } from "@/shared/i18n/translations"
+import { resolveLocale, resolveSystemLocale, type Locale } from "@/shared/i18n/translations"
 import type { LanguagePreference } from "@/shared/types"
 
 function preferenceToLocale(pref: LanguagePreference): Locale {
   if (pref === "system") {
-    return resolveLocale(navigator.language)
+    return resolveSystemLocale()
   }
-  return pref
+  return resolveLocale(pref)
 }
 
 export function useI18nLocale(): Locale {

@@ -1,6 +1,6 @@
 import type { ExtensionSettings, LanguagePreference, SelectionContext } from "@/shared/types"
 import { DEFAULT_SYSTEM_PROMPT } from "@/shared/defaults"
-import { resolveLocale, type Locale } from "@/shared/i18n/translations"
+import { resolveLocale, resolveSystemLocale, type Locale } from "@/shared/i18n/translations"
 
 /** 系统提示词支持的占位符（未列出的占位符原样保留） */
 const SYSTEM_PROMPT_PLACEHOLDERS = [
@@ -36,11 +36,11 @@ const LOCALE_DISPLAY_NAMES: Record<Locale, string> = {
 
 /**
  * 解析用户语言偏好为当前界面语言的可读描述。
- * 「跟随系统」时读取 navigator.language；仅内容脚本上下文调用（后台不构建 system 消息）。
+ * 「跟随系统」时读取浏览器 / 系统语言标签；仅内容脚本上下文调用（后台不构建 system 消息）。
  */
 export function resolveUILanguageLabel(preference?: LanguagePreference | null): string {
   const pref: LanguagePreference = preference ?? "system"
-  const locale = pref === "system" ? resolveLocale(navigator.language) : pref
+  const locale = pref === "system" ? resolveSystemLocale() : resolveLocale(pref)
   return LOCALE_DISPLAY_NAMES[locale]
 }
 
