@@ -21,7 +21,7 @@ Chrome extension (MV3) built with WXT + React + TypeScript. Users select text on
 ## Workflow Rules
 - **代码修改后必须验证**：每次修改代码后，必须主动运行 `npm run typecheck` 和 `npm run build`，确保类型正确且构建成功。不要等待用户手动执行。
 - **设置页 UI 必读规范**：改动 `src/entrypoints/options/` 下的 UI 前先读 `docs/OPTIONS_UI.md`；新增设置项按该文档 §7 检查清单执行（即时/草稿归属、行式布局、i18n、埋点同步）。
-- **埋点必须登记**：新增 / 修改 / 删除 PostHog 埋点时，必须同步更新 `docs/ANALYTICS.md`（§2 事件清单 + §7 变更记录）；事件名与属性需遵守该文档 §3 的属性规范（禁止上报自由文本），并检查是否需同步 `docs/PRIVACY_POLICY.md` 与 `options.about.telemetryDesc` 文案。埋点上报统一走 `src/shared/analytics.ts`，不要在业务代码里直接请求 PostHog。
+- **埋点必须登记**：新增 / 修改 / 删除 PostHog 埋点时，必须同步更新 `docs/ANALYTICS.md`（§2 事件清单 + §7 变更记录）；事件名与属性需遵守该文档 §3 的属性规范（禁止上报自由文本），并检查是否需同步 `docs/PRIVACY_POLICY.md` 与 `options.about.telemetryDesc` 文案。埋点上报统一走 `src/shared/analytics.ts`，不要在业务代码里直接请求 PostHog。**唯一禁区是 provider 的 API Key / token**：错误消息与响应体**原文全量上报**（`describeApiError()` → `error_detail` / `response_body`），**不做结构猜测**（不从文本正则抓状态码、不从 JSON 抠 `error.type`）；上报前必须过 `sanitizeErrorMessage()` 抹凭据，新增属性名不得含 `key` / `token` / `secret`（上报出口 `sanitizeProperties()` 会直接剔除，见 `docs/ANALYTICS.md` §3.10–§3.11）。
 
 ## 开发经验教训
 
@@ -96,6 +96,38 @@ console.log(sf.parseDiagnostics)
 
 **edit 工具的多段编辑是原子性的**
 一次 edit 调用里多条 edits[]，任一 oldText 匹配失败会导致整个调用回滚。不要假设“前几条已生效”而基于错误状态继续编辑；多段编辑失败后必须重新读文件确认每段的实际状态。另外多段编辑容易连带丢失换行或改错相邻字符（本次 `}}>` 被误改就是多段编辑引入的）。
+
+### 错误埋点：只上传原文 + 粗分类兜底，永远不要解析错误类型
+
+用户明确要求（多次强调）：**不要在错误文本上做任何结构/类型推断**——不正则抓状态码、
+不抠 JSON 的 `error.type`、不按关键词猜 `timeout` / `auth` / `rate_limit`。
+只做两件事：
+
+1. **原文全量上报**：`error_detail`（`error.message`）与 `response_body`（端点响应体）原样上传，
+   唯一处理是抹凭据（`scrubCredentials`）+ 超长截断（2000 字符）。
+2. **粗分类兜底**：`classifyChatError()` 只看事实——`error.name`、我们自己写的 `ERROR_MESSAGES.*`
+   常量比对、结构化 `statusCode`。都对不上就 `unknown`。
+
+为什么删掉关键词兜底：各家 provider 错误文案差异极大，猜出来的桶会直接误导分析
+（用户看到的是错桶，原文里的真实原因反而没人看）。曾有一版 `/timeout|unauthorized|rate limit/`
+正则兜底，已移除。新增错误处理时也别再加回去。
+
+### 流式请求区分「超时」与「主动收尾」：别用 `signal.aborted` 判超时
+
+带超时的流式调用通常有两处 `abort()`：超时定时器、以及流消费完后的**主动收尾**。
+两者都会让 `controller.signal.aborted === true`，所以 `catch` 里写
+`const timedOut = controller.signal.aborted` 会把**所有端点错误改写成超时**——
+`max_tokens` 超限返回的 400、`response_body` 原文、`http_status` 全部丢失，用户只看到「请求超时」。
+
+正确做法：定时器回调里先置位一个布尔标志再 abort，`catch` 只认这个标志。
+
+同一处还有第二个坑：**AI SDK 在 `abortSignal` 触发时不抛异常**，而是往 `fullStream` 发一个
+`abort` part 然后正常结束流。只处理 `text-delta` / `error` 的循环会把超时当成
+「流正常结束但零内容」，最后报成 `no_content`。处理 `part.type === "abort"`（或在循环开头查
+`signal.aborted`）才拿得到真正的超时。
+
+顺带：`fullStream` 的 400/401 是**以 `error` part 形式**送达的（前面只有 `start`），
+而 `start-step` 才代表 HTTP 已成功——用 `start-step` 判断「请求是否真的被接受」。
 
 ### 声明了却没绑到元素的 `useRef` 是纯静默死代码
 

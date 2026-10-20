@@ -1,6 +1,6 @@
 # Privacy Policy for AIction
 
-**Last Updated:** June 4, 2026
+**Last Updated:** October 20, 2026
 
 ## Introduction
 
@@ -29,12 +29,24 @@ This Privacy Policy describes how AIction ("we", "our", or "the extension") coll
 **What We Collect:**
 - Extension installation and update events
 - API connection test results (success/failure, latency)
+- **Error diagnostics** (see below)
 - Anonymous usage identifier (randomly generated UUID)
 
+**Error Diagnostics:**
+When an AI request, connection test, or text-to-speech request fails, we record a diagnostic entry containing:
+- a rough error category and the HTTP status code (when the AI SDK provides one);
+- the error class name;
+- **the full error message and the provider's raw response body**, truncated to 2000 characters;
+- provider metadata: provider name, endpoint URL, provider id, models.dev id, model name, whether a custom endpoint is used, and whether an API key is configured (a boolean only).
+
+Before leaving your browser, these fields are scrubbed of credentials: API keys and token-shaped values (`sk-…`, `Bearer …`, `key=…`, `token=…`, `secret=…`) are replaced with placeholders. Nothing else is removed or reshaped. We deliberately keep the raw text — with a small user base, the actual provider error is far more informative than a guessed classification.
+
+> Note: provider error responses can echo back part of the request (for example a validation error may quote the message content that was rejected). If that happens, the echoed text is uploaded as part of the error message. We do not upload your AI conversations, selected text, or page content as separate fields.
+
 **What We Do NOT Collect:**
-- Your selected text content
+- Your selected text content (as a separate field — see the note above about provider error echoes)
 - Your conversations with AI
-- Your API keys or credentials
+- **Your API keys or tokens** (removed by a hard outbound filter that drops credential-named fields and scrubs token-shaped values)
 - Personal identifying information
 - Browsing history
 - Page content or URLs

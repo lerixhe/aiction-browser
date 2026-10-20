@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 |------|-----|
-| 最后更新 | 2026-10-19（对照 `package.json` version `0.5.0`） |
+| 最后更新 | 2026-10-20（对照 `package.json` version `0.5.0`） |
 | 数据接收端 | PostHog（`https://us.i.posthog.com`，项目 token 常量见 `src/shared/analytics.ts`） |
 | 埋点唯一入口 | `src/shared/analytics.ts`（所有上报必须经过它，禁止在业务代码里直接 `fetch` PostHog） |
 | 事件定义分散位置 | content / pdf-viewer / popup / options / background（见下方清单） |
@@ -62,11 +62,21 @@
 
 - 每次上报前都会读 `chrome.storage.sync` 的 `aiction:settings.telemetryEnabled`（`isTelemetryEnabled()`），为 `false` 时直接 return，**不初始化 SDK、不发送任何请求**。
 - 关闭路径只有一处：Options → 关于 → 遥测开关（`AboutSection.tsx`），**该开关的变更事件与上报顺序见 §2.7 `telemetry_toggled`**。
-- **承诺不上报**：选中文本原文、页面 URL / 标题、API Key、模型输出内容、系统提示词内容。
-- **用户自由文本一律不上报**（2026-10-18 起全面执行）：
-  - 动作的 `label` / `template` → 改为 `label_length_bucket` / `template_length_bucket` / `has_selection_placeholder` / `changed_fields`；
-  - provider 展示名（自定义名可能是用户填写的文本）→ 改为 `provider_type` + `models_dev_id`。
-  - 已上报属性现在只包含：ID、枚举、数量、长度分桶、布尔、耗时。原 `action_clicked.custom_action_labels` 与 `provider_switched.from/to_provider` 已移除（见 §8 变更记录）。
+- **唯一禁区是 provider 的 token / API Key**（2026-10-20 口径）。除了它，以下信息**允许上报**：
+  provider 名称、端点地址（`api_base_url`）、`models_dev_id`、模型名、HTTP 状态码、
+  **错误消息与响应体的完整原文**（早期用户量少，原文比“猜出来的结构化字段”更有分析价值）。
+  仍然不上报：选中文本原文、页面 URL / 标题、模型输出内容、系统提示词内容、API Key。
+  - 错误字段统一走 `describeApiError()`（`src/shared/errors.ts`），字段：
+    `error_code`（10 个粗分类桶）/ `error_name` / `http_status`（仅结构化字段）/ `error_detail` / `response_body`。
+  - **不做结构猜测**：不从消息文本正则抓状态码、不从 JSON 抠 `error.type`、
+    不对 URL / 长串 / 引号块做打码——那些都会误伤且不可靠。
+  - 唯一处理是 `sanitizeErrorMessage()`（`src/shared/redact.ts`）：抹凭据（`Bearer` / `sk-*` / `key=` / `token=` / `secret=`）+ 超长截断（2000 字符）。
+- **用户自由文本**：动作 `label` / `template` 仍不上报（改为长度分桶 / 布尔特征）；
+  **provider 名称是个例外**（2026-10-20 起放开，用于定位“哪个自定义端点报错”）。
+  原 `action_clicked.custom_action_labels` 与 `provider_switched.from/to_provider` 已移除（见 §8 变更记录）。
+- **出口护栏（机制保证）**：所有上报都经 `sanitizeProperties()`（`src/shared/analytics.ts`）——
+  凭据类属性名（`apiKey` / `token` / `secret` / `authorization` …）直接剔除，
+  字符串值再扫一遍凭据形态。**无论业务侧怎么写，Key 都不会离开本机**（见 §3.11）。
 
 ---
 
@@ -146,7 +156,7 @@
 |--------|------|----------|
 | `chat_completed` | `model`, `provider_type`, `source`, `turn_index`, `is_follow_up`, `ttft_ms`(仅收到过内容块时), `duration_ms`, `content_length` | 流式正常结束 |
 | `chat_cancelled` | 同上（无 `content_length`） | 流式被 abort |
-| `chat_failed` | 同上 + `error_code` | 流报错 或 catch 异常（两处上报） |
+| `chat_failed` | 同上 + `error_code` + 诊断属性（§3.10：`http_status` / `error_name` / `error_detail` / `response_body`）+ provider 身份（§3.10：`provider_name` / `provider_id` / `models_dev_id` / `api_base_url` / `is_custom_endpoint` / `has_api_key`） | 流报错 或 catch 异常（两处上报） |
 | `chat_stopped_by_user` | `model`, `provider_type`, `source`, `turn_index`, `elapsed_ms` | `useChatState.ts` `stopStreaming`（**仅用户点停止按钮**；关闭面板导致的 abort 走卸载清理，不上报本事件） |
 
 面板形态：
@@ -162,8 +172,12 @@
 - `provider_type`：`models_dev` / `custom` / `none`（依旧不上报 provider 名称）。
 - `error_code`：`ChatErrorCode` 枚举（`classifyChatError()`，`src/shared/errors.ts`）：
   `no_api_key` / `missing_config` / `no_content` / `timeout` / `auth` / `rate_limit` / `network` / `aborted` / `provider_error` / `unknown`。
-  优先用 background 在 `ChatStreamFailedEvent.code` 里给出的结构化归因，缺省时在 content 侧按状态码 / 本地化常量 / 关键词兜底分类。
+  优先用 background 在 `ChatStreamFailedEvent.code` 里给出的结构化归因，缺省时在 content 侧用同一函数兜底（只看 `error.name` / 自造文案常量 / `statusCode`，**不做关键词或正则推断**）。
 - `chat_stopped_by_user` 与 `chat_cancelled` 的关系：用户停止 → **两个事件都会上报**（一个是「用户意图」，一个是「流的终态」），比值即「被停止占比」。
+- `chat_failed` 的诊断属性两处都带：background 在 `ChatStreamFailedEvent.diagnostics` / `.provider` 里给出，
+  content 侧优先用它，缺失时本地兜底 `describeApiError(event.error, event.code)`（兼容旧版 background / 本地判定失败）。
+  `error_code` 是**粗分类**（`provider_error` = 其余 4xx/5xx 的兜底），具体原因看 `http_status` +
+  `error_detail` / `response_body` 原文（不做结构猜测，见 §3.10）。
 
 仍未覆盖：chat 事件本身不带 `panel_mode`（若要按卡片/聊天态拆分聊天指标，需把 mode 也传进 `useChatState`）。
 
@@ -173,7 +187,22 @@
 |--------|------|----------|------|
 | `provider_created` | `provider_type`(`custom`/`models_dev`), `models_dev_id`(仅 models_dev), `provider_count`, `source` | `options/useProviderManager.ts` `selectProviderAndCreate` / `selectModelsDevProvider` | 用户偏好哪类服务商 |
 | `provider_switched` | `from_provider_type`, `to_provider_type`(`models_dev`/`custom`/`none`), `to_models_dev_id`(仅 models_dev), `provider_count`(仅 options), `source`(`options`/`popup`) | `options/useProviderManager.ts` `toggleProviderActive`；`popup/Popup.tsx` `handleProviderChange` | 切换行为（**不再上报展示名**）；`source` 区分用户主要在哪个界面切换 |
-| `api_test_completed` | `success`, `latency_ms` | `background.ts`（消息处理 `AICTION_API_TEST`） | 连通性成功率与延迟 |
+| `api_test_completed` | `success`, `latency_ms`；追加 `streaming`(恒 true)、`ttft_ms`、`finish_reason`、`warnings`、请求形态快照（§3.10：`message_count` / `input_chars` / `truncated` / `max_tokens` / `context_size` / `reasoning` / `reasoning_effort` / `provider_options`）+ provider 身份；`success: false` 时追加 `stage`（§3.10）+ 诊断属性（§3.10），**失败与成功带同一套上下文**（请求形态 / provider 元信息 / `warnings`） | `background.ts`（消息处理 `AICTION_API_TEST`） | 连通性成功率与首包延迟；失败时能直接看出是 401、400 参数错、端点 5xx，还是本地字段没填全 |
+
+说明：**「测试连接」自 2026-10-20 起走真实链路**——与对话共用 `prepareChatRequest()`
+（`src/shared/chat-stream.ts`）：流式请求 + 系统提示词 + 草稿里的 `modelParams`（`maxTokens` / `reasoning` …），
+收到**第一个内容块即中止**（只验证「第一个字能不能到」，几乎不消耗 token）。
+提问内容固定为 `"Hi"`，页面上下文（选区 / 标题 / URL）留空——测试只验证链路与参数，
+不编造页面内容（等价于「用户什么都没选中、直接提问」的真实形态）。
+此前它是极简请求（`generateText` 非流式 + 单条 `"Hi"` + 硬编码 `maxOutputTokens: 5` + 不带 providerOptions），
+所以「测试通过」不覆盖流式兼容性、参数上限与 system 消息——这正是「测试正常但真正用起来不回答」的根源。
+`warnings` 是 AI SDK `start-step` 里的 `CallWarning`（参数被端点忽略 / 不支持），会同步展示给用户；
+200 但无内容时测试直接判失败（与真链路的 `no_content` 一致）。
+
+**失败一律上报，且与成功同等详细**：`api_test_completed` 的四条分支（`validate` 本地校验失败 /
+`request` 请求未建立流 / `stream` 流中途断 / `empty` 200 但零内容）都上报，属性包含 `stage`、
+请求形态快照（`max_tokens` 等——参数填错时这是唯一能定位的线索）、provider 元信息与错误诊断原文。
+「点了测试但字段没填全」也上报（`stage: validate`），否则这类配错在数据里完全不可见。
 | `model_selected` | `provider_type`, `source_list`(`models_dev`/`fetched`/`manual`), `from_search`, `model`(仅列表选择), `source` | `options/ModelPicker.tsx`（三条选择路径：devModels 列表点选 / 接口拉取的下拉 / 手输框 blur 且值真的变了） | 最常用模型排行；`from_search` 说明用户是靠搜索还是浏览；手输路径**不上报模型名** |
 
 缺口：模型参数（`ModelParamsEditor.tsx`）**完全没有埋点**。
@@ -198,7 +227,7 @@
 
 | 事件名 | 属性 | 触发位置 | 用途 |
 |--------|------|----------|------|
-| `edge_tts_synthesize` | `success: true` → `bytes`；`success: false` → `error`（截断 200 字符） | `background.ts`（消息处理 `AICTION_TTS_SYNTHESIZE`） | Edge 在线语音可用性与成功率（设置页的试听也走这条） |
+| `edge_tts_synthesize` | `success: true` → `bytes`；`success: false` → `error_name` + `error_detail`（脱敏 + 截断 200 字符） | `background.ts`（消息处理 `AICTION_TTS_SYNTHESIZE`） | Edge 在线语音可用性与成功率（设置页的试听也走这条） |
 | `speech_started` | `source`, `provider`(请求的引擎 `edge`/`system`), `char_count_bucket`, `rate`, `chunk_count` | `useSpeechPlayer.ts` `start`（读完设置、开始合成/播放前） | 朗读触发量、文本长度分布、语速偏好 |
 | `speech_finished` | `source`, `provider`(**实际**引擎), `char_count_bucket`, `rate`, `interrupted`, `duration_ms` | `useSpeechPlayer.ts` `reportSpeechEnd`（自然播完 → `interrupted: false`；未播完就被关掉 → `true`） | 朗读完成率（`interrupted: false` 占比）；`provider` 是实际引擎，能看出 edge 降级到 system 的比例 |
 | `speech_dismissed` | `source`, `elapsed_ms` | `SpeechWidget.tsx` 闲置退场计时器（finished + 圆球态闲置 `TTS_DISMISS_MS` = 5s） | 控件存活时长：听完放着不管 vs 当场关掉 |
@@ -217,14 +246,48 @@
 
 1. **命名**：事件名 `snake_case`，`<对象>_<动作>`（过去式，如 `action_created`）或名词式状态（如 `api_test_completed`）。属性名同样 `snake_case`。
 2. **类型**：只允许 string（枚举/ID） / number / boolean。数组仅用于枚举量小的键集合（如 `changed_fields`、`param_keys`）。
-3. **禁止上报**：任何自由文本（用户输入、动作 label/template、选中内容、API Key、provider 自定义名等），任何 URL / 域名 / 页面标题，任何模型输出。
+3. **禁止上报（唯一禁区）**：API Key / provider token。除此之外，**provider 元信息与错误原文允许上报**：
+   provider 名称、端点地址（`api_base_url`）、`models_dev_id`、模型名、完整错误消息与响应体。
+   仍不上报：选中文本原文、页面 URL / 标题、模型输出内容、系统提示词内容（这些不是 provider 信息）。
    - 需要刻画「长什么样」时，用**长度分桶**（`lengthBucket()`，`src/shared/analytics.ts`：`0`/`1-20`/`21-60`/`61-200`/`200+`）、**布尔特征**（`has_selection_placeholder`）、**枚举来源**（`icon_source`、`provider_type`）替代。
+   - 「错误原文」是刻意保留的例外：早期用户量少，看原文比看猜出来的结构更有价值（见第 10 条）。
 4. **来源维度用 `source`**，取值为 `AnalyticsSource`：`web` / `pdf` / `popup` / `options` / `background`。
 5. **一次性事件**（如「首次触发动作」「首次创建自定义动作」）用 `consumeFirstTimeFlag` / `trackFirstTimeEvent` 打标，避免按页面重复计数；属性里带 `is_first` 便于切分。
 6. **不要为埋点阻塞主流程**：一律 `void trackEvent(...)`；埋点失败只 `console.warn`，不影响功能。Popup 场景要特别注意：**先上报再 await 落盘**（window 随时会关）。
 7. **输入类控件的编辑不要逐字上报**：用「记 ref + 静默窗口 flush + 卸载 flush」的聚合模式（见 §2.4 `action_updated`）。
 8. **改属性不要破坏已有口径**：优先「追加」，必须移除旧属性时在 §8 记录并在 PostHog 侧同步改图表。
 9. 新增事件时，属性尽量带**同一套维度名**（`source`、`model`、`provider_type`、`is_custom`、`enabled`、`turn_index`、`error_code`），便于交叉分析。
+10. **错误诊断：粗分类 + 原文全量**（`describeApiError()`，`src/shared/errors.ts`）。属性名固定：
+    - `error_code`：`ChatErrorCode` 粗分类（10 个桶，`classifyChatError()`）。**刻意做得很粗**，
+      且**只依据事实、不做任何推断**：`error.name`、我们自己写的文案常量（`ERROR_MESSAGES.*`）、
+      结构化 `statusCode`（401/403→`auth`、404→`missing_config`、408/504→`timeout`、429→`rate_limit`、
+      其余 ≥400→`provider_error`）。都对不上就落 `unknown` 兜底。
+      **禁止**用 `/timeout|unauthorized|rate limit/` 之类关键词从错误文案里猜类型——各家文案差异极大，
+      猜错的桶会直接误导分析（原文里的真实原因反而被忽略）。曾实现过关键词兜底，已移除。
+    - `error_name`：错误类名原文（`AI_APICallError` / `TypeError` …）。
+    - `http_status`：**只取结构化字段**（`error.statusCode`）。
+    - `error_detail`：完整 `error.message`。
+    - `response_body`：端点响应体原文（AI SDK `APICallError.responseBody`）。
+    **不做结构猜测**：不从消息文本正则抓状态码（会把 `max_tokens: 393216` 误当状态码）、
+    不从 JSON 抠 `error.type`、不试图把各家格式归一到自定义枚举——各家文案差异太大，猜出来的是噪声。
+    上述两个文本字段**必须**过 `sanitizeErrorMessage()`（`src/shared/redact.ts`）：只抹凭据 + 超长截断（2000 字符）。
+    provider 身份用 `providerIdentityOf()`（`src/shared/provider-type.ts`），字段：
+    `provider_type`（`models_dev`/`custom`/`none`）、`provider_name`（用户填写的名称）、`provider_id`（内部 uuid，
+    用于把同一 provider 的多次失败归组）、`models_dev_id`、`api_base_url`、`is_custom_endpoint`、`has_api_key`（布尔）。
+    **`has_api_key` 只报是否有 Key，绝不带内容 / 长度 / 前后缀**；Key 本身由第 11 条拦。
+    **超时判定只能看本地定时器标志**：`streamChat` / `api_test_completed` 都有一条「主动 abort 收尾」路径
+    （流消费完就 abort）。用 `controller.signal.aborted` 判超时会把端点错误（400 等）改写成 `TimeoutError`，
+    `error_detail` / `response_body` 全丢——测试连接实际踩过（`max_tokens` 超限收到端点 400，却上报 `TimeoutError`）。
+    现在的写法是：定时器回调里先置 `timedOut = true` 再 abort，catch 里只认这个标志。
+    另外 AI SDK 在 `abortSignal` 触发时**不抛异常**，而是发一个 `abort` part 后正常结束流——
+    不显式处理就会把超时误判成「200 但零内容」（`no_content`）。
+    **失败阶段 `stage`**（`api_test_completed` 专用）：`validate`（本地字段不全，请求没发出去）/ `request`
+    （请求已发、流未建立：鉴权 / 参数上限 / 端点 5xx / 超时）/ `stream`（流已开始后中断）/ `empty`（200 但零内容）。
+    作用是把「插件侧根本没发出去」与「端点拒绝」分开——这两种情形的修法完全不同。
+11. **出口护栏（机制级底线）**：所有上报（`trackEvent` / `trackBackgroundEvent`）最终都经
+    `sanitizeProperties()`（`src/shared/analytics.ts`）——凭据类属性名（`apiKey` / `key` / `token` /
+    `secret` / `authorization` / `password` … 归一化后匹配）**直接剔除**，字符串值再扫一遍凭据形态。
+    这条与业务代码怎么写无关，是「API Key 绝不离开本机」的最后一道保险；新增属性名时避开这批词即可。
 
 ---
 
@@ -353,12 +416,12 @@
 | # | Insight | 类型 | 配置 | 回答什么问题 |
 |---|---------|------|------|--------------|
 | D1 | **对话成功率** | Trends（Line）+ Formula | 系列 A `chat_completed`、B `chat_failed`、C `chat_cancelled`；Formula `A / (A + B + C)` | 端到端可用性走势 |
-| D2 | **失败归因** | Trends（Pie） | `chat_failed`（Total events），拆 `error_code` | 失败是 Key、限流、超时还是端点问题 |
+| D2 | **失败归因** | Trends（Pie） | `chat_failed`（Total events），拆 `error_code`；再按 `http_status` / `provider_name` 拆 | 失败是 Key、限流、超时还是端点问题；`provider_error` 里再细到具体 4xx/5xx 与具体 provider |
 | D3 | 失败率按 provider | Trends（Line） | `chat_failed` 拆 `provider_type`（可再拆 `model`） | 自定义端点是不是主要失败源 |
 | D4 | TTFT 分位 | Trends（Line，P95 of property `ttft_ms`） | 事件 `chat_completed`，拆 `provider_type` / `model` | 首字延迟（比总时长更接近体感） |
 | D5 | 总时延分位 | 同上，property `duration_ms` | 事件 `chat_completed`；另可建 `chat_failed` 的 P95 | 慢在哪一段 |
 | D6 | 用户主动停止率 | Trends（Line）+ Formula | `chat_stopped_by_user` / `chat_completed` | 生成质量 / 长度的代理指标 |
-| D7 | API 测试 | Trends（Line） | `api_test_completed` 拆 `success`；`latency_ms` 取 P95 | 配置阶段就暴露的连通性问题 |
+| D7 | API 测试 | Trends（Line） | `api_test_completed` 拆 `success`；`latency_ms` 取 P95；`success = false` 时另建一张拆 `http_status` / `provider_type` | 配置阶段就暴露的连通性问题（失败原因可直接分类） |
 | D8 | Edge TTS 合成 | Trends（Line） | `edge_tts_synthesize` 拆 `success` | 在线语音的可用性（与 C11 互为交叉验证） |
 | D9 | 遥测关闭率 | Trends（Line，按周） | `telemetry_toggled` 拆 `enabled`（`false` 占比 = 关闭率） | 隐私信任指标 |
 
@@ -412,3 +475,8 @@
 | 2026-10-19 | Popup 重设计（+1 → 40 个事件） | 新增 `popup_ask_clicked`（`result`: `opened`/`unsupported`, `source: popup`），配套新功能「在当前页面提问」（`MESSAGE_TYPES.OPEN_CHAT` → content script 开一个空白聊天态面板并聚焦输入框，`messaging.ts` `requestOpenChatInActiveTab()`）；`popup_opened` / `provider_switched` / `action_enabled_toggled` 的事件与属性**零增删**；顺带修正 §2.6 里 `provider_switched` 的 Popup 分支函数名引用（`handleServiceChange` → `handleProviderChange`） |
 | 2026-10-19 | 设置页 UI 重构（`docs/OPTIONS_UI.md`）后同步 | **事件与属性零增删**；仅更新触发位置引用：自定义动作相关事件从 `ActionsSection.tsx` 迁到 `CustomActionsCard.tsx`（`updateCustomAction` → `updateActionDraft`）；`action_updated` 的取值改为「草稿优先」的有效值（编辑不再逐字落盘），时机（2s 静默 / 保存 / 删除前 / 卸载）不变 |
 | 2026-10-18 | 建图清单（新增 §6） | 补齐 PostHog Dashboard 清单：口径前提（设备级 distinct_id / 无 pageview / 本地 vs 项目时区）、四个 Dashboard（A 增长与激活含核心漏斗、B 使用与留存、C 功能采用、D 质量与性能）共 31 条 Insight、建图注意事项与登记表；原 §6/§7 顺延为 §7/§8 |
+| 2026-10-20 | 移除错误分类的关键词推断（口径收紧） | `classifyChatError()` 删除 `/abort/` `/timeout/` `/unauthorized/` `/rate ?limit/` `/fetch failed|ENOTFOUND|…/` 五条正则兜底——分类只依据 `error.name`、自造文案常量与结构化 `statusCode`，其余一律 `unknown`；`error_detail` / `response_body` 仍原文全量上报（仅抹凭据 + 截断） |
+| 2026-10-20 | 修复测试连接把端点错误误报成超时（bug，无属性变更） | `doActualTest` 原先用 `controller.signal.aborted` 判超时，而流消费完会主动 `abort()` 收尾 → 任何端点错误都被改写成 `TimeoutError`，原始 400 / 响应体全丢；改为只认定时器置的 `timedOut` 标志。同时处理 AI SDK 的 `abort` part（abort 不抛异常而是正常结束流），否则 30s 超时会被误判成 `no_content`；`stage` 改在 `start-step` 才切到 `stream`（400 建流前到达，应记 `request`） |
+| 2026-10-20 | 「测试连接」失败结果补齐全量上报 | `api_test_completed` 失败分支新增 `stage`（`validate`/`request`/`stream`/`empty`）；请求形态快照与 `warnings` 在**失败时同样上报**（原先 catch 分支拿不到 `plan`，只有诊断原文）；本地校验失败（`apiKey`/`model` 为空）也上报（原先完全不上报）；`ApiTestResponse` 失败分支带回 `warnings` / `finishReason` |
+| 2026-10-20 | 「测试连接」改走真实链路（属性变更，事件数不变） | 新增 `src/shared/chat-stream.ts`：`prepareChatRequest()` 成为**真实对话与测试连接的唯一请求构造入口**（流式 + system + 草稿 `modelParams`），`streamChat` 也改用它；测试收到首个内容块即中止并优先报 `ttft_ms`；`ApiTestRequest.payload` 新增 `modelParams`，`ApiTestResponse` 新增 `ttftMs` / `finishReason` / `warnings`（并在设置页展示）；`api_test_completed` 追加 `streaming` / `ttft_ms` / `finish_reason` / `warnings` / 请求形态快照 / provider 身份 |
+| 2026-10-20 | 错误诊断升级（属性变更，事件数不变） | **口径调整：唯一禁区是 provider token / API Key，其余全量上报**。`chat_failed` / `api_test_completed`（失败分支）新增 `error_name` / `http_status` / `error_detail`（完整消息）/ `response_body`（完整响应体）+ provider 身份（`provider_name` / `provider_id` / `models_dev_id` / `api_base_url` / `is_custom_endpoint` / `has_api_key`）；**放弃结构猜测**（删除从文本正则抓状态码、从 JSON 抠 `error.type`、URL/长串/引号块打码）；新增 `src/shared/redact.ts`（只抹凭据）与上报出口护栏 `sanitizeProperties()`；`ChatStreamFailedEvent` 新增可选 `diagnostics` / `provider`；**修正违例**：`edge_tts_synthesize.error` → `error_detail`（抹凭据）；`provider_switched.from/to_provider` 名称禁令解除（provider 名称允许上报）；同步 `docs/PRIVACY_POLICY.md` 与 `options.about.telemetryDesc` 文案 |

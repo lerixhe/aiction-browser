@@ -4,8 +4,8 @@ import { ERROR_MESSAGES, UI_MESSAGES } from "@/shared/constants"
 import { streamChat } from "@/shared/messaging"
 import { buildContextSystemMessage, resolveUILanguageLabel } from "@/shared/prompt"
 import { trackEvent, type AnalyticsSource } from "@/shared/analytics"
-import { classifyChatError } from "@/shared/errors"
-import { providerTypeOf } from "@/shared/provider-type"
+import { classifyChatError, describeApiError, type ApiErrorDiagnostics } from "@/shared/errors"
+import { providerTypeOf, providerIdentityOf, type ProviderIdentityProps } from "@/shared/provider-type"
 import { getSettings, getActiveProvider } from "@/shared/storage"
 import type { ChatMessage, ChatRequestState, ExtensionSettings, SelectionContext } from "@/shared/types"
 
@@ -194,11 +194,16 @@ export function useChatState(source: AnalyticsSource = "web") {
         ...extra
       })
 
+      /** 失败事件的额外维度：provider 身份（只含元信息，不含 API Key） */
+      const providerIdentity = providerIdentityOf(activeProvider)
+
       try {
         let streamedContent = ""
         let streamedReasoning = ""
         let terminalState: "completed" | "cancelled" | "failed" | null = null
         let failedCode: string = "unknown"
+        let failedDiagnostics: ApiErrorDiagnostics | null = null
+        let failedProvider: ProviderIdentityProps = providerIdentity
 
         await streamChat(apiMessages, {
           signal: abortController.signal,
@@ -272,6 +277,11 @@ export function useChatState(source: AnalyticsSource = "web") {
 
             terminalState = "failed"
             failedCode = event.code ?? classifyChatError(event.error)
+            // background 已给出结构化诊断就用它的，否则本地兜底（旧版 background 不带 diagnostics）
+            failedDiagnostics = event.diagnostics ?? describeApiError(event.error, event.code)
+            if (event.provider) {
+              failedProvider = event.provider
+            }
             setRequestState({
               status: "failed",
               assistantMessageId: assistantMessage.id,
@@ -316,17 +326,30 @@ export function useChatState(source: AnalyticsSource = "web") {
         } else if (terminalState === "cancelled") {
           void trackEvent("chat_cancelled", chatProps({ duration_ms: durationMs }))
         } else if (terminalState === "failed") {
-          void trackEvent("chat_failed", chatProps({ duration_ms: durationMs, error_code: failedCode }))
+          void trackEvent(
+            "chat_failed",
+            chatProps({
+              duration_ms: durationMs,
+              ...(failedDiagnostics ?? describeApiError("unknown")),
+              ...failedProvider,
+              error_code: failedCode
+            })
+          )
         }
       } catch (error: unknown) {
         if (!isCurrentRequest()) {
           return
         }
 
-        void trackEvent("chat_failed", chatProps({
-          duration_ms: Math.round(performance.now() - streamStartTime),
-          error_code: classifyChatError(error)
-        }))
+        void trackEvent(
+          "chat_failed",
+          chatProps({
+            duration_ms: Math.round(performance.now() - streamStartTime),
+            ...describeApiError(error),
+            ...providerIdentity,
+            error_code: classifyChatError(error)
+          })
+        )
 
         const message = error instanceof Error ? error.message : ERROR_MESSAGES.UNKNOWN_ERROR
         setRequestState({ status: "failed", assistantMessageId: assistantMessage.id, error: message })

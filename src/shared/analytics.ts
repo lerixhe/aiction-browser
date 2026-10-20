@@ -1,5 +1,7 @@
 import posthog from "posthog-js/dist/module.no-external"
 
+import { scrubCredentials } from "@/shared/redact"
+
 const POSTHOG_PROJECT_TOKEN = "phc_tPo8ytSVcKEozs6qbNTWEkDTnqXoxUoBuaNo2fu7v2Rh"
 const POSTHOG_HOST = "https://us.i.posthog.com"
 
@@ -21,6 +23,76 @@ export function lengthBucket(length: number): string {
   if (length <= 60) return "21-60"
   if (length <= 200) return "61-200"
   return "200+"
+}
+
+// ── 上报出口的凭据护栏（机制保证，见 docs/ANALYTICS.md §3.11）────────
+//
+// 业务侧怎么写都不影响这条底线：**API Key / Token 永远不会离开本机**。
+// 两个动作：① 剔除凭据类属性名（归一化后匹配）；② 对每个字符串值做秘密形态扫描。
+// provider 其它元信息（名称 / 端点地址 / 模型名）**允许上报**（按产品决定），不在此列。
+
+/** 归一化后禁止作为属性名出现的键（只限凭据） */
+const FORBIDDEN_PROPERTY_KEYS = new Set(
+  [
+    "apikey",
+    "key",
+    "keys",
+    "token",
+    "tokens",
+    "accesstoken",
+    "refreshtoken",
+    "idtoken",
+    "auth",
+    "authorization",
+    "authheader",
+    "credential",
+    "credentials",
+    "secret",
+    "clientsecret",
+    "password",
+    "passphrase"
+  ]
+)
+
+function normalizePropertyKey(key: string): string {
+  return key.replace(/[_\-.]/g, "").toLowerCase()
+}
+
+function scrubValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    return scrubCredentials(value)
+  }
+  if (Array.isArray(value)) {
+    return value.map(scrubValue)
+  }
+  if (value && typeof value === "object") {
+    return sanitizeProperties(value as Record<string, unknown>)
+  }
+  return value
+}
+
+/**
+ * 出口护栏：剔除凭据属性名，并对值做秘密形态打码。
+ * `$` 开头的 PostHog 保留属性不改名（值依旧打码）。
+ */
+export function sanitizeProperties(
+  properties?: Record<string, unknown>
+): Record<string, unknown> | undefined {
+  if (!properties) {
+    return undefined
+  }
+
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(properties)) {
+    if (FORBIDDEN_PROPERTY_KEYS.has(normalizePropertyKey(key))) {
+      if (import.meta.env?.DEV) {
+        console.warn(`[AIction] 埋点属性 “${key}” 被出口护栏剔除（凭据类字段禁止上报）`)
+      }
+      continue
+    }
+    result[key] = scrubValue(value)
+  }
+  return result
 }
 
 // ── Anonymous ID ────────────────────────────────────────────────
@@ -156,7 +228,7 @@ export async function trackEvent(
 
   if (sdkInitialized) {
     try {
-      posthog.capture(name, properties)
+      posthog.capture(name, sanitizeProperties(properties))
     } catch (error) {
       console.warn("[AIction] PostHog capture failed:", error)
     }
@@ -183,7 +255,7 @@ async function sendBackgroundEvent(
         event: name,
         distinct_id: distinctId,
         properties: {
-          ...(properties ?? {}),
+          ...(sanitizeProperties(properties) ?? {}),
           $lib: "aiction-background"
         }
       })

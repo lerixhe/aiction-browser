@@ -1,4 +1,5 @@
-import type { ChatErrorCode } from "@/shared/errors"
+import type { ApiErrorDiagnostics, ChatErrorCode } from "@/shared/errors"
+import type { ProviderIdentityProps } from "@/shared/provider-type"
 
 export type ThemePreference = "auto" | "light" | "dark"
 
@@ -126,6 +127,10 @@ export interface ChatStreamFailedEvent {
   error: string
   /** 失败归因枚举（仅用于埋点，见 docs/ANALYTICS.md §2.5）；旧端可能不带 */
   code?: ChatErrorCode
+  /** 失败诊断属性（仅用于埋点，见 docs/ANALYTICS.md §3.10）；旧端可能不带 */
+  diagnostics?: ApiErrorDiagnostics
+  /** provider 身份（仅用于埋点；只含元信息，**不包含 API Key**）；旧端可能不带 */
+  provider?: ProviderIdentityProps
 }
 
 export type ChatStreamRequest = ChatStreamStartRequest | ChatStreamCancelRequest
@@ -174,13 +179,22 @@ export interface ApiTestRequest {
     apiKey: string
     model: string
     modelsDevId?: string
+    /** 草稿里的模型参数（真假连接的请求会带上，与真实对话同构）；旧版 UI 可能不带 */
+    modelParams?: ModelParams
   }
 }
 
 export interface ApiTestResponse {
   success: boolean
   error?: string
+  /** 首包耗时（收到第一个内容块的 ms）；失败时为总耗时 */
   latencyMs?: number
+  /** 首包延迟（仅成功时） */
+  ttftMs?: number
+  /** 端点的 finishReason（成功时通常是 stopped_after_first_chunk） */
+  finishReason?: string
+  /** AI SDK 告警：参数被端点忽略 / 不支持等，需要直接告诉用户 */
+  warnings?: string[]
 }
 
 // Fetch models types

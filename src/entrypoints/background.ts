@@ -6,16 +6,27 @@ import type {
   ApiTestResponse,
   ModelsDevResponse,
   OpenRouterModelsResponse,
+  ProviderConfig,
+  SelectionContext,
   TtsSynthesizeRequest,
   TtsSynthesizeResponse
 } from "@/shared/types"
 import { MESSAGE_TYPES, ERROR_MESSAGES } from "@/shared/constants"
 import { i18nStore } from "@/shared/i18n/index"
-import { formatApiError, getErrorMessage, isAbortError, classifyChatError } from "@/shared/errors"
+import {
+  formatApiError,
+  getErrorMessage,
+  getErrorName,
+  isAbortError,
+  classifyChatError,
+  describeApiError,
+  sanitizeErrorMessage
+} from "@/shared/errors"
 import { getActiveProvider, getSettings } from "@/shared/storage"
 import { DEFAULT_TTS_SETTINGS } from "@/shared/defaults"
-import { resolveLanguageModel } from "@/shared/model-provider"
-import { buildProviderOptions, truncateMessagesToContext } from "@/shared/model-params"
+import { buildContextSystemMessage, resolveUILanguageLabel } from "@/shared/prompt"
+import { providerIdentityOf, type ProviderIdentityProps } from "@/shared/provider-type"
+import { prepareChatRequest, describeCallWarning, type ChatRequestPlan } from "@/shared/chat-stream"
 import { fetchModelsDev } from "@/shared/models-dev"
 import { fetchOpenRouterModels } from "@/shared/openrouter"
 
@@ -29,6 +40,26 @@ import {
 
 /** 上次上报活跃的本地日期（YYYY-MM-DD） */
 const LAST_ACTIVE_DATE_KEY = "aiction:lastActiveDate"
+
+/**
+ * 「测试连接」用的合成上下文：**故意留空**。
+ *
+ * 测试只验证「这条链路 + 这组参数」能不能跑通，不验证内容质量，
+ * 所以不编造选区 / 页面标题 / URL（旧实现塞了 `"connection test"` 与 `example.com`，
+ * 那些伪造文本会进 system 消息，属于没必要的假数据）。
+ * 留空后走的就是「用户没选中任何东西、直接提问」的真实形态。
+ */
+const TEST_SELECTION_CONTEXT: SelectionContext = {
+  text: "",
+  title: "",
+  url: ""
+}
+
+/** 固定的提问内容：测试只要能拿到第一个 token，具体问什么不重要 */
+const TEST_PROMPT = "Hi"
+
+/** 告警最多带/展示几条（避免端点刷屏，也避免事件属性过大） */
+const MAX_TEST_WARNINGS = 5
 
 /** 本地日期键：用本地时区，符合「用户的某一天」（UTC 会让东部时区的凌晨算到前一天） */
 function localDateKey(date = new Date()): string {
@@ -100,6 +131,16 @@ async function reportProviderConfigured(
   await trackBackgroundEvent("provider_configured", properties)
 }
 
+/** 当前生效 provider 的身份（仅用于失败埋点；只含元信息，不涉及 API Key） */
+async function currentProviderIdentity(): Promise<ProviderIdentityProps> {
+  try {
+    const settings = await getSettings()
+    return providerIdentityOf(getActiveProvider(settings))
+  } catch {
+    return { provider_type: "none", is_custom_endpoint: false, has_api_key: false }
+  }
+}
+
 async function streamChat(
   messages: { role: "user" | "assistant" | "system"; content: string }[],
   signal: AbortSignal,
@@ -110,46 +151,37 @@ async function streamChat(
 
   const settings = await getSettings()
   const activeService = getActiveProvider(settings)
+  const identity = providerIdentityOf(activeService)
 
   if (!activeService?.apiKey.trim()) {
     // 关键流失点：装了但没配好 provider 就触发动作（详情见 docs/ANALYTICS.md §5 P0）
     void trackBackgroundEvent("action_triggered_without_provider", { source })
-    onEvent({ type: "failed", error: ERROR_MESSAGES.NO_API_KEY, code: "no_api_key" })
+    onEvent({ type: "failed", error: ERROR_MESSAGES.NO_API_KEY, code: "no_api_key", provider: identity })
     return
   }
 
   onEvent({ type: "started" })
 
   if (!activeService.modelsDevId && !activeService.apiBaseUrl?.trim()) {
-    onEvent({ type: "failed", error: ERROR_MESSAGES.API_TEST_MISSING_FIELDS, code: "missing_config" })
+    onEvent({
+      type: "failed",
+      error: ERROR_MESSAGES.API_TEST_MISSING_FIELDS,
+      code: "missing_config",
+      provider: identity
+    })
     return
   }
 
   const modelsDevData = await fetchModelsDev()
-  const model = resolveLanguageModel(activeService, modelsDevData)
 
-  const params = activeService.modelParams ?? {}
-
-  // 只发送用户显式填充的参数；未填充 = 忽略（跟随模型默认）
-  const finalMessages =
-    typeof params.contextSize === "number" && params.contextSize > 0
-      ? truncateMessagesToContext(messages, params.contextSize)
-      : messages
-
-  const streamParams: Parameters<typeof streamText>[0] = {
-    model,
-    messages: finalMessages,
-    abortSignal: signal,
-  }
-
-  if (typeof params.maxTokens === "number" && params.maxTokens >= 1) {
-    streamParams.maxOutputTokens = params.maxTokens
-  }
-
-  const providerOptions = buildProviderOptions(activeService, modelsDevData, params)
-  if (providerOptions) {
-    streamParams.providerOptions = providerOptions
-  }
+  // 请求构造与「测试连接」共用同一处（src/shared/chat-stream.ts），
+  // 保证测试覆盖的就是真实链路的参数与流式行为。
+  const { streamParams } = prepareChatRequest({
+    provider: activeService,
+    messages,
+    modelsDevData,
+    signal
+  })
 
   let hasContent = false
 
@@ -182,7 +214,12 @@ async function streamChat(
   await consumeStream()
 
   if (!hasContent) {
-    onEvent({ type: "failed", error: ERROR_MESSAGES.NO_VALID_CONTENT, code: "no_content" })
+    onEvent({
+      type: "failed",
+      error: ERROR_MESSAGES.NO_VALID_CONTENT,
+      code: "no_content",
+      provider: identity
+    })
     return
   }
 
@@ -229,7 +266,7 @@ export default defineBackground(() => {
         } catch {
           return
         }
-      }).catch((error: unknown) => {
+      }).catch(async (error: unknown) => {
         if (controller.signal.aborted && isAbortError(error)) {
           try {
             port.postMessage({ type: "cancelled" } satisfies ChatStreamEvent)
@@ -244,7 +281,9 @@ export default defineBackground(() => {
           port.postMessage({
             type: "failed",
             error: `${ERROR_MESSAGES.REQUEST_FAILED}: ${message}`,
-            code: classifyChatError(error)
+            code: classifyChatError(error),
+            diagnostics: describeApiError(error),
+            provider: await currentProviderIdentity()
           } satisfies ChatStreamEvent)
         } catch {
           return
@@ -324,9 +363,11 @@ export default defineBackground(() => {
         void trackBackgroundEvent("edge_tts_synthesize", { success: true, bytes: result.audioBase64.length })
         sendResponse({ success: true, ...result } satisfies TtsSynthesizeResponse)
       } catch (error: unknown) {
+        // 不上报错误原文（可能含 WebSocket URL / 语音令牌），只给类名 + 脱敏消息
         void trackBackgroundEvent("edge_tts_synthesize", {
           success: false,
-          error: getErrorMessage(error).slice(0, 200)
+          error_name: getErrorName(error),
+          error_detail: sanitizeErrorMessage(getErrorMessage(error))
         })
         sendResponse({
           success: false,
@@ -383,51 +424,211 @@ export default defineBackground(() => {
     }
 
     const { apiBaseUrl, apiKey, model } = request.payload
+    const modelParams = request.payload.modelParams ?? {}
+
+    /** 失败发生在哪一步：本地校验 / 请求未拿到流 / 流中途断 / 200 但无内容 */
+    type TestStage = "validate" | "request" | "stream" | "empty"
+
+    /**
+     * provider 元信息 + 草稿参数（只含元信息与数值，不含 apiKey；见 docs/ANALYTICS.md §3.10）。
+     * 单独抽出是因为**所有**分支都要带：即使请求根本没发出去，也该看出用户配了什么。
+     */
+    const providerMeta = () => ({
+      ...(model?.trim() ? { model: model.trim() } : {}),
+      provider_type: request.payload.modelsDevId ? "models_dev" : "custom",
+      is_custom_endpoint: Boolean(apiBaseUrl?.trim()),
+      has_api_key: Boolean(apiKey?.trim()),
+      ...(request.payload.modelsDevId ? { models_dev_id: request.payload.modelsDevId } : {}),
+      ...(apiBaseUrl?.trim() ? { api_base_url: apiBaseUrl.trim() } : {}),
+      ...(typeof modelParams.maxTokens === "number" ? { max_tokens: modelParams.maxTokens } : {}),
+      ...(typeof modelParams.contextSize === "number" && modelParams.contextSize > 0
+        ? { context_size: modelParams.contextSize }
+        : {}),
+      ...(modelParams.reasoning !== undefined ? { reasoning: modelParams.reasoning } : {}),
+      ...(modelParams.reasoningEffort ? { reasoning_effort: modelParams.reasoningEffort } : {})
+    })
 
     if (!apiKey?.trim() || !model?.trim()) {
+      // 本地校验没过也算一次失败的测试：否则「点了测试但字段没填全」在数据里完全看不见
+      void trackBackgroundEvent("api_test_completed", {
+        success: false,
+        stage: "validate",
+        ...providerMeta(),
+        ...describeApiError(ERROR_MESSAGES.API_TEST_MISSING_FIELDS)
+      })
       sendResponse({ success: false, error: ERROR_MESSAGES.API_TEST_MISSING_FIELDS } satisfies ApiTestResponse)
       return false
     }
 
     const doActualTest = async () => {
-      const { generateText } = await import("ai")
+      const { streamText } = await import("ai")
       const startTime = performance.now()
       const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 30_000)
+
+      // 声明在 try 外：**失败埋点同样要带请求形态**——参数配错导致 400 时，
+      // 「max_tokens 填了多少」正是唯一能定位问题的线索。
+      let stage: TestStage = "request"
+      let plan: ChatRequestPlan | undefined
+      let finishReason: string | undefined
+      const warnings: string[] = []
+
+      /**
+       * 是否��本地 30s 定时器超时。
+       * **不能用 `controller.signal.aborted` 判定**：流消费完（含报错）我们会主动
+       * `abort()` 收尾，信号同样是 true——那样任何端点错误都会被改写成 TimeoutError，
+       * 原始 400 / 响应体全部丢失（2026-10-20 实际踩过：`max_tokens` 超限收到端点 400，
+       * 却上报成 `TimeoutError`）。只认定时器置的位。
+       */
+      let timedOut = false
+      const timeout = setTimeout(() => {
+        timedOut = true
+        controller.abort()
+      }, 30_000)
 
       try {
         const modelsDevData = await fetchModelsDev()
-        const service = {
+        const draft: ProviderConfig = {
           id: "test",
           name: "test",
           apiKey: apiKey.trim(),
           model: model.trim(),
           apiBaseUrl: apiBaseUrl?.trim() || undefined,
-          modelParams: {},
-          modelsDevId: request.payload.modelsDevId,
+          // 用草稿里用户实际填的参数测试（maxTokens / reasoning …）——
+          // 这些正是「测试通过但真实对话 400」的主因
+          modelParams: request.payload.modelParams ?? {},
+          modelsDevId: request.payload.modelsDevId
         }
-        const resolvedModel = resolveLanguageModel(service, modelsDevData)
-        const result = await generateText({
-          model: resolvedModel,
-          messages: [{ role: "user", content: "Hi" }],
-          maxOutputTokens: 5,
-          abortSignal: controller.signal,
-        })
-        const latencyMs = Math.round(performance.now() - startTime)
 
-        void trackBackgroundEvent("api_test_completed", { success: true, latency_ms: latencyMs })
+        // 与真实对话同构：带系统提示词（已保存的设置）+ 一条用户消息
+        const settings = await getSettings().catch(() => null)
+        const systemContent = buildContextSystemMessage(
+          TEST_SELECTION_CONTEXT,
+          settings?.systemPrompt,
+          resolveUILanguageLabel(settings?.language ?? null)
+        )
+
+        // 同一个构造器（src/shared/chat-stream.ts）→ 流式 + 用户参数 + system，与真实链路一致
+        const { streamParams, plan: requestPlan } = prepareChatRequest({
+          provider: draft,
+          messages: [
+            { id: "test-system", role: "system", content: systemContent },
+            { id: "test-user", role: "user", content: TEST_PROMPT }
+          ],
+          modelsDevData,
+          signal: controller.signal
+        })
+        plan = requestPlan
+
+        const result = streamText(streamParams)
+        /** 首个内容块到达时间；null = 流结束但一个字符都没有（真实链路会走 no_content） */
+        let ttftMs: number | null = null
+
+        try {
+          for await (const part of result.fullStream) {
+            // AI SDK 在 abortSignal 触发时**不抛异常**，而是发一个 `abort` part 后正常结束流；
+            // 不显式处理的话，30s 超时会被误判成「200 但零内容」（no_content）。
+            if (controller.signal.aborted || part.type === "abort") {
+              throw new DOMException(ERROR_MESSAGES.REQUEST_TIMEOUT, "TimeoutError")
+            }
+            if (part.type === "start-step") {
+              // 走到 start-step 才说明 HTTP 已成功、SDK 开始解析流。
+              // 400/401 这类会在流建立前就以 `error` part 到达（前面只有 `start`），
+              // 那种情况 stage 应停在 "request"。
+              stage = "stream"
+              // fullStream 把 provider 的 CallWarning 挂在 start-step（不是 stream-start）
+              for (const warning of part.warnings ?? []) {
+                if (warnings.length >= MAX_TEST_WARNINGS) break
+                warnings.push(sanitizeErrorMessage(describeCallWarning(warning), 200))
+              }
+            } else if (part.type === "text-delta" || part.type === "reasoning-delta") {
+              stage = "stream"
+              ttftMs = Math.round(performance.now() - startTime)
+              // 只验证「第一个字能不能到」：拿到就停，不花用户的 token
+              break
+            } else if (part.type === "finish") {
+              finishReason = part.finishReason
+            } else if (part.type === "error") {
+              throw part.error
+            }
+          }
+        } finally {
+          // 收尾用的主动 abort（不是超时）：单独用 timedOut 标志区分，
+          // 否则 signal.aborted 会把真实端点错误误判成超时。
+          controller.abort()
+          // 中止后不再消费的流会留下未 await 的 promise，吞掉避免 unhandled rejection
+          void Promise.resolve(result.text).catch(() => {})
+        }
+
+        const latencyMs = Math.round(performance.now() - startTime)
+        const requestProps = {
+          streaming: true,
+          ...providerMeta(),
+          ...(plan ?? {})
+        }
+
+        if (ttftMs === null) {
+          // 端点 200 但没给内容：真实对话在这里也是 no_content，测试不能报成功
+          stage = "empty"
+          const error = ERROR_MESSAGES.NO_VALID_CONTENT
+          void trackBackgroundEvent("api_test_completed", {
+            success: false,
+            stage,
+            latency_ms: latencyMs,
+            finish_reason: finishReason ?? "unknown",
+            ...(warnings.length > 0 ? { warnings } : {}),
+            ...requestProps,
+            ...describeApiError(error)
+          })
+          sendResponse({
+            success: false,
+            error,
+            latencyMs,
+            warnings,
+            finishReason
+          } satisfies ApiTestResponse)
+          return
+        }
+
+        void trackBackgroundEvent("api_test_completed", {
+          success: true,
+          stage,
+          latency_ms: ttftMs,
+          ttft_ms: ttftMs,
+          finish_reason: finishReason ?? "stopped_after_first_chunk",
+          ...(warnings.length > 0 ? { warnings } : {}),
+          ...requestProps
+        })
         void reportProviderConfigured({ modelsDevId: request.payload.modelsDevId }, "api_test")
-        sendResponse({ success: true, latencyMs } satisfies ApiTestResponse)
+        sendResponse({ success: true, latencyMs: ttftMs, ttftMs, warnings, finishReason } satisfies ApiTestResponse)
       } catch (error: unknown) {
         const latencyMs = Math.round(performance.now() - startTime)
-        void trackBackgroundEvent("api_test_completed", { success: false, latency_ms: latencyMs })
-        const message = controller.signal.aborted
+        // 只把**定时器触发**的算超时；否则原样上报端点错误（状态码 / 响应体 / 文案都在 error 里）。
+        // 不用 `isAbortError` 做额外条件：超时被包装后 name 不一定是 AbortError，
+        // 带了该条件反而会把真超时当成端点错误。
+        const diagnostics = describeApiError(
+          timedOut ? new DOMException(ERROR_MESSAGES.REQUEST_TIMEOUT, "TimeoutError") : error
+        )
+        // 失败事件与成功事件带同一套上下文（stage / 请求形态 / warnings），
+        // 否则「为什么失败」只能靠猜
+        void trackBackgroundEvent("api_test_completed", {
+          success: false,
+          stage,
+          latency_ms: latencyMs,
+          ...(finishReason ? { finish_reason: finishReason } : {}),
+          ...(warnings.length > 0 ? { warnings } : {}),
+          ...diagnostics,
+          ...providerMeta(),
+          ...(plan ?? {})
+        })
+        const message = timedOut
           ? ERROR_MESSAGES.REQUEST_TIMEOUT
           : `${ERROR_MESSAGES.REQUEST_FAILED}: ${getErrorMessage(error)}`
         sendResponse({
           success: false,
           error: message,
-          latencyMs
+          latencyMs,
+          warnings,
+          finishReason
         } satisfies ApiTestResponse)
       } finally {
         clearTimeout(timeout)

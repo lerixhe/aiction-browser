@@ -407,7 +407,9 @@ export function useProviderManager(
           apiBaseUrl: trimmedUrl || "",
           apiKey: trimmedKey,
           model: trimmedModel,
-          modelsDevId: providerDraft.modelsDevId
+          modelsDevId: providerDraft.modelsDevId,
+          // 带上草稿参数：测试走真实链路，maxTokens / reasoning 配错应当场暴露
+          modelParams: providerDraft.modelParams
         }
       },
       (response: ApiTestResponse | undefined) => {
@@ -423,11 +425,22 @@ export function useProviderManager(
           setTestResult({ success: false, message: t("options.connection.noResponse") })
           return
         }
+        // 端点的 warnings（参数被忽略 / 不支持）无论成败都展示：这是「能连但表现不对」的直接线索
+        const warningSuffix =
+          response.warnings && response.warnings.length > 0
+            ? ` · ${t("options.connection.testWarnings", [response.warnings.join(" | ")])}`
+            : ""
         const latencyInfo = response.latencyMs != null ? ` (${response.latencyMs}ms)` : ""
         if (response.success) {
-          setTestResult({ success: true, message: t("options.connection.connectionSuccess", [latencyInfo]) })
+          setTestResult({
+            success: true,
+            message: `${t("options.connection.connectionSuccess", [latencyInfo])}${warningSuffix}`
+          })
         } else {
-          setTestResult({ success: false, message: response.error ?? t("options.connection.testFailed") })
+          setTestResult({
+            success: false,
+            message: `${response.error ?? t("options.connection.testFailed")}${warningSuffix}`
+          })
         }
       }
     )
