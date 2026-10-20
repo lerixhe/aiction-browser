@@ -440,6 +440,66 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   `> :first-child/:last-child` 清 margin，避免首尾多出一层空隙。
 - **面板内选中文字**用主色 20% 淡底（`<style>` 里的 `::selection`），不用浏览器默认蓝。
 
+### 「跟随系统」语言：交给 `Intl.Locale`，禁止自己 startsWith / 枚举子标签
+
+**症状**：macOS 系统语言是简体中文，扩展界面却是英文。
+
+**根因**：macOS 的系统语言标签带 script 子标签 —— `defaults read -g AppleLanguages` →
+`zh-Hans-SG`（新加坡简中），不是 `zh-CN`。旧 `resolveLocale()` 只把 `zh-CN` / `zh_CN` / `zh`
+当简中，其余 `startsWith("zh")` 一律当「繁体 → 回退英文」，于是 `zh-Hans-SG` 被判成英文。
+
+**正确做法**（`src/shared/i18n/translations.ts`）：语言标签是标准格式，解析与简繁判定全部
+交给平台 ICU，不要写字符串前缀 / 子标签枚举（枚举永远不全，且是猜测式编码）：
+
+1. `new Intl.Locale(tag)` 解析（失败再试 `_`→`-` 修正后的形式，仍失败就返回 null，**不猜**）。
+2. 语言识别只查 `PREFERRED_LOCALE_BY_LANGUAGE`（`en` / `zh` 两张表项，封闭集）。
+3. 简繁用 `locale.maximize().script`（CLDR likely-subtags）：`zh`/`zh-SG`/`zh-Hans-*` → `Hans`，
+   `zh-TW`/`zh-HK`/`zh-MO` → `Hant`。目前只有简体译文，`Hant` 回退英文。
+
+**第二部分坑**：`navigator.language` 不等于系统语言，扩展里它跟随浏览器 UI 语言
+（`chrome.i18n.getUILanguage()` 才是 MV3 的权威来源），且两者可被用户单独设置。
+所以「跟随系统」= `resolveSystemLocale()`：收集 `getUILanguage()` → `navigator.language` →
+`navigator.languages` 去重，用上面的方式逐个解析，**任一来源为中文即中文**（中文系统 +
+英文 UI 极常见）。注意 `chrome` 必须 `typeof chrome !== "undefined"` 判断
+（可选链挡不住未声明变量的 ReferenceError）。
+
+新增读取「系统语言」的代码一律调 `resolveSystemLocale()`，不要再各自写 `resolveLocale(navigator.language)`。
+
+### TTS 文本语言检测：用 CLD，不用字符区段正则猜（已改）
+
+`src/shared/edge-tts-voices.ts` 原 `detectTextLocale()` 是一串 Unicode 区段计数 + 变音符正则
+（假名/谚文/西德葡法越……），枚举永远不全且属猜测式编码。现在：
+
+1. **主判断走平台能力**：`chrome.i18n.detectLanguage()`（CLD3），取 `percentage` 最高的语言标签；
+   无 chrome / 报错 / 无结果 → 返回 null，调用方回退 `navigator.language`。因此
+   `detectTextLocale()` / `resolveVoiceForText()` 都变成了 **async**（`useSpeechPlayer.start`
+   内 await，await 后必须重新校验 `generationRef.current === generation` 防旧回调写入）。
+2. **标签→语音组**用 `matchVoiceLocale()`：`Intl.Locale.maximize()` 归一后按
+   language / script / region 打分（4/2/1），同分保留先出现者（`zh-TW` 排在 `zh-HK` 前，
+   所以 `zh-Hant` 落到台湾国语而不是粤语）。
+3. **只保留一条最小规则**：粤语用字（封闭字符集 `CANTONESE_ONLY_CHARS`，逐码点查 Set，
+   非正则）→ `zh-HK`。CLD 对粤语白话文只返回 `zh` / `zh-Hant`，而粤语语音读普通话之于听感
+   灾难，这一步没标准 API 可替代。
+4. 语音名 → 语言标签用 Azure 命名规范 `${locale}-${VoiceName}Neural` 取前两段，
+   交给 `parseLocaleTag()` 校验（`src/shared/language-tag.ts`，与 i18n 模块共用），
+   不再手写 `split("-")` 拼接后做字符串比较。
+
+**实测结论（真实 CLD，Chrome for Testing 1228）**：中文一律只返回 `zh`，**不区分简繁**
+（繁体长文 / 短文均为 `zh` 100%），所以繁体文本会走 `zh-CN` 语音，不会自动切到台湾语音。
+这是 CLD 的能力边界，不要用简繁字表去补（那是永远不全的枚举）；中文语音读繁体字本身可读，
+用户配置了 zh-TW 语音时 `resolveVoiceForText()` 仍会因同语种而保留用户选择。
+另：阿拉伯语短句会被 CLD 判为 `fa`（波斯语）→ 无对应语音组 → 返回 null（保留用户配置的语音）。
+其余语言（en/fr/es/pt/de/vi/ja/ko/ru/th/hi）实测均正确。
+
+**自动化加载本扩展的正确姿势**：系统 Chrome（实测 155）已忽略 `--load-extension`，
+改用 Playwright 缓存里的 **Chrome for Testing** 二进制：
+`~/Library/Caches/ms-playwright/chromium-1228/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`
+（即 `executablePath` 指向它，配合 `--disable-extensions-except` + `--load-extension`，
+`headless: false`）。验证扩展是否真加载：打开 `chrome://extensions` 读 shadow DOM 计数，
+或看 `ctx.serviceWorkers()` 里有无 `chrome-extension://<id>/background.js`。
+SW 目标可以直接 `sw.evaluate()` 调 `chrome.i18n.*`，是验证 CLD / i18n 行为最快的手段。
+另：Playwright 会自发加 `--no-sandbox`，Chrome 会弹「不受支持的命令行标记」横幅，无害。
+
 ### 待优化清单
 - [ ] 无障碍：状态变化无 `aria-live` 播报；面板/圆球无键盘入口（Tab 不可达）
 - [ ] 代码打磨：消息区滚动条颜色 hardcoded 未适配 dark 模式；朗读控件收起动画与
