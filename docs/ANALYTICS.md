@@ -32,12 +32,17 @@
 
 | 通道 | 函数 | 使用场景 | 实现 |
 |------|------|----------|------|
-| SDK | `trackEvent(name, props)` | content script、pdf-viewer、options、popup | lazy 初始化 `posthog-js`，`persistence: "memory"` |
+| SDK | `trackEvent(name, props)` | content script、pdf-viewer、options、popup | lazy 初始化 `posthog-js`，`persistence: "memory"` + `bootstrap.distinctID` 传稳定身份 |
 | HTTP | `trackBackgroundEvent(name, props)` | background service worker（生命周期、API 测试、TTS、PDF 入口） | 直接 POST `/capture/`，逐条即时发送 |
 
 - `startBackgroundBatching()` / `stopBackgroundBatching()` 目前是 **no-op 占位**（未使用 `/batch/` 批量上报），保留接口以便将来改造。
 - SDK 初始化选项：`autocapture: false`、`capture_pageview: false`、`capture_pageleave: false`、`disable_session_recording: true`、`advanced_disable_decide: true`。
   → **PostHog 里不会有自动事件（无 `$pageview` / 无录屏 / 不拉远端配置）**，所有数据都来自本文档列出的显式事件。
+- **身份必须在 init 时用 `bootstrap: { distinctID, isIdentifiedID: true }` 传入，不能用 `loaded` 回调里的 `identify()`**：
+  `persistence: "memory"` 不跨页面加载保留 ID，SDK 每次 init 都会先凭空铸一个匿名 ID，`identify()` 再把它 merge 进我们的稳定 person
+  → 页面刷新一次 person 上就多挂一个 `distinct_id`，累积到 PostHog 的 person distinct-ID 上限后，该 person 的事件不再出现在 person 详情页与 session 标签里
+  （`posthog-js` ≥1.43 会为此打一条 `[PostHog.js] persistence is set to 'memory' but no bootstrap.distinctID was provided` 的 console 警告）。
+  不改 `localStorage+cookie` 的原因：content script 跑在**宿主页面的 window** 上，会往用户访问的站点写 cookie/localStorage，且跨站不共享。
 - 辅助函数：
   - `trackFirstTimeEvent(onceKey, name, props)`：只在 `onceKey` 首次出现时上报（content 系上下文用）。
   - `consumeFirstTimeFlag(key)`：一次性标记原语（background 与 `trackFirstTimeEvent` 共用；`ActionsSection` 用它标记「首次创建自定义动作」）。
@@ -47,7 +52,7 @@
 
 | storage.local 键 | 内容 | 写入者 |
 |------------------|------|--------|
-| `aiction:anonymousId` | 匿名 ID（`crypto.randomUUID()`），SDK 用它 `identify()` | `getAnonymousId()` |
+| `aiction:anonymousId` | 匿名 ID（`crypto.randomUUID()`），经 `posthog.init` 的 `bootstrap.distinctID` 传给 SDK（**不是** `identify()`） | `getAnonymousId()` |
 | `aiction:first:first_action_clicked` | 首次触发动作的里程碑标记 | `trackFirstTimeEvent()` |
 | `aiction:first:provider_configured` | 首次配置出可用 provider 的里程碑标记 | `background.ts` `reportProviderConfigured()` |
 | `aiction:first:custom_action_created` | 首次创建自定义动作的标记（→ `action_created.is_first_custom`） | `ActionsSection.tsx` `handleAddAction` |
@@ -482,3 +487,4 @@
 | 2026-10-20 | 错误诊断升级（属性变更，事件数不变） | **口径调整：唯一禁区是 provider token / API Key，其余全量上报**。`chat_failed` / `api_test_completed`（失败分支）新增 `error_name` / `http_status` / `error_detail`（完整消息）/ `response_body`（完整响应体）+ provider 身份（`provider_name` / `provider_id` / `models_dev_id` / `api_base_url` / `is_custom_endpoint` / `has_api_key`）；**放弃结构猜测**（删除从文本正则抓状态码、从 JSON 抠 `error.type`、URL/长串/引号块打码）；新增 `src/shared/redact.ts`（只抹凭据）与上报出口护栏 `sanitizeProperties()`；`ChatStreamFailedEvent` 新增可选 `diagnostics` / `provider`；**修正违例**：`edge_tts_synthesize.error` → `error_detail`（抹凭据）；`provider_switched.from/to_provider` 名称禁令解除（provider 名称允许上报）；同步 `docs/PRIVACY_POLICY.md` 与 `options.about.telemetryDesc` 文案 |
 | 2026-10-20 | **v0.5.0 之后（未发布）｜净变化汇总（事件 +1 → 40 个）** | **事件**：+`popup_ask_clicked`（`result`/`source`）。**属性**：`chat_failed` 与 `api_test_completed`（失败分支）追加 `error_name` / `http_status` / `error_detail` / `response_body` + provider 身份（`provider_name` / `provider_id` / `models_dev_id` / `api_base_url` / `is_custom_endpoint` / `has_api_key`）；`api_test_completed` 追加 `stage` / `streaming` / `ttft_ms` / `finish_reason` / `warnings` + 请求形态快照（`message_count` / `input_chars` / `truncated` / `max_tokens` / `context_size` / `reasoning` / `reasoning_effort` / `provider_options`）；`edge_tts_synthesize` 的 `error` 拆为 `error_name` + `error_detail`。**机制**：新增 `src/shared/redact.ts`（只抹凭据）与出口护栏 `sanitizeProperties()`；`classifyChatError()` 删除全部关键词/正则兜底。**v0.5.0 之后的其余事件（含 `popup_opened` / `provider_switched` / `action_enabled_toggled`）事件名与属性零增删**；`provider_switched` 名称禁令虽已放开，实际仍未上报 `from/to_provider` |
 | 2026-10-20 | i18n 语言偏好值域改名（属性值变更，事件数不变） | 「跟随系统」→「自动（跟随浏览器）」：`settings.language` 的自动项存储值由 `system` 改为 `browser`（读取时兼容旧值，写回即迁移）；`language_changed` 的 `from_language` / `to_language` 值域随之变为 `browser` + 各 locale id，**历史 `system` 与 `browser` 同义**；判定来源收敛为只读 `chrome.i18n.getUILanguage()`（不再读 `navigator.*`，避免 macOS 上退化成跟随系统） |
+| 2026-10-20 | SDK 身份改为 init 时 bootstrap（机制修复，事件/属性零变更） | `initContentScriptAnalytics()` 原先 `persistence: "memory"` + `loaded` 里 `ph.identify(distinctId)`：每次页面加载 SDK 都会先铸一个匿名 ID 再被 merge 进稳定 person，累积触及 PostHog 的 person distinct-ID 上限后事件不再归属该 person（`posthog-js` 1.434.2 会打 `no bootstrap.distinctID was provided` 警告）。改为 `bootstrap: { distinctID: distinctId, isIdentifiedID: true }` 并删除 `loaded` 里的 `identify()`；`persistence: "memory"` 保持不变。background 的 HTTP 通道本就显式带 `distinct_id`，不受影响 |

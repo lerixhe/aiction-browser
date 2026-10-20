@@ -193,14 +193,19 @@ export async function initContentScriptAnalytics(): Promise<void> {
         posthog.init(POSTHOG_PROJECT_TOKEN, {
           api_host: POSTHOG_HOST,
           persistence: "memory",
+          // 身份必须在 init 时经 bootstrap 传入（不能改用 loaded 里的 identify）：
+          // `memory` 不跨页面加载保留 ID，SDK 每次 init 都会先凭空铸一个匿名 ID，
+          // 之后 identify() 再把它 merge 进我们的稳定 person。页面刷新一次就多挂一个
+          // distinct_id，累积到 PostHog 的 person distinct-ID 上限后，该 person 的事件
+          // 不再出现在 person 详情页与 session 标签里（posthog-js 会就此打一条 console 警告）。
+          // isIdentifiedID: true 等价于原来 identify() 之后的状态（视为已识别用户）。
+          // 见 docs/ANALYTICS.md「上报机制」一节。
+          bootstrap: { distinctID: distinctId, isIdentifiedID: true },
           autocapture: false,
           capture_pageview: false,
           capture_pageleave: false,
           disable_session_recording: true,
-          advanced_disable_decide: true,
-          loaded: (ph) => {
-            ph.identify(distinctId)
-          }
+          advanced_disable_decide: true
         })
       }
       return true
