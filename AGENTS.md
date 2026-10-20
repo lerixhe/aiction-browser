@@ -17,6 +17,27 @@ Chrome extension (MV3) built with WXT + React + TypeScript. Users select text on
 - `npm run build`: production extension build. Run this after code changes.
 - `npm run zip`: zip the extension bundle.
 - `npm run postinstall`: runs `wxt prepare` automatically after `npm install`.
+- 素材类命令（详见下方「素材与设计工具」）：`npm run icons`、`npm run bundle-icons`、`npm run screenshots`、`npm run screenshots:frame`。
+
+## 素材与设计工具（写新脚本前必看）
+
+仓库里已有一整套**生成上架素材与做设计预览**的工具，**不要在 `scripts/` 下再写一份重复的**。
+完整说明（入口参数、输入产物、已知坑）见 [`docs/TOOLING.md`](./docs/TOOLING.md)，此处只给索引：
+
+| 工具 | 入口 | 产物 |
+|------|------|------|
+| 品牌图标 | `npm run icons`（`scripts/generate-icons.ts`） | `src/assets/icon.png`(512) + `store/icons/*` |
+| 图标库打包 | `npm run bundle-icons`（`build` 前置自动跑） | `src/shared/ui/bundled-icons.ts`（106 项，自动生成勿手改） |
+| 图标库在线校验 | `npx tsx scripts/check-icons.ts`（无 npm 入口） | 控制台报告 |
+| 商店截图拍摄 | `npm run screenshots`（`scripts/store-screenshots/shoot.mjs`） | `store/screenshots/raw/*`（真实扩展 + 演示站 + mock 端点） |
+| 商店截图合成 | `npm run screenshots:frame`（`frame.html` + `frame.mjs`） | `store/screenshots/*`（1280×800，虚拟浏览器窗口 + 品牌背景） |
+| 宣传图 | `node scripts/store-screenshots/promo.mjs`（无 npm 入口） | `store/promo/*`（440×280 / 920×560 / 1400×560） |
+| 文案 / 设计输入 | `store/listing.md`、`docs/gemini-promo-brief.md` | 非代码资产 |
+
+使用纪律：
+- 改 UI / 图标 / 文案后素材需要重出时，先查 `docs/TOOLING.md` §5 的「改了什么要重跑哪个工具」对照表，不要凭记忆。
+- 新增 / 改动上述工具后，**同步更新 `docs/TOOLING.md`**（工具矩阵 + 已知问题 + 变更记录）。
+- `docs/TOOLING.md` §3 列了 6 个**已知且未修复**的问题（Playwright 挂在 `/tmp` 的符号链接、`frame.html` 的 `data-ready` 是死代码、`bundle-icons` 清单硬编码无断言等），遇到「工具跑不起来 / 截到白图 / 图标离线空白」时先照那份清单排查。
 
 ## Workflow Rules
 - **代码修改后必须验证**：每次修改代码后，必须主动运行 `npm run typecheck` 和 `npm run build`，确保类型正确且构建成功。不要等待用户手动执行。

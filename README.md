@@ -113,7 +113,7 @@ Background (AI API, storage)
 Options (settings, models, actions)
 ```
 
-Detailed architecture: [docs/WIKI.md](docs/WIKI.md)
+Architecture & dev guide: [AGENTS.md](AGENTS.md) · Docs index: [docs/README.md](docs/README.md)
 
 ## Tech Stack
 

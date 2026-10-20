@@ -113,7 +113,7 @@ npm run dev
 选项页（设置、模型、动作）
 ```
 
-详细架构文档：[docs/WIKI.md](docs/WIKI.md)
+架构与开发规范：[AGENTS.md](AGENTS.md) · 文档索引：[docs/README.md](docs/README.md)
 
 ## 技术栈
 
