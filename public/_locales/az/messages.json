@@ -1,10 +1,10 @@
 {
   "extName": {
-    "message": "AIction – Select to Ask AI | Custom Actions",
-    "description": "Extension name"
+    "message": "AIction – Seç və sor | Fərdi əməliyyatlar",
+    "description": "Uzantının adı"
   },
   "extDescription": {
-    "message": "Select text to explain, summarize, translate or chat with actions you define. Bring your own API key and model. Also reads PDFs.",
-    "description": "Extension description"
+    "message": "Mətni seçin: izah, xülasə, tərcümə və ya söhbət. Əməliyyatları özünüz təyin edin, öz API açarınızla. PDF dəstəyi var.",
+    "description": "Uzantının təsviri"
   }
 }

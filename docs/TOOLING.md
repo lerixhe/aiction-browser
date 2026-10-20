@@ -131,7 +131,7 @@ npx tsx scripts/check-icons.ts
 | 给 `ACTION_ICON_LIBRARY` 加 / 删图标 | 同步 `scripts/bundle-icons.ts` 的清单 → `npm run bundle-icons`（`build` 会自动跑）→ 建议 `npx tsx scripts/check-icons.ts` |
 | 改划词工具栏 / 对话窗 / 设置页 UI | `npm run build` → `npm run screenshots` → `npm run screenshots:frame`（选择器与拖拽坐标可能要改，见 `scripts/store-screenshots/README.md` 末节） |
 | 只调截图边框 / 背景 / 虚拟地址栏 / 主题 | `npm run screenshots:frame`（不必重拍） |
-| 改品牌名 / 短描述 / 标语 | `store/listing.md` 与 `public/_locales/{en,zh_CN}/messages.json` 必须**逐字符一致**；然后 `node scripts/store-screenshots/promo.mjs` 重出宣传图 |
+| 改品牌名 / 短描述 / 标语 | `store/listing.md` 与 `public/_locales/{en,zh_CN}/messages.json` 必须**逐字符一致**（其余 8 种语言的 `public/_locales/<id>/messages.json` 是各自翻译，不参与这条约束；所有 `_locales` 的 extName / extDescription 长度上限由 `npm run check:i18n` 断言）；然后 `node scripts/store-screenshots/promo.mjs` 重出宣传图 |
 | 改 promo 版式 / 标语 | `node scripts/store-screenshots/promo.mjs` |
 | 加 / 换商店截图张数 | 同时改 `shoot.mjs` 的 `STEPS` 分支、`frame.mjs` 的 `SHOTS` 表、`frame.html` 的 `SHOTS` 表（虚拟域名 / 主题）、`store/README.md` 与 `scripts/store-screenshots/README.md` 的表格 |
 

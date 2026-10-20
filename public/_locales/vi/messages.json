@@ -1,10 +1,10 @@
 {
   "extName": {
-    "message": "AIction – Select to Ask AI | Custom Actions",
-    "description": "Extension name"
+    "message": "AIction – Bôi đen để hỏi AI | Tùy chỉnh",
+    "description": "Tên tiện ích"
   },
   "extDescription": {
-    "message": "Select text to explain, summarize, translate or chat with actions you define. Bring your own API key and model. Also reads PDFs.",
-    "description": "Extension description"
+    "message": "Bôi đen văn bản để giải thích, tóm tắt, dịch hoặc hỏi đáp với hành động bạn tự định nghĩa. Dùng khóa API của bạn. PDF.",
+    "description": "Mô tả tiện ích"
   }
 }

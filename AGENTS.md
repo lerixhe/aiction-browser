@@ -251,7 +251,11 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   `normalizeLanguagePreference()` 在读取时迁移，写回即 `"browser"`。
 - `I18nRoot` wraps the content script React tree; Options and Popup use `useI18n()` hook.
 - All user-facing strings go through `t("key")` — never hardcode UI text.
-- 10 份字典均已翻译（`zh_TW` 用台湾用语：設定 / 儲存 / 資訊 / 網路 / 預設 / 範本 / 金鑰 / 權杖 / 端點 / 供應商）。改字典时注意 `$1` / `{selection}` 等占位符必须原样保留（`check:i18n` 第 7 节逐键校验），且 `previewTextZh` / `previewTextEn` 是**按所选语音语言**取用的试听句，不要翻成 UI 语言。⚠️ `public/_locales/*/messages.json`（商店 extName / extDescription）目前只有 `en` / `zh_CN` / `zh_TW` 是对应语言，其余 7 份仍是英文副本。
+- 10 份字典均已翻译（`zh_TW` 用台湾用语：設定 / 儲存 / 資訊 / 網路 / 預設 / 範本 / 金鑰 / 權杖 / 端點 / 供應商）。
+- 改字典时注意：`$1` / `{selection}` 等占位符必须原样保留（`check:i18n` 第 7 节逐键校验）；
+  `previewTextZh` / `previewTextEn` 是**按所选语音语言**取用的试听句，不要翻成 UI 语言。
+- `public/_locales/*/messages.json`（商店 extName / extDescription）10 份均已按对应语言翻译；
+  Chrome 的长度上限（名称 45 / 描述 132 字符）由 `check:i18n` 第 4 节断言。
 
 ### Models.dev Integration
 - `src/shared/models-dev.ts` fetches provider metadata (name, logo, models) from `models.dev`.

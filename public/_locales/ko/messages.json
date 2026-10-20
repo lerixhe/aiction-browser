@@ -1,10 +1,10 @@
 {
   "extName": {
-    "message": "AIction – Select to Ask AI | Custom Actions",
-    "description": "Extension name"
+    "message": "AIction – 선택해서 AI에게 질문 | 사용자 지정 액션",
+    "description": "확장 프로그램 이름"
   },
   "extDescription": {
-    "message": "Select text to explain, summarize, translate or chat with actions you define. Bring your own API key and model. Also reads PDFs.",
-    "description": "Extension description"
+    "message": "텍스트를 선택해 설명, 요약, 번역, 질문까지. 액션과 프롬프트를 직접 정의하고 내 API 키로 연결하세요. PDF도 지원합니다.",
+    "description": "확장 프로그램 설명"
   }
 }

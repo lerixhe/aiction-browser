@@ -180,6 +180,24 @@ if (baseMessages) {
   }
 }
 
+// 商店/安装页的明文限制：扩展名 ≤ 45 字符，描述 ≤ 132 字符（超了商店会拒绝上架）
+const STORE_LIMITS: { field: string; max: number }[] = [
+  { field: "extName", max: 45 },
+  { field: "extDescription", max: 132 }
+]
+for (const row of SUPPORTED_LOCALES) {
+  const messages = readMessages(row.id)
+  if (!messages) continue
+  for (const { field, max } of STORE_LIMITS) {
+    const text = (messages[field] as { message?: string } | undefined)?.message ?? ""
+    expectEqual(
+      `_locales/${row.id} 的 ${field} 长度不超过 ${max}`,
+      text.length <= max,
+      true
+    )
+  }
+}
+
 // ── 5. manifest default_locale 与注册表对齐 ─────────────────────────────
 
 section("5. manifest default_locale")
