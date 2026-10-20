@@ -14,6 +14,7 @@ Chrome extension (MV3) built with WXT + React + TypeScript. Users select text on
 ## Commands
 - `npm run dev`: WXT dev build/watch (Chrome). Use `npm run dev:firefox` for Firefox.
 - `npm run typecheck`: TypeScript only, no emit.
+- `npm run check:i18n`: 语言注册表 / 字典键集 / `public/_locales` / 匹配矩阵一致性校验（加语言或改语言判定后必跑）。
 - `npm run build`: production extension build. Run this after code changes.
 - `npm run zip`: zip the extension bundle.
 - `npm run postinstall`: runs `wxt prepare` automatically after `npm install`.
@@ -40,7 +41,7 @@ Chrome extension (MV3) built with WXT + React + TypeScript. Users select text on
 - `docs/TOOLING.md` §3 列了 6 个**已知且未修复**的问题（Playwright 挂在 `/tmp` 的符号链接、`frame.html` 的 `data-ready` 是死代码、`bundle-icons` 清单硬编码无断言等），遇到「工具跑不起来 / 截到白图 / 图标离线空白」时先照那份清单排查。
 
 ## Workflow Rules
-- **代码修改后必须验证**：每次修改代码后，必须主动运行 `npm run typecheck` 和 `npm run build`，确保类型正确且构建成功。不要等待用户手动执行。
+- **代码修改后必须验证**：每次修改代码后，必须主动运行 `npm run typecheck` 和 `npm run build`，确保类型正确且构建成功。不要等待用户手动执行。动了 i18n（`src/shared/i18n/`、`public/_locales/`）时**还要跑 `npm run check:i18n`**。
 - **设置页 UI 必读规范**：改动 `src/entrypoints/options/` 下的 UI 前先读 `docs/OPTIONS_UI.md`；新增设置项按该文档 §7 检查清单执行（即时/草稿归属、行式布局、i18n、埋点同步）。
 - **埋点必须登记**：新增 / 修改 / 删除 PostHog 埋点时，必须同步更新 `docs/ANALYTICS.md`（§2 事件清单 + §8 变更记录）；事件名与属性需遵守该文档 §3 的属性规范（禁止上报自由文本），并检查是否需同步 `docs/PRIVACY_POLICY.md` 与 `options.about.telemetryDesc` 文案。埋点上报统一走 `src/shared/analytics.ts`，不要在业务代码里直接请求 PostHog。**唯一禁区是 provider 的 API Key / token**：错误消息与响应体**原文全量上报**（`describeApiError()` → `error_detail` / `response_body`），**不做结构猜测**（不从文本正则抓状态码、不从 JSON 抠 `error.type`）；上报前必须过 `sanitizeErrorMessage()` 抹凭据，新增属性名不得含 `key` / `token` / `secret`（上报出口 `sanitizeProperties()` 会直接剔除，见 `docs/ANALYTICS.md` §3.10–§3.11）。
 
@@ -238,9 +239,19 @@ Content script components in `src/entrypoints/content/components/`: `SelectionTo
 Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (deep active element traversal, extension root checks, selection helpers).
 
 ### i18n System
-- Translation files in `src/shared/i18n/` (English + Chinese).
+- **语言清单的唯一真源是 `src/shared/i18n/registry.ts`**：`SUPPORTED_LOCALES`（`id` / `tag` / `nativeName` /
+  `promptName` / `messages`），`Locale` 类型、`DEFAULT_LOCALE`、设置校验、下拉选项、提示词显示名全部由它派生。
+  **不要在别处再列一遍语言清单。** 当前 10 个 locale：`az` / `en` / `es` / `ja` / `ko` / `ru` / `tr` / `vi` /
+  `zh_CN` / `zh_TW`（数组顺序 = 下拉顺序 = 匹配同分优先级 = 语言代码字母序）。
+- 字典在 `src/shared/i18n/locales/<id>.ts`，英文是键集基准（`en.ts` 导出 `MessageKey`），其余语言用
+  `} as const satisfies Record<MessageKey, string>` 约束：**缺键 / 多键 / 拼错键名都是编译错误**。
+  `public/_locales/<id>/messages.json` 是商店元数据，键集由 `npm run check:i18n` 校验。
+- 语言偏好 `settings.language`：`"browser"`（自动项 = **跟随浏览器 UI 语言**）或某个 locale id。
+  历史值 `"system"`（旧文案「跟随系统」）由 `shared/i18n/preference.ts` 的
+  `normalizeLanguagePreference()` 在读取时迁移，写回即 `"browser"`。
 - `I18nRoot` wraps the content script React tree; Options and Popup use `useI18n()` hook.
 - All user-facing strings go through `t("key")` — never hardcode UI text.
+- ⚠️ 8 份非中文字典与 `zh_TW` 目前是**占位内容**（英文 / 简体副本），键集完整但待翻译。
 
 ### Models.dev Integration
 - `src/shared/models-dev.ts` fetches provider metadata (name, logo, models) from `models.dev`.
@@ -440,30 +451,54 @@ Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (dee
   `> :first-child/:last-child` 清 margin，避免首尾多出一层空隙。
 - **面板内选中文字**用主色 20% 淡底（`<style>` 里的 `::selection`），不用浏览器默认蓝。
 
-### 「跟随系统」语言：交给 `Intl.Locale`，禁止自己 startsWith / 枚举子标签
+### 语言判定：只跟随浏览器 UI 语言；标签交给 `Intl.Locale`，禁止 startsWith / 枚举子标签
 
-**症状**：macOS 系统语言是简体中文，扩展界面却是英文。
-
+**历史症状**：macOS 系统语言是简体中文，扩展界面却是英文。
 **根因**：macOS 的系统语言标签带 script 子标签 —— `defaults read -g AppleLanguages` →
 `zh-Hans-SG`（新加坡简中），不是 `zh-CN`。旧 `resolveLocale()` 只把 `zh-CN` / `zh_CN` / `zh`
 当简中，其余 `startsWith("zh")` 一律当「繁体 → 回退英文」，于是 `zh-Hans-SG` 被判成英文。
 
-**正确做法**（`src/shared/i18n/translations.ts`）：语言标签是标准格式，解析与简繁判定全部
-交给平台 ICU，不要写字符串前缀 / 子标签枚举（枚举永远不全，且是猜测式编码）：
+**现在的规则**（`src/shared/i18n/registry.ts` + `translations.ts` + `preference.ts`）：
 
-1. `new Intl.Locale(tag)` 解析（失败再试 `_`→`-` 修正后的形式，仍失败就返回 null，**不猜**）。
-2. 语言识别只查 `PREFERRED_LOCALE_BY_LANGUAGE`（`en` / `zh` 两张表项，封闭集）。
-3. 简繁用 `locale.maximize().script`（CLDR likely-subtags）：`zh`/`zh-SG`/`zh-Hans-*` → `Hans`，
-   `zh-TW`/`zh-HK`/`zh-MO` → `Hant`。目前只有简体译文，`Hant` 回退英文。
+1. **来源只有一个：`chrome.i18n.getUILanguage()`**。自动项文案是「自动（跟随浏览器）」。
+   - **不读 `navigator.language` / `navigator.languages`**：macOS 上它们可能反映**系统语言**，
+     读进来会让「跟随浏览器」静默退化成「跟随系统」。
+   - 拿不到（非扩展上下文）→ `null` → 落 `DEFAULT_LOCALE`。合成页测试必须 stub
+     `chrome.i18n.getUILanguage`（与 `chrome.runtime` / `chrome.storage` 一起）。
+   - `chrome` 判定必须 `typeof chrome !== "undefined"`：可选链挡不住「变量未声明」的 ReferenceError。
+2. **解析与匹配全交给 ICU**：`parseLocaleTag()`（`shared/language-tag.ts`）→ `Intl.Locale.maximize()`。
+   语言标签是标准格式，**禁止字符串前缀 / 子标签枚举**（枚举永远不全，且是猜测式编码）。
+3. **匹配规则从注册表派生**（`matchLocale`）：主语言筛候选 → 书写系统（script）冲突淘汰 →
+   script 相同 +2 / region 相同 +1 → 同分取 `SUPPORTED_LOCALES` 声明顺序。
+   于是「`zh-Hant` 该去 `zh_TW` 还是整体落空」**只取决于注册表里有没有 `zh-TW` 那一行**，
+   加语言时不需要改任何匹配代码。
 
-**第二部分坑**：`navigator.language` 不等于系统语言，扩展里它跟随浏览器 UI 语言
-（`chrome.i18n.getUILanguage()` 才是 MV3 的权威来源），且两者可被用户单独设置。
-所以「跟随系统」= `resolveSystemLocale()`：收集 `getUILanguage()` → `navigator.language` →
-`navigator.languages` 去重，用上面的方式逐个解析，**任一来源为中文即中文**（中文系统 +
-英文 UI 极常见）。注意 `chrome` 必须 `typeof chrome !== "undefined"` 判断
-（可选链挡不住未声明变量的 ReferenceError）。
+**禁止（都曾有对应实现，别再写回去）**：
 
-新增读取「系统语言」的代码一律调 `resolveSystemLocale()`，不要再各自写 `resolveLocale(navigator.language)`。
+- ❌ 「任一来源为中文即中文」「非默认语言优先」这类跨来源提升 —— 语言偏好只由浏览器 UI 语言决定。
+- ❌ `UNSUPPORTED_CHINESE_SCRIPT = "Hant"` 之类的书写系统黑名单 —— 由注册表行的 `tag` 自然淘汰。
+- ❌ 自己维护「哪些地区算简体」的名单，或 `startsWith("zh")` / `split("-")` 手搓子标签。
+- ❌ 把自动项叫「系统」：主题的 `themeAuto` 跟随 `prefers-color-scheme`，那才是真的系统；语言不是。
+
+> 行为差异要知道：**英文浏览器 UI + 中文系统 → 英文**（旧实现会判中文）。这是有意的语义修正，
+> 不是 bug；改回去请先说服产品，并同步 `docs/ANALYTICS.md` 的 `language_changed` 值域说明。
+
+### 新增一门界面语言（三处改动，其余全自动）
+
+1. `src/shared/i18n/locales/<id>.ts`：复制 `en.ts` 翻译，键集必须与 `en` 完全一致
+   （`satisfies Record<MessageKey, string>` 会在编译期报缺键 / 多键）。
+2. `public/_locales/<id>/messages.json`：`extName` / `extDescription`（商店元数据，键集与 `en` 一致）。
+3. `src/shared/i18n/registry.ts` 的 `SUPPORTED_LOCALES` 追加一行：
+   `id` / `tag`（BCP-47）/ `nativeName`（自称，不翻译）/ `promptName`（注入系统提示词的可读描述）/ `messages`。
+
+`id` 用下划线形态，且**同时是存储值、字典键、`_locales` 目录名**（三者一致，刻意不做映射）。
+`tag` 用连字符形态（`zh-CN`），是匹配算法的唯一依据。
+
+然后依次跑：`npm run check:i18n`（tag 合法性 / 自反匹配 / 匹配矩阵 / 字典键集 / `_locales` 对齐 /
+`default_locale`）→ `npm run typecheck` → `npm run build`。
+
+> 判定标准：**如果加一门语言需要动第 3 项以外的逻辑代码（匹配、校验、下拉选项、提示词显示名），
+> 说明注册表的派生链断了**，先修派生链，别就地打补丁。
 
 ### TTS 文本语言检测：用 CLD，不用字符区段正则猜（已改）
 
