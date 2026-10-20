@@ -59,7 +59,7 @@ docs/
 
 ### [I18N_LOCALE_REGISTRY_PLAN.md](./I18N_LOCALE_REGISTRY_PLAN.md)
 
-i18n 语言注册表重构方案（接入 8 种语言前的准备），包含：
+i18n 语言注册表重构方案（把语言清单收敛到唯一真源），包含：
 - 现状盘点：语言清单散落 5 处、`UNSUPPORTED_CHINESE_SCRIPT` 黑名单与「中文优先」的 bug 风险
 - 目标结构：`src/shared/i18n/registry.ts` 作为唯一真源，`Locale` / 校验 / 选项 / 提示词名全部派生
 - 通用匹配算法（书写系统淘汰 + 打分）与「跟随浏览器」判定规则

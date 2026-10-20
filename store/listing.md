@@ -58,7 +58,7 @@ Open a PDF with AIction and selection, actions and chat work inside the document
 • Read selected text aloud: Edge online voices or the system voice, adjustable speed, automatic language matching
 • Draggable, pinnable chat panels — several can be open on the same page
 • One-click copy of the selected text
-• Light / dark / auto theme, English and Chinese interface
+• Light / dark / auto theme, 7 interface languages: English, 日本語, 한국어, Русский, Tiếng Việt, 简体中文, 繁體中文 (auto-follows your browser by default)
 • Export and import your configuration as JSON
 • Editable system prompt with {pageTitle}, {pageUrl} and {surround} context placeholders
 
@@ -99,7 +99,7 @@ AIction 调用的是你自己已有的 AI 服务。任何遵循 OpenAI chat comp
 • 选中文字一键朗读：Edge 在线语音或系统语音，语速可调，自动匹配语言
 • 对话面板可拖拽、可钉住，同一页面上可以同时开多个
 • 一键复制选中文字
-• 浅色 / 深色 / 跟随系统，界面支持中文与英文
+• 浅色 / 深色 / 跟随系统，界面支持 7 种语言：English、日本語、한국어、Русский、Tiếng Việt、简体中文、繁體中文（默认跟随浏览器语言）
 • 配置可导出为 JSON 备份，也能导入恢复
 • 系统提示词可自定义，支持 {pageTitle}、{pageUrl}、{surround} 等页面上下文占位符
 
@@ -137,7 +137,7 @@ https://github.com/lerixhe/aiction-browser
 | 小宣传图 | 440×280 | ✅ `store/promo/small-440x280.png` |
 | Marquee 宣传图 | 1400×560 | ✅ `store/promo/marquee-1400x560.png` |
 | 分类 | Productivity / Tools | 待定 |
-| 语言 | English、中文（简体） | 待填 |
+| 语言 | English / 日本語 / 한국어 / Русский / Tiếng Việt / 简体中文 / 繁體中文（7 种，默认跟随浏览器） | ✅ |
 
 ## 6. 拒审记录（提交前逐条核对）
 
