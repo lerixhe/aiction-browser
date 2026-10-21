@@ -1,703 +1,230 @@
 # AGENTS.md
 
-## Project Summary
-Chrome extension (MV3) built with WXT + React + TypeScript. Users select text on any page, trigger AI actions from an inline toolbar, and continue conversation in a floating chat panel. AI backend uses an OpenAI-compatible `/chat/completions` endpoint via Vercel AI SDK. Supports i18n (English/Chinese), multiple AI providers via models.dev integration, and includes a built-in PDF viewer.
+## 项目
+Chrome 扩展（MV3，WXT + React + TS）。划词 → 工具栏动作 → 悬浮对话面板。
+AI 调用统一走 Vercel AI SDK：`shared/model-provider.ts` 按 provider 的 `npm` 字段选工厂
+（openai / anthropic / google / deepseek / openrouter，兜底 openai-compatible），未手填端点时用 models.dev 的 `api`。
+7 语言 i18n；内置 PDF viewer。路径别名 `~/*`、`@/*` → `src/*`。
 
-## Quick Facts
-- Build framework: WXT (v0.20.26)
-- TypeScript path alias: `~/*` and `@/*` map to `src/*` (tsconfig `paths`).
-- WXT modules: `@wxt-dev/auto-icons` (auto-generates extension icons from `src/assets/icon.png`).
-- AI SDK: Vercel AI SDK (`ai` package) for streaming/text generation in background.
-- i18n: English/Chinese support via `src/shared/i18n/`.
-- Provider logos: loaded from `models.dev` via `src/shared/models-dev.ts`.
+## 命令
+- `npm run dev` / `dev:firefox`、`build`、`zip`。
+- **改代码后必须跑 `npm run typecheck` + `npm run build`**；动了 i18n 还要跑 `npm run check:i18n`。
+- 素材 / 设计类：`icons`、`bundle-icons`（build 前置自动跑）、`screenshots`、`screenshots:frame`。
 
-## Commands
-- `npm run dev`: WXT dev build/watch (Chrome). Use `npm run dev:firefox` for Firefox.
-- `npm run typecheck`: TypeScript only, no emit.
-- `npm run check:i18n`: 语言注册表 / 字典键集 / `public/_locales` / 匹配矩阵一致性校验（加语言或改语言判定后必跑）。
-- `npm run build`: production extension build. Run this after code changes.
-- `npm run zip`: zip the extension bundle.
-- `npm run postinstall`: runs `wxt prepare` automatically after `npm install`.
-- 素材类命令（详见下方「素材与设计工具」）：`npm run icons`、`npm run bundle-icons`、`npm run screenshots`、`npm run screenshots:frame`。
+## 改什么必须同步什么
+文档索引见 `docs/README.md`。
 
-## 素材与设计工具（写新脚本前必看）
+| 改动 | 同步项 |
+|---|---|
+| 设置页 UI（`entrypoints/options/`） | 先读 `docs/OPTIONS_UI.md`（行式布局、即时 vs 草稿、行 i18n、§7 新增设置项清单） |
+| PostHog 埋点 | `docs/ANALYTICS.md` §2 事件清单 + §8 变更记录；必要时 `docs/PRIVACY_POLICY.md` 与 `about.telemetryDesc` 文案 |
+| 素材工具 | `docs/TOOLING.md`（§1 工具矩阵、§3 已知未修问题、§6 变更记录） |
+| 界面语言 | 见下文「i18n」三处改动 |
 
-仓库里已有一整套**生成上架素材与做设计预览**的工具，**不要在 `scripts/` 下再写一份重复的**。
-完整说明（入口参数、输入产物、已知坑）见 [`docs/TOOLING.md`](./docs/TOOLING.md)，此处只给索引：
+素材纪律：`scripts/` 下已有一整套生成上架素材与设计预览的工具，**不要重复造轮子**；
+改 UI / 图标 / 文案后先查 `docs/TOOLING.md` §4「什么情况下要跑哪个工具」；
+工具跑不起来 / 截到白图 / 图标离线空白时先照 §3 排查。
+文案与设计输入的来源是 `store/listing.md` 与 `docs/gemini-promo-brief.md`（非代码资产）。
 
-| 工具 | 入口 | 产物 |
-|------|------|------|
-| 品牌图标 | `npm run icons`（`scripts/generate-icons.ts`） | `src/assets/icon.png`(512) + `store/icons/*` |
-| 图标库打包 | `npm run bundle-icons`（`build` 前置自动跑） | `src/shared/ui/bundled-icons.ts`（106 项，自动生成勿手改） |
-| 图标库在线校验 | `npx tsx scripts/check-icons.ts`（无 npm 入口） | 控制台报告 |
-| 商店截图拍摄 | `npm run screenshots`（`scripts/store-screenshots/shoot.mjs`） | `store/screenshots/raw/*`（真实扩展 + 演示站 + mock 端点） |
-| 商店截图合成 | `npm run screenshots:frame`（`frame.html` + `frame.mjs`） | `store/screenshots/*`（1280×800，虚拟浏览器窗口 + 品牌背景） |
-| 宣传图 | `node scripts/store-screenshots/promo.mjs`（无 npm 入口） | `store/promo/*`（440×280 / 920×560 / 1400×560） |
-| 文案 / 设计输入 | `store/listing.md`、`docs/gemini-promo-brief.md` | 非代码资产 |
+## 架构
+三个运行时上下文，只通过消息通信：
 
-使用纪律：
-- 改 UI / 图标 / 文案后素材需要重出时，先查 `docs/TOOLING.md` §5 的「改了什么要重跑哪个工具」对照表，不要凭记忆。
-- 新增 / 改动上述工具后，**同步更新 `docs/TOOLING.md`**（工具矩阵 + 已知问题 + 变更记录）。
-- `docs/TOOLING.md` §3 列了 6 个**已知且未修复**的问题（Playwright 挂在 `/tmp` 的符号链接、`frame.html` 的 `data-ready` 是死代码、`bundle-icons` 清单硬编码无断言等），遇到「工具跑不起来 / 截到白图 / 图标离线空白」时先照那份清单排查。
+| 上下文 | 职责 |
+|---|---|
+| content script（`entrypoints/content/`） | 选区检测、划词工具栏、悬浮面板；会话为每页内存态 |
+| background（`entrypoints/background.ts`） | **唯一发起 AI 请求的地方**；PDF 右键菜单；models.dev 数据与缓存 |
+| options / popup / pdf-viewer | 设置页、Popup（只做：确认引擎、在当前页面提问、动作开关）、PDF 阅读页 |
 
-## Workflow Rules
-- **代码修改后必须验证**：每次修改代码后，必须主动运行 `npm run typecheck` 和 `npm run build`，确保类型正确且构建成功。不要等待用户手动执行。动了 i18n（`src/shared/i18n/`、`public/_locales/`）时**还要跑 `npm run check:i18n`**。
-- **设置页 UI 必读规范**：改动 `src/entrypoints/options/` 下的 UI 前先读 `docs/OPTIONS_UI.md`；新增设置项按该文档 §7 检查清单执行（即时/草稿归属、行式布局、i18n、埋点同步）。
-- **埋点必须登记**：新增 / 修改 / 删除 PostHog 埋点时，必须同步更新 `docs/ANALYTICS.md`（§2 事件清单 + §8 变更记录）；事件名与属性需遵守该文档 §3 的属性规范（禁止上报自由文本），并检查是否需同步 `docs/PRIVACY_POLICY.md` 与 `options.about.telemetryDesc` 文案。埋点上报统一走 `src/shared/analytics.ts`，不要在业务代码里直接请求 PostHog。**唯一禁区是 provider 的 API Key / token**：错误消息与响应体**原文全量上报**（`describeApiError()` → `error_detail` / `response_body`），**不做结构猜测**（不从文本正则抓状态码、不从 JSON 抠 `error.type`）；上报前必须过 `sanitizeErrorMessage()` 抹凭据，新增属性名不得含 `key` / `token` / `secret`（上报出口 `sanitizeProperties()` 会直接剔除，见 `docs/ANALYTICS.md` §3.10–§3.11）。
+通信方式：
+- **流式**：content 用 `chrome.runtime.connect` 开 `AICTION_STREAM` port，background `streamText()` 逐事件 postMessage。
+- **非流式**（测 API、拉模型列表）：`sendMessage` + `sendResponse`。
+- **Popup → content**：`chrome.tabs.sendMessage` 发 `AICTION_OPEN_CHAT`，content 同步应答（Popup 收到即关自己，把系统焦点还给页面）。
+  该路径**不经 background**；页面没有可用 content script 时必须 reject，由 Popup 显式提示而非静默失败。
 
-## 开发经验教训
+共享逻辑 `src/shared/*`：`storage`（含 `normalizeSettings` 合并）、`prompt`、`model-params`、
+`models-dev` / `openrouter`、`chat-stream`、`analytics`、`errors`、`selection`、`messaging`、`i18n`。
+共享 UI `src/shared/ui/*`：`tokens` / `styles` / `theme` / `icons` / `iconify` / `markdown` 等。
 
-### 配置迁移与合并策略
-**场景**：当向共享配置（如 `DEFAULT_SETTINGS`、`DEFAULT_QUICK_ACTIONS`）添加新项时，已有用户的配置不会自动更新。
+关键目录：
+- `options/`：`OptionsPage`（PageShell 骨架 + hash 深链）、`ui/`（尺度 tokens、页面 CSS、primitives、shell）、
+  `hooks/draft.ts`（单值/条目级草稿 + ⌘S）、`useProviderManager`、各分区卡片。
+- `content/`：`components/`（`SelectionToolbar`、`ChatSession`、`ChatPanel`、`SpeechWidget`、`SpeechPlayer`、
+  `floating.ts` 公共定位）、`hooks/`（`useChatSessions` / `useChatState` / `useSelectionDetection` /
+  `useToolbarState` / `useSpeechPlayer`）、`utils/`。
 
-**通用原则**：`normalizeSettings()` 必须合并默认值和已保存的值，而不仅仅是验证已保存的值。
+## 不变量
+1. AI 请求只在 background；content 只发消息。
+2. 扩展 UI 根节点保留 `data-aiction-root="true"`；事件过滤一律用 `event.composedPath()`
+   （Shadow DOM retargeting 会让 `event.target` 绕过根判断）。
+3. background 的消息监听在模块加载期注册，不放进生命周期回调。
+4. 自定义动作保存前校验 `{selection}` 占位符；旧 `{text}` 模板读取时自动迁移。
+5. 会话是每页内存态：关闭即销毁、刷新即清空；**多实例并存**，新触发追加实例（递增 id 作 key）。
+   同一动作同一选区的重复触发不新建实例，而是让已有卡片闪一圈脉冲（见「悬浮面板」）。
+6. Popup 开出的空白会话：`initialPrompt` 为空串（既是防抖键，也表达「不自动发送」），
+   `anchor: null`（回退视口上方居中），`initialMode: "chat"`（延时聚焦，等 Popup 交出焦点）。
+7. **工具栏动作一律不关闭工具栏**（普通动作、朗读、复制都不调 `closeToolbar()`）；
+   复制临时借用页面选区后必须原样还原。
+8. 输入框 Enter 发送必须判 `nativeEvent.isComposing`（IME 组合确认不是发送）。
 
-**实现模式**：
-```typescript
-const items = (() => {
-  const savedItems = Array.isArray(saved.items) ? validate(saved.items) : DEFAULT.items
-  const savedIds = new Set(savedItems.map(i => i.id))
-  const missingDefaults = DEFAULT.items.filter(i => !savedIds.has(i.id))
-  return [...savedItems, ...missingDefaults]
-})()
-```
+## 配置迁移与默认值
+- 向 `DEFAULT_SETTINGS` / `DEFAULT_QUICK_ACTIONS` **加新项**：`normalizeSettings()` 必须按 id 合并
+  默认值与已保存值（补缺），否则老用户永远拿不到新项。检查单：类型 → defaults → 校验 → **合并逻辑** → i18n。
+- 改**已有默认项的内容**（内置动作 `label` / `template`、`DEFAULT_SYSTEM_PROMPT`）：用指纹表
+  `LEGACY_BUILTIN_DEFAULTS` / `LEGACY_SYSTEM_PROMPTS`，逐字段判定「仍等于当前默认或任一历史默认」才写入新默认，
+  否则保留用户自定义；`label` 与 `template` 独立判定。**每次替换默认值都要把旧值追加进指纹表**，
+  否则那批用户永远停在上一个版本（旧模板按 `{selection}` 形式记录）。
+- 空串 = 用户主动清空（运行时回退内置默认），不等于任何默认值，清空过的用户不会被写回。
 
-**检查清单**：
-1. 更新类型定义（`types.ts`）
-2. 更新默认配置（`defaults.ts`）
-3. 更新验证逻辑（`storage.ts`）
-4. **更新 `normalizeSettings()` 合并逻辑** ← 容易遗漏
-5. 添加 i18n 翻译
-6. 运行 `npm run typecheck` 和 `npm run build`
+## 模型上限参数：元数据是「provider 副本」的
+models.dev / OpenRouter 的 `limit.output`、`top_provider.max_completion_tokens` 描述的是**某个 provider 副本**的能力，
+同一模型可能同时存在多档（十几万到上百万），取到哪档取决于 provider 匹配命中哪个副本，**与用户实际端点无关**
+（自定义 provider 无 `modelsDevId` 时走 OpenRouter 兜底，最容易命中最大档）。
+- 智能填充只填语义明确的项（`reasoning`、`reasoningEffort`）；`maxTokens` / `contextSize` **刻意不自动填**
+  （留空 = 跟随端点默认 / 不裁剪）。数据源里的数字只作为 UI 提示展示，文案须写明「以端点实际限制为准」。
+- **不做静默降级重试**：端点拒绝某个可选参数时直接报错，让用户看到真实原因去设置里改。
+  （曾实现过「去掉该参数重试一次」，已移除：请求翻倍 + 配置错误永远暴露不了。）
 
-**变体：改已有默认项的「内容」（而不是加新项）**
-只有一个分支需要走：若某项是「默认值 + 用户可编辑副本」（如内置动作的 `label` / `template`），
-已有用户存的是旧默认值，直接覆盖会抹掉用户的自定义。做法是**指纹比对**：
-`storage.ts` 的 `LEGACY_BUILTIN_DEFAULTS` 记录被替换掉的旧默认值，升级时逐字段判定
-「仍等于当前默认 或 任一历史默认」才写入新默认，否则保留用户值；`label` 与 `template` 独立判定
-（用户只改了名称时，模板照样能升级）。**每次替换内置默认 label / template，都要把旧值追加进指纹表**，
-否则那批用户永远停留在老版本。注意旧模板在 `validateActions` 里已被 `{text}` → `{selection}` 迁移，
-指纹统一按 `{selection}` 形式书写。
-系统提示词同理：`storage.ts` 的 `LEGACY_SYSTEM_PROMPTS` 是它的指纹表，改 `DEFAULT_SYSTEM_PROMPT` 时把旧值追加进去。
-注意空串代表「用户清空 → 运行时回退内置默认」（`prompt.ts` 的 `buildContextSystemMessage`），
-不等于任何默认值，因此清空过的用户不会被写回默认文本。
-
-### 模型元数据是「provider 副本」的，上限类参数不可照搬
-**场景**：用户报 `400 INVALID_REQUEST_BODY: max_tokens (current value: 943718) must be between 0 and 393216`。
-
-根因不是取错字段，而是**取错了对象**：models.dev / OpenRouter 里的 `limit.output`、`limit.context`、
-`top_provider.max_completion_tokens` 描述的是**某个 provider 副本**的能力，不是模型固有属性。
-同一个模型在数据源里同时存在多档（`deepseek-v4.1-flash`：131072 / 262144 / 384000 / 393216 / 943718），
-取到哪一档取决于 provider 的 `modelsDevId` 或 OpenRouter 后缀匹配命中哪个副本，**与用户实际配置的端点无关**
-（自定义 provider 无 `modelsDevId` 时走 OpenRouter 兜底，最容易命中最宽松的那一档）。
-
-**约定**：
-1. 智能填充（`useProviderManager.handleSmartFillParams`）只填**语义明确**的项：`reasoning`（仅当 provider 明确支持关闭语义）、`reasoningEffort`（仅当明确接受 `reasoning_effort`）。
-   `maxTokens` / `contextSize` **刻意不自动填**（留空 = 跟随端点默认 / 不裁剪）——填错上限的失败模式是请求直接 400 或输入被静默裁剪。
-   数据源里的上限数字只作为 UI 提示展示（文案须写明「以端点实际限制为准」）。
-2. **不做静默降级重试**：端点拒绝某个可选参数（max_tokens 超上限、不支持关闭思考）时，
-   `streamChat` 直接报错，让用户看到真实原因去设置里改。曾实现过「去掉该参数重试一次」的降级重试表，
-   已移除——请求翻倍与「莫名其妙变慢」的代价，大于自动恢复的收益；错误的配置也永远不会暴露。
-   想加回类似机制前先确认：这个失败真的无法从设置侧修正吗？
-
-### JSX “幽灵报错”：少一个 `}` 的定位方法（灵动岛重构期间沉淀，适用于任意 JSX 浮层）
-
-**JSX “幽灵报错”：少一个 `}` 的定位方法**
-`style={{...}}>` 误写成 `}>`（丢一个 `}`）时，TS 报「JSX element 'div' has no corresponding closing tag」，但报错位置在 JSX 开头且报错行号下的代码看起来完全正常，肉眼数括号几乎无法定位。对象字面量未闭合会让解析器吞掉半个文件。
-
-解法：用 TypeScript Compiler API 打印 parseDiagnostics + AST，检查关键属性的解析范围：
-```js
-const sf = ts.createSourceFile("x.tsx", src, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TSX)
-console.log(sf.parseDiagnostics)
-// 遍历 AST 看 JsxAttribute/JsxExpression 的 getStart/getEnd 是否异常拖长
-```
-教训：结构诡异的 JSX 语法报错，直接 dump parse tree 看节点的实际 span，比肉眼检查可靠。
-
-**编译验证二分时，rg 过滤条件要匹配错误码而非文件名**
-把待测文件复制到 `/tmp` 做二分时，用 `rg "DynamicIsland"` 过滤 tsc 输出会得到假阴性（/tmp 路径不含该词，错误被静默吞掉，误判为“编译通过”）。过滤应该用错误码（如 `rg "TS17008|TS2657"`）或不过滤。
-
-**edit 工具的多段编辑是原子性的**
-一次 edit 调用里多条 edits[]，任一 oldText 匹配失败会导致整个调用回滚。不要假设“前几条已生效”而基于错误状态继续编辑；多段编辑失败后必须重新读文件确认每段的实际状态。另外多段编辑容易连带丢失换行或改错相邻字符（本次 `}}>` 被误改就是多段编辑引入的）。
-
-### 错误埋点：只上传原文 + 粗分类兜底，永远不要解析错误类型
-
-用户明确要求（多次强调）：**不要在错误文本上做任何结构/类型推断**——不正则抓状态码、
-不抠 JSON 的 `error.type`、不按关键词猜 `timeout` / `auth` / `rate_limit`。
+## 错误处理与埋点
 只做两件事：
-
 1. **原文全量上报**：`error_detail`（`error.message`）与 `response_body`（端点响应体）原样上传，
-   唯一处理是抹凭据（`scrubCredentials`）+ 超长截断（2000 字符）。
-2. **粗分类兜底**：`classifyChatError()` 只看事实——`error.name`、我们自己写的 `ERROR_MESSAGES.*`
-   常量比对、结构化 `statusCode`。都对不上就 `unknown`。
-
-为什么删掉关键词兜底：各家 provider 错误文案差异极大，猜出来的桶会直接误导分析
-（用户看到的是错桶，原文里的真实原因反而没人看）。曾有一版 `/timeout|unauthorized|rate limit/`
-正则兜底，已移除。新增错误处理时也别再加回去。
-
-### 流式请求区分「超时」与「主动收尾」：别用 `signal.aborted` 判超时
-
-带超时的流式调用通常有两处 `abort()`：超时定时器、以及流消费完后的**主动收尾**。
-两者都会让 `controller.signal.aborted === true`，所以 `catch` 里写
-`const timedOut = controller.signal.aborted` 会把**所有端点错误改写成超时**——
-`max_tokens` 超限返回的 400、`response_body` 原文、`http_status` 全部丢失，用户只看到「请求超时」。
-
-正确做法：定时器回调里先置位一个布尔标志再 abort，`catch` 只认这个标志。
-
-同一处还有第二个坑：**AI SDK 在 `abortSignal` 触发时不抛异常**，而是往 `fullStream` 发一个
-`abort` part 然后正常结束流。只处理 `text-delta` / `error` 的循环会把超时当成
-「流正常结束但零内容」，最后报成 `no_content`。处理 `part.type === "abort"`（或在循环开头查
-`signal.aborted`）才拿得到真正的超时。
-
-顺带：`fullStream` 的 400/401 是**以 `error` part 形式**送达的（前面只有 `start`），
-而 `start-step` 才代表 HTTP 已成功——用 `start-step` 判断「请求是否真的被接受」。
-
-### 声明了却没绑到元素的 `useRef` 是纯静默死代码
-
-**症状**：`inputRef.current?.focus()` / `const el = inputRef.current; if (!el) return` 这类写法在 ref 未绑定时**完全无报错、无警告**（可选链与 early return 把 null 吞了），表现是「某个功能就是不动」，且与代码意图完全对不上。
-
-**排查**：对一个 `useRef` 起疑时，先 `rg "ref=\{.*Ref\}"` 确认它真的赋给了元素。TS 不会提示「声明了但没用」。
-
-**实例**：`ChatPanel.tsx` 的 `inputRef` 曾经只声明、textarea 上漏了 `ref={inputRef}`，于是**三处功能一起静默失效**——输入框自增高（`el` 为 null 直接 return）、展开聊天态自动聚焦（`inputRef.current?.focus()` no-op）、切回卡片态 blur（防残留焦点落空）。一直没人发现，直到 Popup「在当前页面提问」把「打开即聚焦输入框」当硬需求，才在合成页测试里以 `shadowRoot.activeElement === null` 暴露。
-**教训**：新增依赖 ref 的交互（聚焦 / 测量 / 滚动）时，先确认 ref 已绑定；这类需求靠人眼看 UI 「差不多」是验不出来的，必须在能读 `activeElement` / `getBoundingClientRect()` 的环境里断言。
-
-**useCallback/hook 间依赖注意声明顺序**
-后声明的 `const collapse = useCallback(...)` 被先声明的 `scheduleCollapse` 依赖时，依赖数组里的 `collapse` 处于 TDZ，运行时 ReferenceError。被依赖的 callback 必须声明在前。
-
-**组件拆分时 `<style>` 内的全局样式会丢**
-原组件根部的 `<style>` 里定义的 `@keyframes`（如 `speech-wave`）在拆分成多个内容件后没有任何组件输出，CSS 动画静默失效（不报错、元素静止）。拆分时列出全局样式清单并指定归属；keyframes 在 shadow root 内全局生效，可提取共享常量在多个组件里重复输出（同名 keyframes 后者覆盖前者，内容相同时无害）。
-
-**收起浮层时要处理残留焦点**
-浮层（岛展开层）收起后 DOM 仍在（仅 opacity 0 + pointerEvents none），键盘焦点会残留在隐形输入框里，后续按键全部落入虚空。收起路径必须统一 blur 岛内焦点（容器用 `onFocusCapture` 记录焦点元素，collapse 时 blur）。
-
-**浮层防抖不能只看「实例是否存活」，且命中不能静默**
-用「同 prompt 实例是否存在」做防抖是对的（关闭后自然能重新触发），但**命中时只能闪一下、不能什么都不做**：
-用户判断卡片存不存在的标准是**看得见**，而卡片是 absolute + 文档坐标、随文档滚动，
-滚动后它会连同实例一起还在内存里、但已离开视口；此时静默吞掉点击的现象就是
-「卡片明明没了，再点翻译没反应」。三个要点：
-1. 命中时给那张卡片闪一圈主色脉冲（`revealSession` → `revealNonce` → ChatPanel 的
-   `data-panel-reveal` 常驻覆盖层）。三个容易做成「有时闪有时不闪」的坑：
-   - **不要靠 React 重建节点来重播动画**（`{cond ? <div key={nonce}/> : null}`、
-     按 nonce 改 key 之类）：重复赋同一个 `animation` 值浏览器不会重播，
-     而 `revealing` 已是 true 时再置 true 也不会触发渲染。正确做法是覆盖层**常驻**，
-     命中时用 `el.style.animation = "none"` → 读 `offsetWidth` 强制回流 → 重新赋上。
-   - 闪一下的信号要绑在**已提交**的会话上：`findSessionForPrompt` 直接用 state
-     （事件处理器闭包里的 state 就是最近一次已提交值）。
-     **绝不要在渲染期间写 `sessionsRef.current = sessions`**：并发渲染被中断/丢弃时
-     会留下一个从未提交的快照，据此算出的 id 在已提交列表里根本不存在，
-     `revealSession(id)` 匹配不上 → nonce 不变 → 就「不闪」了。
-   - 面板自身 `overflow: hidden`，脉冲层画在外侧的 box-shadow 会被裁，光晕要用 `inset`。
-   **不要顺手把卡片拉回视口**：位置是用户的，移动卡片比没反馈更意外（曾经实现过，已移除）——
-   卡片滚出视口后收不到脉冲是这套方案的已知取舍。
-2. 防抖判定必须放在**任何 await 之前**并同步建实例：`resolveActionTemplate` 其实不依赖
-   设置项，放在 `await getSettings()` 后面会让「等 storage 的那个窗口」里的第二次点击
-   双双通过检查，连开两张同 prompt 卡片（位置重叠，看起来像一张）。
-另：防抖键只有 prompt（不含选区位置），所以在页面另一处选中**同样文字**也会命中同一张卡片。
-
-## Entry Points (WXT file-based routing)
-- `src/entrypoints/background.ts`: Background Service Worker (uses `defineBackground()`).
-- `src/entrypoints/content/index.tsx`: Content Script UI (uses `defineContentScript()` + `createShadowRootUi()`).
-- `src/entrypoints/options/`: Options Page (HTML entry + React component). **UI 按 `docs/OPTIONS_UI.md` 定稿规范实现**（行式布局、即时/草稿判定、卡片级保存条）。Main components:
-  - `OptionsPage.tsx`: Main options page layout（`PageShell` 骨架 + hash 深链 + 分区路由）
-  - `ui/`: 设置页组件层 —— `tokens.ts`（尺度）、`css.ts`（页面级 CSS，`opt-` 前缀，仅在 `PageShell` 注入一次）、`primitives.tsx`（Button/控件/结构件）、`shell.tsx`（`SettingRow`/`SectionCard`/`SaveBar`/`PageShell`）
-  - `hooks/draft.ts`: `useDraftState`（单值草稿）/ `useDraftItemMap`（按条目 id 保留的草稿 + 未保存点）/ `useSaveShortcut`（⌘S）
-  - `QuickActionsCard.tsx` / `CustomActionsCard.tsx`: AI 动作分区的两张卡（`ActionsSection.tsx` 现在只是组合件）
-  - `ProviderEditor.tsx`: AI provider configuration editor
-  - `ProviderList.tsx`: List of configured providers
-  - `ProviderSelectModal.tsx`: Modal for selecting providers
-  - `ProviderLogo.tsx`: Provider logo display
-  - `ModelPicker.tsx`: Model selection component
-  - `ModelParamsEditor.tsx`: Model parameters editor
-  - `ActionsSection.tsx`: Custom actions configuration
-  - `AppearanceSection.tsx`: Theme and appearance settings
-  - `BackupSection.tsx`: Settings export/import
-  - `AboutSection.tsx`: About section
-  - `ConfirmDialog.tsx`: Confirmation dialog
-  - `useProviderManager.ts`: Provider management hook
-- `src/entrypoints/popup/`: Browser Action Popup (HTML entry + React component)。职责边界：**只做三件事**——确认当前 AI 引擎（provider + 模型，可切换）、开始提问（「在当前页面提问」）、开关划词动作；其余配置一律归设置页（`打开完整设置` 是唯一全屏入口，跳转前写入 `OPTIONS_ENTRY_STORAGE_KEY`，必须 `await` 后才能 `window.close()`）。布局常量：宽度 360、动作列表可视高度 204（6 × 34）、筛选条仅在动作 > 6 个时出现——动作再多也内部滚动，popup 总高不随动作数增长（Chrome popup 上限 600px）。
-- `src/entrypoints/pdf-viewer/`: PDF Viewer Page (HTML entry + React component).
-
-## Architecture
-Three runtime contexts communicate via `chrome.runtime.onMessage` and `chrome.runtime.connect`:
-
-- **Content script** (`src/entrypoints/content/`): detects selection from range/input/textarea, computes toolbar anchor, renders `SelectionToolbar` and `ChatWindow` (draggable), stores per-page conversation state in React.
-- **Background** (`src/entrypoints/background.ts`): registers the message handler, reads settings from `chrome.storage.sync`, calls the API via `streamText()` / `generateText()` from Vercel AI SDK, normalizes responses. Also handles PDF viewer context menu and models.dev data fetching. **Never move API requests into the content script.**
-- **Options** (`src/entrypoints/options/`): edits API config, translation language, and custom actions, then validates and persists settings.
-
-### Communication flow
-- **Streaming (chat):** Content script opens a `chrome.runtime.connect` port (`AICTION_STREAM`). Background listens on `chrome.runtime.onConnect`, calls `streamText()` with streaming, and `port.postMessage`s events back.
-- **Non-streaming (API test, fetch models):** Uses `chrome.runtime.sendMessage` and background responds via `sendResponse`.
-- **Popup → content script (open chat):** Popup 用 `chrome.tabs.sendMessage` 发 `AICTION_OPEN_CHAT`（`messaging.ts` 的 `requestOpenChatInActiveTab()`），content script 的 `App.tsx` 同步应答并开一个**空白聊天态**会话。页面没有可用的 content script（`chrome://`、商店页、未刷新的旧标签）时该调用 **reject**，由 Popup 显式提示而非静默失败；这条路径**不经过 background**，也不要把它搬进 background（response 必须同步，Popup 收到就关自己好把系统焦点还给页面）。
-
-Shared logic in `src/shared/*`: `types.ts`, `selection.ts`, `prompt.ts`, `messaging.ts`, `storage.ts`, `constants.ts`, `defaults.ts`, `errors.ts`, `analytics.ts`, `model-provider.ts`, `models-dev.ts`, `model-params.ts`（模型参数→请求参组装/上下文裁剪）, `openrouter.ts`（OpenRouter 模型数据源，智能填充参数用，与 models.dev 同样的 24h 缓存策略）。
-
-Shared UI in `src/shared/ui/`: `tokens.ts`, `styles.ts`, `theme.ts`, `icons.tsx`, `iconify.tsx`, `markdown.tsx`, `toggle-switch.tsx`, `avatar.ts`, `bundled-icons.ts`, `icon-library.ts`.
-
-Content script hooks in `src/entrypoints/content/hooks/`: `useChatState.ts`, `useSelectionDetection.ts`, `useToolbarState.ts`, `useSpeechPlayer.ts`.
-
-Content script components in `src/entrypoints/content/components/`: `SelectionToolbar.tsx`（划词工具栏，通过 `onRectChange` 上报落位）, `floating.ts`（悬浮面板公共锚定/安全区逻辑）, `ChatSession.tsx`（单个对话会话实例：App/PdfViewer 每次触发以递增 id 作为 key 独立创建，关闭即销毁）, `ChatPanel.tsx`（悬浮对话窗内容件，由 ChatSession 渲染）, `SpeechWidget.tsx`（悬浮朗读控件：未悬停时小圆球 ⇄ 悬停/点击展开控制条）, `SpeechPlayer.tsx`（TTS 内容件：`TtsControlBar` / `TtsCircleContent` / `TtsCountdownRing`）, `ToolbarActionMenu.tsx`.
-
-Content script utilities in `src/entrypoints/content/utils/`: `domUtils.ts` (deep active element traversal, extension root checks, selection helpers).
-
-### i18n System
-- **语言清单的唯一真源是 `src/shared/i18n/registry.ts`**：`SUPPORTED_LOCALES`（`id` / `tag` / `nativeName` /
-  `promptName` / `messages`），`Locale` 类型、`DEFAULT_LOCALE`、设置校验、下拉选项、提示词显示名全部由它派生。
-  **不要在别处再列一遍语言清单。** 当前 7 个 locale：`en` / `ja` / `ko` / `ru` / `vi` /
-  `zh_CN` / `zh_TW`（数组顺序 = 下拉顺序 = 匹配同分优先级 = 语言代码字母序）。
-  历史上曾有 `az`（阿塞拜疆语）/ `es`（西班牙语）/ `tr`（土耳其语），已下线：字典与 `_locales` 目录
-  一并删除，存量 `settings.language` 由 `isLocale()` 判定为非法 → `normalizeLanguagePreference()`
-  返回 `null` → 回退「自动（跟随浏览器）」，不需要额外迁移代码。
-- 字典在 `src/shared/i18n/locales/<id>.ts`，英文是键集基准（`en.ts` 导出 `MessageKey`），其余语言用
-  `} as const satisfies Record<MessageKey, string>` 约束：**缺键 / 多键 / 拼错键名都是编译错误**。
-  `public/_locales/<id>/messages.json` 是商店元数据，键集由 `npm run check:i18n` 校验。
-- 语言偏好 `settings.language`：`"browser"`（自动项 = **跟随浏览器 UI 语言**）或某个 locale id。
-  历史值 `"system"`（旧文案「跟随系统」）由 `shared/i18n/preference.ts` 的
-  `normalizeLanguagePreference()` 在读取时迁移，写回即 `"browser"`。
-- `I18nRoot` wraps the content script React tree; Options and Popup use `useI18n()` hook.
-- All user-facing strings go through `t("key")` — never hardcode UI text.
-- 7 份字典均已翻译（`zh_TW` 用台湾用语：設定 / 儲存 / 資訊 / 網路 / 預設 / 範本 / 金鑰 / 權杖 / 端點 / 供應商）。
-- 改字典时注意：`$1` / `{selection}` 等占位符必须原样保留（`check:i18n` 第 7 节逐键校验）；
-  `previewTextZh` / `previewTextEn` 是**按所选语音语言**取用的试听句，不要翻成 UI 语言。
-- `public/_locales/*/messages.json`（商店 extName / extDescription）7 份均已按对应语言翻译；
-  Chrome 的长度上限（名称 45 / 描述 132 字符）由 `check:i18n` 第 4 节断言。
-
-### Models.dev Integration
-- `src/shared/models-dev.ts` fetches provider metadata (name, logo, models) from `models.dev`.
-- Background caches the data and serves it to Options/Popup via `AICTION_MODELS_DEV_REQUEST` message.
-- Provider logos loaded dynamically: `https://models.dev/logos/{providerId}.svg`.
-- Used in Options page provider selector and Popup provider dropdown.
-
-### PDF Viewer
-- `src/entrypoints/pdf-viewer/` — built-in PDF viewer page.
-- Background registers a context menu "Open PDF with AIction" on PDF pages.
-- Opens the PDF in a new tab with the extension's viewer, enabling text selection and AI actions on PDF content.
-
-## Invariants
-- Keep `data-aiction-root="true"` on the extension UI root. Selection and mousedown handlers depend on ignoring events inside that subtree.
-- Keep the background message listener registered at module load time.
-- Keep AI requests in the background context; content script should only message background.
-- Preserve `{selection}` placeholder validation for custom actions before saving (legacy `{text}` templates are auto-migrated on read).
-- Conversation is intentionally per-page in-memory only; refresh/close clears it.
-- 「在当前页面提问」（`AICTION_OPEN_CHAT`）开出的会话 `initialPrompt` 为**空串**：它既是防抖键（同一页面只允许存在一个空白面板），也是「不自动发送」的表达——`ChatSession` 只在 `initialPrompt` 非空时才自动发首轮请求，且这类面板以 `initialMode: "chat"` 挂载（延迟聚焦输入框，等 Popup 关闭交出系统焦点）。
-
-## Selection UI Pitfalls
-- WXT content-script UI runs inside Shadow DOM. Do not rely on `document.activeElement` alone; use deep active-element traversal through nested `shadowRoot` boundaries.
-- Use `event.composedPath()` instead of `event.target` for extension UI event filtering so Shadow DOM retargeting doesn't bypass root checks.
-- Text selection inside toolbar/chat inputs must never update page selection context, toolbar anchor, or toolbar visibility.
-- Do not let transient page-selection loss during focus transfer into extension inputs hide the toolbar. Preserve that state during extension-internal interaction.
-- When debugging selection bugs, reload the extension and refresh the target tab before assuming logic is wrong. Stale injected code is a common cause.
-
-## Floating Panels (悬浮面板：对话窗 / 朗读控件)
-
-灵动岛方案已移除。触发动作后划词工具栏**保持可见、选区不清空**
-（`SelectionToolbar.handleActionClick` 不再 `removeAllRanges`；copy 快捷动作同样如此——
-复制后不发 `closeToolbar()`，且 `copyTextFallback` 只在 Clipboard API 被拒时才
-临时借用页面选区并原样还原），
-用户可在工具栏上连续触发不同动作；工具栏只在新选区 / 点击页面空白 / 手动关闭时关闭。
-所有面板统一锚定在触发时刻快照的工具栏落位矩形上（页面滚动时随文档一起滚动，
-不跟随此后的工具栏拖拽）；**朗读控件是唯一例外**——它固定在视口顶部中间，
-不依赖锚点（见下方朗读控件条目）。
-
-- **公共定位**：`components/floating.ts`。`SelectionToolbar` 通过 `onRectChange`
-  上报自身落位（文档坐标矩形 `AnchorRect`）；App 在触发动作时快照一份传给面板。
-  `placeNearAnchor()`：下方放不下自动翻转到上方，两边都放不下收敛回视口，
-  水平方向钳制在文档安全区内。`fallbackAnchor()` 用选区锚点兜底。
-- **卡片态（收缩态）与聊天态**：对话窗有两种形态（`ChatPanel` 内部 `mode`），新触发默认
-  进入**卡片态**——同一锚点、更窄的宽度（`CARD_WIDTH` 480），高度随内容自适应（`maxHeight` 钳制，落位计算用
-  `CARD_ASSUME_HEIGHT` 假设高度，避免误判为「下方放不下」而错误翻转到上方），内容区只渲染
-  assistant 消息（隐藏用户气泡）、无输入区（头部专门有一个形态切换按钮承载展开入口）；卡片态的 assistant
-  内容是**一块淡底内容块**（`MessageBubble` 的 `variant="card"`：`surfaceMuted` 80% 淡底 + hairline
-  描边 + `uiRadius.lg` 圆角，把正文从毛玻璃面板上浮起一层；正文有内边距，思考行跨满块顶），
-  展开为聊天态后回到常规气泡样式
-  （`CHAT_WIDTH` 640，比卡片态宽 160：追问场景要放得下更长的消息与输入区）。
-  宽度上限受视口约束（下限 `PANEL_MIN_WIDTH` 320），窄视口下两态宽度趋同、只剩高度过渡。
-- **形态切换过渡（卡片 ↔ 聊天）**：`handleToggleMode` 里置 `morphing` 并起一个
-  `MORPH_DURATION + 60ms` 的收尾定时器，面板 style 只在 `morphing` 期间
-  `transition: width/height/left/top`——拖拽与流式增高必须即时跟手，不能常开过渡。
-  卡片态 `height: auto`、聊天态是固定像素，靠 `<style>` 里的
-  `[data-aiction-chat-panel] { interpolate-size: allow-keywords }` 让关键字参与高度插值
-  （不支持该属性的浏览器降级为高度跳变，宽度/位移过渡照旧）。
-  位置随宽度一起过渡：未拖拽时由 `computePosition` 按新宽度重算（`placeNearAnchor`
-  水平以锚点中心对齐，天然是「以中心为轴」扩张）；已拖拽时位置归用户，改由 ResizeObserver
-  的 `measure()` 拿宽度差补一半到 `left`（`clampPanelDragPos` 后再钳一次），否则聊天态会只朝右侧单向变宽。
-  拖拽开始时主动结束 `morphing`，避免位移带一段滞后的 easing。`prefersReducedMotion()` 时直接跳变。
-- **形态切换按钮（头部单按钮两态）**：卡片态 =「追问」（对话气泡图标 + 文案，**未开启=中性档**），
-  聊天态 =「收起」（人字箭头 + 文案，**已开启=点亮主色**），两态**同族同形**
-  （同高度/同圆角/同图标尺寸/同 hover，仅图标与文案变，外加开启态点亮），
-  点击展开为完整**聊天态**（消息 + 输入区）并自动聚焦输入框，或在聊天态点击回卡片态并 blur
-  输入框（防止残留焦点落入已隐藏的 textarea）。两态共用 `handleToggleMode`，`aria-expanded`
-  随态切换；`aria-label` / `title` 用描述性长文案 `chat.expandChat` / `chat.collapsePanel`，
-  可见文案用短文案 `chat.expandChat` / `chat.collapseShort`（「收起」/「Collapse」，两态宽度才接近）。
-  卡片态高度比聊天态矮一个底部栏，`CARD_ASSUME_HEIGHT` 据此取 170。
-- **头部控件统一样式族**：`ChatPanel.tsx` 模块级 `headerControlStyle(theme, {withLabel, hovered,
-  focused, active})` 是形态切换 / 钉住 / 关闭三个按钮的唯一样式来源（高 22、`uiRadius.pill`——
-  icon-only 呈正圆、带文案呈胶囊、图标统一 13、focus ring 统一）。
-  `HEADER_CONTROL_SIZE` 与 `HEADER_PADDING_Y` 一起决定标题栏高度（22 + 6×2 = 34）。
-  **状态只有两档，三个按钮共用同一套语言**（不设「常亮」的按钮，谁开启谁点亮）：
-  默认 = 中性档（surface 底 + hairline 描边 + 次级文字，hover 落 surfaceMuted）；
-  `active`（已开启：已展开为聊天态 / 已钉住）= 统一为「主色 12% 淡底（`1F`）+ 主色 40% 描边 +
-  图标与文字同为主色 + semibold」，hover 再加深一档到 16%（`29`）。两个开关按钮的点亮长相
-  完全同款，主次不靠固定的明暗差表达（历史上「追问」常亮 primary 时，钉住开启反而更重、
-  且开启了 hover 无反馈）；图标一律传 `color="currentColor"` 与文字同色，
-  避免一个按钮内出现两种颜色。
-  **焦点环只在键盘导航（`:focus-visible`）时点亮**（模块级 `isKeyboardFocus()`，与思考行按钮同一写法）：
-  鼠标点击按钮同样会 focus，且点完焦点就残留在按钮上（面板内点击不 blur），常驻的 3px 主色光环
-  会被误读成控件的第三种状态（与「已开启」混淆）——头部三按钮、发送按钮、复制按钮均适用；
-  输入框（composer）的聚焦柔光不走此判定，鼠标点进输入框理应显示聚焦态。
-  新增头部按钮时直接调它，不要再手写一份 style。
-  形态切换与钉住都带可见文案（`chat.expandChat` / `chat.collapseShort` / `chat.pinShort`），
-  关闭按钮保持纯图标（× 语义自明），且与前两个按钮之间有一条 1×12 竖分隔线（破坏性操作
-  与常态操作分开防误点）。头部底色是主色极淡的一层（dark 10% / light 8% 的 `${accent.primary}`），
-  与消息区的 hairline 分区共同构成标题栏。
-  模型名左侧的状态点独立在模型名槽位之外（槽位要 `overflow: hidden` 裁长模型名，会把扩散环切掉）；钉住是切换型按钮，可见文案**不随态变**（恒为「钉住」/
-  "Pin"，避免「钉住/取消钉住」宽度跳变），开关状态靠开启态点亮（同上 `active`）+ 填色图标 +
-  45° 旋转 + `aria-pressed` 表达，描述性长文案留在 `aria-label` / `title`（`chat.pinPanel` / `chat.unpinPanel`）。
-- **模型名槽位固定长度 + 右端渐隐**：模型名从「11px 灰字小胶囊」升级为标题级元素
-  （`MODEL_SLOT_FONT_SIZE` 14 / semibold / `text.primary` / mono / 图标 14 与名字同高），
-  并装入**固定长度槽位**：`MODEL_SLOT_WIDTH = 500`（`flex: 0 1 auto` + `minWidth: 0`，窄面板下可收缩，
-  优先保住右侧按钮）。溢出部分用 `MODEL_NAME_MASK`（`mask-image` 右端 26px 渐隐，`MODEL_FADE_WIDTH`）
-  处理，**不用 `text-overflow: ellipsis`**：省略号是一颗硬截断符号、位置还随名字长度左右跳动，
-  `provider/model-name` 这类长名字被腰斩后观感就是「名字被切了」；渐隐读作「后面还有，只是淡出了」，
-  截断位置恒定。整个头部布局因此不随模型名抖动，右侧控件落位永远对齐；短名字不受影响
-  （渐隐区落在空白处），完整名字留在 `title` / `aria-label` 里可悬停查看。
-- **输入区（composer）统一样式族**：`ChatPanel.tsx` 的 `composerStyle` /
-  `composerSendButtonStyle` 是底部输入区的唯一样式来源。一层描边同时包住 textarea 与 28px
-  圆形发送按钮（不再是「并排的输入框 + 文字按钮」），聚焦时描边转主色 + 一圈柔光；
-  按钮三态：空输入静默（无底、淡箭头、不可点）→ 有内容点亮主色（箭头反色）→ 生成中
-  换成停止按钮（输入槽底上的反色圆 + 描边 + 实心方块，hover 加深描边）。输入框自增高
-  （`COMPOSER_INPUT_MIN/MAX_HEIGHT`，24→132，超出内部滚动），滚动条与 placeholder 取色
-  均随主题（不写死灰度）。`Enter` 发送 / `Shift+Enter` 换行、IME 组合判定不变。
-- 两态共用同一会话实例：`useChatState`
-  的 messages/流式跨态持续进行，卡片态下流式生成照常渲染。
-- **对话会话 `ChatSession.tsx` / 内容件 `ChatPanel.tsx`**：触发 AI 动作后弹出新的
-  会话实例。**多实例并存**（`hooks/useChatSessions.ts`，App / PdfViewer 共用）：
-  每次触发均**追加**全新实例（递增 id 作 React key，挂载即发送动作解析出的首个
-  prompt），不替换既有实例；单个实例关闭（× / 点外 / Esc）只销毁自身（卸载时中断
-  流式并清理节流定时器）。Esc 由 hook 统一监听（逐面板监听会一次按键连环关闭所有
-  面板），每按一次销毁最新创建的一个；IME 组合中的 Esc 属输入法行为，忽略。
-  `useChatState` 由 ChatSession 内部调用，每实例持有独立的 messages / abort / 节流
-  定时器。防抖：存在解析 prompt 相同的未关闭会话（同动作同选区重复点击）时**不再新建实例，
-  而是让那张卡片闪一圈主色脉冲**（`revealSession`）作为反馈，相应会话被关闭后才能重新生成；
-  其余动作不受已开会话（含钉住的）阻断。
-  **空白面板（Popup「在当前页面提问」）走同一套会话管理**：`initialPrompt` 为空串（防抖键 +
-  不自动发送）、`anchor: null`（ChatPanel 回退到视口上方居中）、`initialMode: "chat"`
-  （开即聊天态 + `INITIAL_FOCUS_DELAY` 后聚焦输入框，延时是为了等 Popup 关闭、系统焦点回到页面）。
-- **对话窗头部交互**：头部左侧为模型名（芯片图标 + 模型名内联，固定长度槽位、溢出右端渐隐，可拖拽），
-  右侧为图钉钉住按钮、× 关闭；钉住（顶针图标填色 + 45° 旋转变实心）后点击窗外
-  不再关闭（Esc / × 仍可关闭），且在新触发时**继续驻留与其他实例并存**（钉住状态
-  由父级持有：ChatPanel 受控 props → ChatSession → useChatSessions 回写）。
-  头部整条为拖拽手柄（按钮除外），按住空白处可拖动整个对话窗：拖过一次后位置
-  归用户接管（`draggedRef`），resize 时只收敛回视口而不再按锚点重算。
-- **拖拽边界（`floating.ts` 的 `clampPanelDragPos` / `fitPanelInViewport`）**：
-  钳制必须用**面板实测尺寸**（`panelSizeRef` 由 ResizeObserver 维护），
-  不能用 `PANEL_MAX_HEIGHT`——卡片态实际高度远小于展开态，按 640 算会把矮卡片
-  硬顶在视口上部、拖不到下方（历史 bug）。边界是**单一套软边界**：
-  只保证「最小可抓取区」留在视口内——垂直 `DRAG_HEADER_KEEP` = 44（头部手柄在
-  视口内），水平 `DRAG_KEEP_VISIBLE_X` = 200（头部中央手柄仍在视口内），
-  上缘不允许拖出视口，下/左/右允许溢出。
-  为什么不用「放得下就要求整块可见」：对话窗展开后高度接近视口高度，
-  整块可见会把垂直可拖范围压到几十像素（视口 700 → 只能拖 44px），观感就是拖不动。
-  为什么不做「不限范围」：面板能被拖出视口而彻底抓不回来（= 悬浮窗丢失），
-  只能刷新页面自救。
-  水平基准取**视口**而非文档宽度：面板随文档滚动，横向滚出视口同样抓不回来。
-- **拖拽后的位置权归用户**：`draggedRef` 一旦置位，视口 resize 只跑软边界
-  （`clampPanelDragPos`，防拖丢），不再用 `fitPanelInViewport` 硬拽回视口；
-  ResizeObserver 也跳过。`fitPanelInViewport` 只在**未拖拽**时生效（自动落位的
-  面板长高后顶出视口时拉回来），否则一开 DevTools 就会把用户拖到边缘的面板
-  硬拽回视口，观感同样是「拖不出去」。
-- **朗读控件 `SpeechWidget.tsx`**：触发朗读后在**视口顶部中间**以小圆球态浮现
-  （`TOP_INSET = EDGE_INSET + 4`，水平为视口中心，视口过窄时钳到左侧），
-  接收 `player` 一个 prop（不再吃工具栏锚点）。鼠标移入自动展开为控制条，
-  移出 300ms（或触发后 4s 一直未交互）自动收起回 32px 小圆球，
-  触摸屏点击圆球同样展开；morph 时用 left/top 与宽高一起过渡，
-  以 placement 的 `{cx, cy}` 为中心——不靠 `transform` 补偿（否则与入场 keyframes
-  的 transform 打架）。
-  取色一律用**主题色 `accent.primary`**（`uiThemes` 里 `accent` 是唯一的品牌 / 交互色）：
-  圆球态波形/暂停/加载环/播放完毕对钩、倒计时圆环、控制条播放暂停图标与进度条都取 `accent.primary`
-  （「播放完毕」用对钩而非 `state.success` 绿，否则圆球上会混出第二种颜色）；仅失败态保留 `state.error` 红。
-- **朗读岛固定视口顶部**：容器用 `position: fixed` + 视口坐标落位
-  （`placement = {cx, cy}` 保存视口坐标，渲染时按当前尺寸反推 left/top），
-  所以视觉上恒定贴在视口顶部中间，且滚动由合成线程同步、零 JS 开销（只监听 resize
-  重算水平中心）。不用「absolute + 文档坐标」是因为岛不锚在选区/工具栏上，
-  若随文档滚动就等于把控件丢了；也不用滚动监听重算（每帧 setState 不划算）。
-- **朗读退场**：finished 且处于圆球态闲置 5s（未悬停、未展开）自动 `stop()` 卸载；
-  倒计时圆环 `TtsCountdownRing` 与退场计时器同帧启停（悬停/展开暂停，移开重计），
-  时长常量为 `TTS_DISMISS_MS`（SpeechPlayer 与 SpeechWidget 各定义一次，需同步改）。
-- **收起抑制**：拖动进度条通过 `HoldContext`（hold/release 配对）抑制自动收起
-  （release 后补发被抑制的收起）；焦点在文本输入类控件（textarea/input/select/
-  contentEditable）时鼠标滑出不收起。
-- 划词工具栏与各面板互不抑制（面板开着时划词工具栏照常出现）。
-- 悬浮面板的锚点是触发时刻快照的工具栏落位——不要依赖 `toolbarAnchor` 的实时值。
-- 对话窗「点外关闭」必须忽略扩展 UI 内部的点击（composedPath 里有
-  `[data-aiction-root="true"]` 祖先即忽略）：面板开着时还在点工具栏换动作是常态。
-
-### 不变量
-- 面板定位是 absolute + 文档坐标（不是 fixed），随页面滚动；重新定位只发生在
-  anchor / resize / 形态切换（mode）变化时。**朗读控件是唯一例外**：它不锚工具栏，用 fixed + 视口
-  坐标固定在视口顶部中间（滚动不重算，仅 resize 重算）。
-- 面板的点外关闭监听必须用 `event.composedPath()` 穿透 Shadow DOM；
-  层级：工具栏 `uiLayer.overlay` > 面板 `uiLayer.panel`。
-- 输入框 Enter 发送必须检查 `event.nativeEvent.isComposing`（IME 组合确认不是发送）。
-- 对话为单轮场景内存态：关闭面板 = 该会话实例整体销毁；新动作触发总是追加全新实例
-  （多实例并存，不复用旧 messages；钉住的实例不计入替换，而是驻留并存）；同一动作
-  同一选区重复点击被防抖命中时**不静默忽略**：让那张卡片闪一圈主色脉冲（不动位置）。
-- 对话面板（ChatPanel）自身只管点外关闭与钉住；Esc 键统一在 useChatSessions 监听，
-  面板内不再另加 Esc 监听（避免多实例时一次按键连环关闭）。
-- **工具栏上的动作按钮一律不关闭工具栏**：普通动作（`handleAction`）、朗读
-  （`handleQuickAction` → speakText）与复制（copyToClipboard）都不调 `closeToolbar()`；
-  复制后也能继续在工具栏上触发别的动作。复制需要复制临时内容时（Clipboard API 被拒）
-  也必须在操作后还原选区与焦点，不能借“选区被消费”把复制变成例外。
-
-- **消息操作行与生成中提示**：助手消息的「复制」不再 hover 浮出盖在正文上，而是常驻
-  内容块底部右侧的一行操作区（低对比 70% 静默、hover 抬亮主文色、复制完成转成功色）；
-  「AI 正在生成中…」是自适应宽度的同族内容块（hairline 描边 + 淡底 + 圆角），
-  不再用横贯整条的 banner（`createStatusMessageStyle` 生成的是全宽块，与气泡不同族）。
-  思考行展开后按 `inset` 内缩到与正文同一栏（卡片态 12 / 聊天态 10），收起态跨满块顶。
-- **Markdown 元素取色（`createMarkdownStyles`，随主题 token）**：行内 `code` 用主色 10% 淡底
-  （把术语从正文里托出来）；`pre` 底色用 `surface` + `border.subtle` 描边（卡片态容器是
-  surfaceMuted，两套 token 不同才能在气泡/块里都看得出块形）；正文行高 1.5；
-  `> :first-child/:last-child` 清 margin，避免首尾多出一层空隙。
-- **面板内选中文字**用主色 20% 淡底（`<style>` 里的 `::selection`），不用浏览器默认蓝。
-
-### 语言判定：只跟随浏览器 UI 语言；标签交给 `Intl.Locale`，禁止 startsWith / 枚举子标签
-
-**历史症状**：macOS 系统语言是简体中文，扩展界面却是英文。
-**根因**：macOS 的系统语言标签带 script 子标签 —— `defaults read -g AppleLanguages` →
-`zh-Hans-SG`（新加坡简中），不是 `zh-CN`。旧 `resolveLocale()` 只把 `zh-CN` / `zh_CN` / `zh`
-当简中，其余 `startsWith("zh")` 一律当「繁体 → 回退英文」，于是 `zh-Hans-SG` 被判成英文。
-
-**现在的规则**（`src/shared/i18n/registry.ts` + `translations.ts` + `preference.ts`）：
-
-1. **来源只有一个：`chrome.i18n.getUILanguage()`**。自动项文案是「自动（跟随浏览器）」。
-   - **不读 `navigator.language` / `navigator.languages`**：macOS 上它们可能反映**系统语言**，
-     读进来会让「跟随浏览器」静默退化成「跟随系统」。
-   - 拿不到（非扩展上下文）→ `null` → 落 `DEFAULT_LOCALE`。合成页测试必须 stub
-     `chrome.i18n.getUILanguage`（与 `chrome.runtime` / `chrome.storage` 一起）。
-   - `chrome` 判定必须 `typeof chrome !== "undefined"`：可选链挡不住「变量未声明」的 ReferenceError。
-2. **解析与匹配全交给 ICU**：`parseLocaleTag()`（`shared/language-tag.ts`）→ `Intl.Locale.maximize()`。
-   语言标签是标准格式，**禁止字符串前缀 / 子标签枚举**（枚举永远不全，且是猜测式编码）。
-3. **匹配规则从注册表派生**（`matchLocale`）：主语言筛候选 → 书写系统（script）冲突淘汰 →
-   script 相同 +2 / region 相同 +1 → 同分取 `SUPPORTED_LOCALES` 声明顺序。
-   于是「`zh-Hant` 该去 `zh_TW` 还是整体落空」**只取决于注册表里有没有 `zh-TW` 那一行**，
-   加语言时不需要改任何匹配代码。
-
-**禁止（都曾有对应实现，别再写回去）**：
-
-- ❌ 「任一来源为中文即中文」「非默认语言优先」这类跨来源提升 —— 语言偏好只由浏览器 UI 语言决定。
-- ❌ `UNSUPPORTED_CHINESE_SCRIPT = "Hant"` 之类的书写系统黑名单 —— 由注册表行的 `tag` 自然淘汰。
-- ❌ 自己维护「哪些地区算简体」的名单，或 `startsWith("zh")` / `split("-")` 手搓子标签。
-- ❌ 把自动项叫「系统」：主题的 `themeAuto` 跟随 `prefers-color-scheme`，那才是真的系统；语言不是。
-
-> 行为差异要知道：**英文浏览器 UI + 中文系统 → 英文**（旧实现会判中文）。这是有意的语义修正，
-> 不是 bug；改回去请先说服产品，并同步 `docs/ANALYTICS.md` 的 `language_changed` 值域说明。
-
-### 新增一门界面语言（三处改动，其余全自动）
-
-1. `src/shared/i18n/locales/<id>.ts`：复制 `en.ts` 翻译，键集必须与 `en` 完全一致
-   （`satisfies Record<MessageKey, string>` 会在编译期报缺键 / 多键）。
-2. `public/_locales/<id>/messages.json`：`extName` / `extDescription`（商店元数据，键集与 `en` 一致）。
-3. `src/shared/i18n/registry.ts` 的 `SUPPORTED_LOCALES` 追加一行：
-   `id` / `tag`（BCP-47）/ `nativeName`（自称，不翻译）/ `promptName`（注入系统提示词的可读描述）/ `messages`。
-
-`id` 用下划线形态，且**同时是存储值、字典键、`_locales` 目录名**（三者一致，刻意不做映射）。
-`tag` 用连字符形态（`zh-CN`），是匹配算法的唯一依据。
-
-然后依次跑：`npm run check:i18n`（tag 合法性 / 自反匹配 / 匹配矩阵 / 字典键集 / `_locales` 对齐 /
-`default_locale`）→ `npm run typecheck` → `npm run build`。
-
-> 判定标准：**如果加一门语言需要动第 3 项以外的逻辑代码（匹配、校验、下拉选项、提示词显示名），
-> 说明注册表的派生链断了**，先修派生链，别就地打补丁。
-
-### TTS 文本语言检测：用 CLD，不用字符区段正则猜（已改）
-
-`src/shared/edge-tts-voices.ts` 原 `detectTextLocale()` 是一串 Unicode 区段计数 + 变音符正则
-（假名/谚文/西德葡法越……），枚举永远不全且属猜测式编码。现在：
-
-1. **主判断走平台能力**：`chrome.i18n.detectLanguage()`（CLD3），取 `percentage` 最高的语言标签；
-   无 chrome / 报错 / 无结果 → 返回 null，调用方回退 `navigator.language`。因此
-   `detectTextLocale()` / `resolveVoiceForText()` 都变成了 **async**（`useSpeechPlayer.start`
-   内 await，await 后必须重新校验 `generationRef.current === generation` 防旧回调写入）。
-2. **标签→语音组**用 `matchVoiceLocale()`：`Intl.Locale.maximize()` 归一后按
-   language / script / region 打分（4/2/1），同分保留先出现者（`zh-TW` 排在 `zh-HK` 前，
-   所以 `zh-Hant` 落到台湾国语而不是粤语）。
-3. **只保留一条最小规则**：粤语用字（封闭字符集 `CANTONESE_ONLY_CHARS`，逐码点查 Set，
-   非正则）→ `zh-HK`。CLD 对粤语白话文只返回 `zh` / `zh-Hant`，而粤语语音读普通话之于听感
-   灾难，这一步没标准 API 可替代。
-4. 语音名 → 语言标签用 Azure 命名规范 `${locale}-${VoiceName}Neural` 取前两段，
-   交给 `parseLocaleTag()` 校验（`src/shared/language-tag.ts`，与 i18n 模块共用），
-   不再手写 `split("-")` 拼接后做字符串比较。
-
-**实测结论（真实 CLD，Chrome for Testing 1228）**：中文一律只返回 `zh`，**不区分简繁**
-（繁体长文 / 短文均为 `zh` 100%），所以繁体文本会走 `zh-CN` 语音，不会自动切到台湾语音。
-这是 CLD 的能力边界，不要用简繁字表去补（那是永远不全的枚举）；中文语音读繁体字本身可读，
-用户配置了 zh-TW 语音时 `resolveVoiceForText()` 仍会因同语种而保留用户选择。
-另：阿拉伯语短句会被 CLD 判为 `fa`（波斯语）→ 无对应语音组 → 返回 null（保留用户配置的语音）。
-其余语言（en/fr/es/pt/de/vi/ja/ko/ru/th/hi）实测均正确。
-
-**自动化加载本扩展的正确姿势**：系统 Chrome（实测 155）已忽略 `--load-extension`，
-改用 Playwright 缓存里的 **Chrome for Testing** 二进制：
-`~/Library/Caches/ms-playwright/chromium-1228/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`
-（即 `executablePath` 指向它，配合 `--disable-extensions-except` + `--load-extension`，
-`headless: false`）。验证扩展是否真加载：打开 `chrome://extensions` 读 shadow DOM 计数，
-或看 `ctx.serviceWorkers()` 里有无 `chrome-extension://<id>/background.js`。
-SW 目标可以直接 `sw.evaluate()` 调 `chrome.i18n.*`，是验证 CLD / i18n 行为最快的手段。
-另：Playwright 会自发加 `--no-sandbox`，Chrome 会弹「不受支持的命令行标记」横幅，无害。
-
-### 待优化清单
-- [ ] 无障碍：状态变化无 `aria-live` 播报；面板/圆球无键盘入口（Tab 不可达）
-- [ ] 代码打磨：消息区滚动条颜色 hardcoded 未适配 dark 模式；朗读控件收起动画与
-      小圆球悬停展开手感需实测微调；对话窗已支持拖拽（头部手柄），暂不支持 resize
-
-## Manual Verification
-- After `npm run build`, load `.output/chrome-mv3` in `chrome://extensions` as an unpacked extension.
-- After reloading the extension, reload the target web page. Existing tabs keep old content-script instances.
-- If a content-script change still doesn't appear after extension + page reload, close and reopen the tab.
-- For background/service-worker changes, verify from the extension's service worker inspector.
-
-### Extension Testing Lessons
-- `npm run build` runs `npm run bundle-icons` first, which invokes `tsx`. In sandboxed environments this can fail with `listen EPERM` while creating a temp IPC pipe. Treat that as an environment/sandbox issue; rerun the build in an unrestricted local shell before assuming the project is broken.
-- Chrome content scripts do not run on `data:`, `chrome://`, or extension error pages. Use a real `http://127.0.0.1:<port>` test page, reload the page after reloading the extension, and verify the content script has created the `aiction-ui` shadow host.
-- Do not trust the first `chrome-extension://...` DevTools target when testing with remote debugging. Stock Chrome may expose built-in component extensions such as Google Hangouts or Google Network Speech. Confirm the extension identity by reading `chrome.runtime.getManifest()` and expect AIction's service worker to be `background.js`.
-- Launching macOS Google Chrome with `--load-extension=.output/chrome-mv3` may fail to load the unpacked extension in some local automation setups, even when DevTools shows unrelated extension targets. If `chrome-extension://<id>/options.html` opens `chrome-error://chromewebdata/` with `ERR_FILE_NOT_FOUND`, the ID is not AIction or the extension did not load.
-- For content-script UI smoke tests, a useful fallback is a synthetic page test: open a local HTTP page, stub the minimal `chrome.runtime` / `chrome.storage` APIs, inject the built `.output/chrome-mv3/content-scripts/content.js`, select text, and inspect the Shadow DOM. This verifies the built content bundle behavior, but it does not prove manifest-driven Chrome injection.
-- Selection toolbar tests should account for i18n. The quick copy button may have `aria-label="Copy to Clipboard"` or `aria-label="复制到剪贴板"` depending on the resolved UI language.
-- When verifying copy behavior, assert both outcomes: clipboard text equals the selected text, and the toolbar **stays visible** after the copy quick action (only new selection / clicking blank page / manual close hides it).
-- Always remove temporary test scripts and stop local test servers / temporary Chrome profiles after browser automation.
-
-## Icon Generation Workflow
-
-WXT reads `src/assets/icon.png` via `@wxt-dev/auto-icons` and copies it to the output. **Source PNG should be >=256px** to avoid upscaling artifacts.
-
-Icons are generated from the design source — do not hand-edit the outputs:
-
-| File | Role |
-|------|------|
-| `logo_raw.jpg` | 设计源（1024×1024 满版方形蓝底，不透明四角） |
-| `scripts/generate-icons.ts` | `npm run icons`：用 sharp 从设计源生成下面全部产物 |
-| `src/assets/icon.png` | 512×512 构建源（auto-icons 据此生成 manifest 的 `icons/16,32,48,128`），也是 `BrandIcon` 渲染的图 |
-| `src/shared/ui/icons.tsx` | `BrandIcon` React 组件（渲染 `src/assets/icon.png`，`borderRadius: 20%`） |
-| `store/icons/icon-{16,32,48,128}.png` | Chrome Web Store 上架用图标（128 为商店列表图标，必需） |
-
-### Steps to update the icon
-
-1. 替换 `logo_raw.jpg`（正方形、>=1024px 更佳）。
-2. `npm run icons` — 重新生成 `src/assets/icon.png` 与 `store/icons/*`。
-3. `npm run build` — WXT 据此生成 `.output/chrome-mv3/icons/{16,32,48,128}.png`。
-4. 抽看 `.output/chrome-mv3/icons/16.png`（工具栏小尺寸最易糊）与 `128.png` 的边缘是否干净。
-
-### Notes
-- Do **not** use `qlmanage` — it produces blurry low-quality output.
-- 缩放统一用 sharp 的 `lanczos3`（`.resize(size, size, { kernel: "lanczos3", fit: "cover" })`），不要用 `sips`。
-- 当前 logo 是**满版方形**（蓝底铺满、四角不透明），因此**不做圆角/透明四角裁剪**：Chrome 工具栏、扩展管理页与商店列表都会自行套圆角。仅当设计源本身带透明四角时才保留 alpha。
-- 输出 PNG 用 64 色调色板（`{ palette: true, colors: 64, quality: 100 }`）：图形只有蓝白两色，观感无损，512 图标从真彩 116 KB 降到 ~37 KB（`BrandIcon` 在 popup/设置页每帧都要加载它）。
-- 商店还要求（非图标、需产品真实截图 + 排版，现未生成）：截图 1280×800 或 640×400、小宣传图 440×280、Marquee 1400×560。
-
-## Icon Caching System
-
-Two-tier architecture for offline icon rendering and fast icon picker.
-
-### Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│ Runtime Loading (iconify.tsx)                        │
-│                                                     │
-│ 1. addCollection(BUNDLED_TABLER_ICONS)  ← static    │
-│    106 icons, zero network, instant                  │
-│                                                     │
-│ 2. First render: lazy load user icons                │
-│    chrome.storage.sync.get("aiction:icons")          │
-│    → addIcon() per icon                              │
-│                                                     │
-│ 3. User picks new icon → fetch SVG → saveUserIcon()  │
-│    → addIcon() → persist to storage                  │
-└─────────────────────────────────────────────────────┘
-```
-
-### Two Storage Tiers
-
-| Tier | Location | Content | Update Trigger |
-|------|----------|---------|----------------|
-| **Built-in** | `src/shared/ui/bundled-icons.ts` (generated) | 104 default + 2 nav icons (106 total) | Manual: `npm run bundle-icons` |
-| **User icons** | `chrome.storage.sync` → `aiction:icons` | User-selected icon SVG data | On icon pick or config import |
-
-### Icon Data Format (IconifyJSON)
-
-```typescript
-{
-  prefix: "tabler",
-  icons: {
-    "sparkles": { body: "<path fill='none'.../>" },
-    "bulb": { body: "<g fill='none'...>...</g>" }
-  },
-  width: 24,
-  height: 24
-}
-```
-
-- `body`: SVG inner paths (no outer `<svg>` tag), ~100-400 bytes per icon
-- `width/height`: viewport size (Tabler uses 24x24)
-
-### Files
-
-| File | Role |
-|------|------|
-| `scripts/bundle-icons.ts` | Build script: extracts 106 icons from `@iconify/json` → generates `bundled-icons.ts` |
-| `scripts/check-icons.ts` | Utility script: validates icon availability via Iconify API |
-| `src/shared/ui/bundled-icons.ts` | **Generated**: exports `BUNDLED_TABLER_ICONS` (IconifyJSON, ~22KB) |
-| `src/shared/ui/iconify.tsx` | Calls `addCollection()` at module load; lazy loads user icons on first render |
-| `src/shared/storage.ts` | `getUserIcons()`, `saveUserIcon()`, `loadAndRegisterUserIcons()` |
-| `src/shared/types.ts` | `UserIconData` interface |
-
-### Commands
-
-- `npm run bundle-icons` — regenerate `bundled-icons.ts` from `@iconify/json` (manual, not auto)
-- `npm run build` — runs `bundle-icons` automatically before WXT build
-
-### Icon Selection Flow (OptionsPage)
-
-When user picks an icon:
-
-1. Check if icon is in built-in set (`BUNDLED_TABLER_ICONS.icons`)
-2. **If built-in**: copy body from `BUNDLED_TABLER_ICONS` → `saveUserIcon()`
-3. **If not built-in**: fetch from `api.iconify.design` → parse SVG body → `saveUserIcon()` + `addIcon()`
-4. Save settings with icon name string
-
-**Important**: `handleIconSelect` is async — always `await` it before saving settings.
-
-### Export/Import
-
-**Export** (`handleExportSettings`):
-```json
-{
-  "app": "aiction",
-  "version": 1,
-  "exportedAt": "...",
-  "settings": { ... },
-  "userIcons": { "tabler:sparkles": { "body": "...", "width": 24, "height": 24 } }
-}
-```
-
-**Import** (`confirmImportSettings`):
-1. Parse JSON → extract `settings` and `userIcons`
-2. `normalizeSettings(settings)` → save
-3. For each user icon: `saveUserIcon(name, data)` → persist to `chrome.storage.sync`
-
-### Size Budget
-
-| Item | Size |
-|------|------|
-| Built-in icons (106) | ~22KB raw / ~8KB gzip |
-| Per user icon | ~200B |
-| User icons cap (50) | ~10KB (well under `chrome.storage.sync` 100KB limit) |
-
-### Dependencies
-
-- `@iconify/json` (devDependency) — full Tabler icon set JSON for build script
-- `@iconify/react` (dependency) — `addCollection()`, `addIcon()`, `Icon` component
-- `tsx` (devDependency) — runs `scripts/bundle-icons.ts`
-
-## Reference Projects
-
-`reference/` contains two similar Chrome extension projects for reference. See `reference/README.md`.
-
-When unsure about implementation patterns (component structure, messaging, UI approach, etc.), check these projects first.
+   唯一处理是抹凭据（`sanitizeErrorMessage`）+ 2000 字符截断。
+2. **粗分类兜底**：`classifyChatError()` 只看 `error.name`、自有 `ERROR_MESSAGES.*` 常量比对、结构化 `statusCode`，
+   都对不上就 `unknown`。
+
+**禁止在任何错误文本上做结构 / 类型推断**：不正则抓状态码、不抠 JSON 的 `error.type`、不按关键词猜
+`timeout` / `auth` / `rate_limit`。各家 provider 文案差异极大，猜出来的桶会误导分析（曾有关键词兜底，已删）。
+上报统一走 `src/shared/analytics.ts`；出口 `sanitizeProperties()` 会剔除属性名含 `key` / `token` / `secret` 的字段。
+
+## 流式请求：区分「超时」与「主动收尾」
+带超时的流式调用有两处 `abort()`：超时定时器、流消费完后的主动收尾。两者都会让 `signal.aborted === true`，
+用 `aborted` 判超时会把端点 400 的原文与 `http_status` 全部改写成「请求超时」。
+- 定时器回调里先置布尔标志再 abort，`catch` 只认这个标志。
+- AI SDK 在 `abortSignal` 触发时**不抛异常**，而是往 `fullStream` 发一个 `abort` part 后正常结束；
+  只处理 `text-delta` / `error` 会把超时当成「流正常结束但零内容」（`no_content`）。
+- 400/401 以 `error` part 送达；`start-step` 才代表 HTTP 已成功（用它判断「请求是否真的被接受」）。
+
+## i18n
+- **唯一真源 `src/shared/i18n/registry.ts`**（`id` / `tag` / `nativeName` / `promptName` / `messages`）：
+  `Locale` 类型、默认语言、设置校验、下拉选项、提示词显示名全部由它派生，**别处不再列语言清单**。
+  当前 7 个：`en` / `ja` / `ko` / `ru` / `vi` / `zh_CN` / `zh_TW`（数组顺序 = 下拉顺序 = 同分优先级 = 字母序）。
+- 字典 `locales/<id>.ts`：`en` 是键集基准（导出 `MessageKey`），其余 `satisfies Record<MessageKey, string>`，
+  缺键 / 多键 / 拼错键名都是编译错误。所有用户可见文案走 `t()`，不硬编码。
+- 偏好 `settings.language`：`"browser"`（跟随浏览器 UI 语言）或某个 locale id。历史值 `"system"` 由
+  `normalizeLanguagePreference()` 读取时迁移；已下线语言的存量值判为非法 → 回退自动项，**无需迁移代码**。
+- **语言判定只看 `chrome.i18n.getUILanguage()`**，不读 `navigator.language`（macOS 上它反映系统语言，
+  读进来会让「跟随浏览器」静默退化成「跟随系统」）；`chrome` 判定必须 `typeof chrome !== "undefined"`
+  （可选链挡不住变量未声明的 ReferenceError）。标签解析交 `Intl.Locale.maximize()`，匹配从注册表派生：
+  主语言筛候选 → script 冲突淘汰 → script/region 加分 → 同分取声明顺序。
+- **禁止**：`startsWith("zh")` / 手撸子标签、书写系统黑名单、「哪些地区算简体」的名单、把自动项叫「系统」。
+  典型坑：macOS 可能给 `zh-Hans-SG`，靠前缀判断会误判成英文，只能交给 ICU。
+- **加一门语言**：① `locales/<id>.ts`（抄 `en` 翻译）② `public/_locales/<id>/messages.json`（商店元数据，
+  名称 ≤45 / 描述 ≤132 字符）③ registry 追加一行。然后 `check:i18n` → `typecheck` → `build`。
+  判定标准：**若还需改匹配 / 校验 / 下拉 / 提示词逻辑，说明派生链断了，先修派生链，别就地打补丁。**
+- 占位符（`$1` / `{selection}`）原样保留；`previewTextZh` / `previewTextEn` 是按**语音语言**取用的试听句，
+  不翻成 UI 语言。
+
+## TTS 文本语言检测
+- 主判断走平台能力 `chrome.i18n.detectLanguage()`（CLD3），无 chrome / 报错 → 回退 `navigator.language`。
+  因此 `detectTextLocale()` / `resolveVoiceForText()` 是 async：`await` 之后必须重校验 generation，防旧回调写回。
+- 标签 → 语音组用 `matchVoiceLocale()`（`Intl.Locale` 归一后按 language 4 / script 2 / region 1 打分，同分保留先出现者）。
+  语音名 → 标签按 `locale-VoiceNameNeural` 取前两段，交 `parseLocaleTag()` 校验，不手写 `split("-")`。
+- 只保留一条最小规则：粤语专用字（封闭字符集）→ `zh-HK`（CLD 对粤语只给 `zh` / `zh-Hant`，
+  而粤语白话文用普通话语音朗读听感灾难）。这一步没有标准 API 可替代。
+- 已知能力边界：CLD 对中文只返回 `zh`，**不区分简繁**，繁体文本会走 `zh-CN` 语音。不要用简繁字表去补（永远不全）。
+
+## 悬浮面板（对话窗 / 朗读控件）
+- **定位**：面板 = absolute + 文档坐标、随文档滚动；锚点是**触发时刻快照**的工具栏矩形，不跟随后的工具栏拖拽。
+  公共逻辑 `components/floating.ts`：下方放不下翻到上方，两边都放不下收敛回视口，水平钳制在安全区内。
+  对话面板定位于 anchor / resize / 形态切换时重算。**朗读控件是唯一例外**：fixed + 视口坐标、贴在视口顶部中间，
+  滚动不重算（合成线程同步、零 JS）、只监听 resize。
+- **两态**：卡片态（窄、只渲染 assistant 消息、无输入区、内容是淡底 + hairline 描边的内容块）↔
+  聊天态（更宽、常规气泡 + 输入区）。同一会话实例，流式跨态继续渲染。新触发默认卡片态。
+- **过渡**：只在 `morphing` 期间打开 width/height/left/top 过渡（含 `interpolate-size` 让 `auto` 参与插值）；
+  拖拽与流式增高必须即时跟手，不能常开。位置随宽度一起过渡：未拖拽时按新宽度重算，已拖拽时由
+  ResizeObserver 的宽度差补一半到 `left`。拖拽开始主动结束 `morphing`。`prefersReducedMotion()` 时直接跳变。
+- **头部控件统一样式族**：`headerControlStyle()` 是形态切换 / 钉住 / 关闭三个按钮的唯一样式来源，新增按钮直接调它。
+  状态只有两档：中性、`active`（主色淡底 + 主色描边 + 同色图标 + semibold），不设常亮按钮；
+  图标传 `color="currentColor"` 与文字同色。**焦点环只在 `:focus-visible` 点亮**——鼠标点击也会 focus 且点完不 blur，
+  常驻光环会被误读成第三种状态（输入框的聚焦柔光不受此限）。
+- **模型名槽位**固定长度 + 右端 mask 渐隐，**不用 `text-overflow: ellipsis`**（省略号是硬截断符号、位置随名字长度跳动）。
+  渐隐读作「后面还有，只是淡出」，截断位置恒定，头部布局不随模型名抖动；完整名字留在 `title` / `aria-label`。
+- **拖拽边界是单一套软边界**：只保证「最小可抓取区」留在视口内，上缘不允许拖出视口，下/左/右允许溢出。
+  不要求整块可见（展开态接近视口高度，那样垂直可拖范围只剩几十像素，观感就是拖不动），
+  也不允许不限范围（拖出去就彻底抓不回来，只能刷新页面）。水平基准取**视口**而非文档宽度。
+  钳制必须用面板**实测尺寸**（ResizeObserver 维护），不能用展开态的最大高度假设——否则矮卡片拖不到视口下方。
+- **位置权归用户**：`draggedRef` 置位后 resize 只跑软边界，自动落位逻辑不再硬拽回视口。
+- **防抖命中不能静默**：同 prompt 的会话已存在时，让那张卡片闪一圈主色脉冲（不动位置）。
+  三个易踩点：① 脉冲层必须**常驻**，命中时 `animation: none` → 读 `offsetWidth` 强制回流 → 重赋动画，
+  靠 React 重建节点或改 key 不会重播；② 闪的信号要绑在**已提交**的会话上，
+  **绝不在渲染期间写 `sessionsRef.current`**（并发渲染被丢弃会留下从未提交的快照，据此算出的 id 匹配不上就不闪）；
+  ③ 面板 `overflow: hidden`，光晕用 `inset` 否则被裁。**不要顺手把卡片拉回视口**（位置是用户的）。
+  防抖判定必须放在**任何 await 之前**并同步建实例，否则 await 窗口里的第二次点击会双通过、连开两张。
+- **Esc 统一在 `useChatSessions` 监听**，逐面板监听会一次按键连环关闭所有面板；IME 组合中的 Esc 忽略。
+  点外关闭必须用 `composedPath()` 忽略扩展 UI 内部点击（面板开着时点工具栏换动作是常态）。
+- **收起必须 blur 面板内焦点**：DOM 仍在（仅 opacity 0 + pointerEvents none），焦点残留会让后续按键落入虚空。
+  容器用 `onFocusCapture` 记录焦点元素。
+- **朗读控件交互**：小圆球态 ⇄ 悬停 / 点击展开控制条，鼠标移出延时收起，触发后一段时间无交互也自动收起；
+  morph 用 left/top 与宽高一起过渡、以自身中心为轴，**不要用 transform 补偿**（与入场 keyframes 打架）。
+  拖动进度条期间用 hold/release 抑制自动收起；焦点在文本输入类控件时不收起。
+  取色一律用主题的 `accent.primary`（品牌/交互色，含「播放完毕」的对钩而不是 success 绿），
+  失败态才保留 `state.error`。退场计时器与倒计时圆环同帧启停，
+  **退场时长常量在两个文件各定义一次，改要同步改**。
+- 层级：工具栏 `uiLayer.overlay` > 面板 `uiLayer.panel`。
+- 拆组件时 `<style>` 里的全局样式（`@keyframes` 等）容易整块丢失（不报错、动画静默失效），拆前列清单指定归属。
+
+## 选区检测
+Shadow DOM 下 `document.activeElement` 不可靠，要穿透嵌套 `shadowRoot` 深查；事件过滤用 `composedPath()`；
+工具栏 / 面板输入框内的选区变化不得更新页面选区上下文、锚点或工具栏可见性；扩展内部交互期间的瞬时选区丢失
+不能让工具栏消失。调选区 bug 前先确认扩展已重载 + 页面已刷新（旧注入代码是常见原因）。
+
+## UI 布局硬约束
+- Popup 宽度 360；动作列表可视高度 204（6 × 34），筛选条仅在动作 > 6 个时出现；
+  动作再多内部滚动，总高不随动作数增长（Chrome popup 上限 600px）。
+  跳设置页前先 `await` 写 `OPTIONS_ENTRY_STORAGE_KEY`，再 `window.close()`。
+- 对话面板宽度受视口约束（下限 320）；卡片态比聊天态窄一档，聊天态要放得下更长的追问与输入区。
+- 输入框自增高（24 → 132，超出内部滚动），Enter 发送 / Shift+Enter 换行。
+
+## 图标
+- 源 `logo_raw.jpg`（满版方形、不透明四角、≥1024）→ `npm run icons`（sharp `lanczos3`、64 色调色板）→
+  `src/assets/icon.png`(512) + `store/icons/*`；构建时 auto-icons 生成 16/32/48/128。
+  **不要手改产物，不要用 `qlmanage` / `sips`**；满版方形不做圆角裁剪（Chrome 会自行套圆角）。
+- 运行时：`bundled-icons.ts`（**生成物，勿手改**，内置 ~106 项）在模块加载时 `addCollection`；
+  用户图标从 `chrome.storage.sync` 的 `aiction:icons` 懒加载，选中新图标时 fetch SVG → `saveUserIcon()`。
+  预算：内置 ~22KB、单图标 ~200B、上限 50。
+- 导出 / 导入设置要连 `userIcons` 一起走；`handleIconSelect` 是 async，**必须先 await 再保存设置**。
+
+## 开发教训（抽象版，都是踩过的坑）
+1. **枚举 ≠ 平台能力**：语言标签、语言检测、易读格式这类标准问题交给 `Intl.Locale` / CLD / 平台 API。
+   字符串前缀判断与 Unicode 区段正则永远不全，且是猜测式编码。
+2. **不要静默降级 / 静默失败**：能报错就报错（见「错误与埋点」「模型上限参数」）；防抖命中要给可见反馈。
+3. **声明了却没绑到元素的 ref 是纯静默死代码**（`ref.current?.focus()` 全部 no-op，无报错无警告）。
+   对 ref 起疑先 `rg "ref=\{.*Ref\}"` 确认已绑定；依赖 ref 的交互（聚焦 / 测量 / 滚动）必须在能读
+   `activeElement` / `getBoundingClientRect()` 的环境里断言，肉眼看 UI「差不多」验不出来。
+4. **JSX「幽灵报错」（少一个 `}`）**：TS 报「no corresponding closing tag」但报错行看着完全正常。
+   用 TypeScript Compiler API dump `parseDiagnostics` + AST 节点 span 定位，别肉眼数括号。
+   相关：多段 edit 是**原子性**的，任一 oldText 不匹配整次回滚，失败后要重读文件确认实际状态；
+   编译验证二分时用**错误码**过滤 tsc 输出（用文件名过滤会在 `/tmp` 路径下静默假阴性）。
+5. **hook 声明顺序**：后声明的 callback 被先声明者依赖时，依赖数组里处于 TDZ，运行时 ReferenceError。
+
+## 待优化
+- 无障碍：状态变化无 `aria-live` 播报；面板 / 圆球无键盘入口（Tab 不可达）。
+- 打磨：消息区滚动条颜色 hardcoded 未适配 dark；朗读控件收起与悬停手感待实测微调；对话窗支持拖拽但不支持 resize。
+
+## 验证
+- build 后加载 `.output/chrome-mv3` 为 unpacked；**重载扩展后必须刷新目标页**，必要时关掉重开标签
+  （旧 content script 实例会残留）。background 改动在 service worker inspector 看。
+- content script 不在 `data:` / `chrome://` / 商店页运行，用真实 `http://127.0.0.1:<port>` 页验证，
+  并确认注入的 shadow host 存在。
+- `npm run build` 会先跑 `bundle-icons`（tsx）；沙箱里报 `listen EPERM` 是环境问题，换本机 shell 重试。
+- **自动化加载扩展**：系统 Chrome 已忽略 `--load-extension`，改用 Playwright 缓存里的 Chrome for Testing
+  二进制（`~/Library/Caches/ms-playwright/chromium-*/chrome-*/…/Google Chrome for Testing`），
+  配合 `--disable-extensions-except` + `--load-extension`、`headless: false`。
+  确认扩展身份读 `chrome.runtime.getManifest()`（别信第一个 `chrome-extension://` target，可能是内置组件扩展）；
+  SW 可直接 `evaluate()` 调 `chrome.i18n.*`，是验证 CLD / i18n 行为最快的手段。
+- 合成页测试（注入 built `content.js` + stub `chrome.runtime` / `storage` / `i18n`）只验证 bundle 行为，
+  不证明 manifest 注入。
+- 断言要覆盖双向结果：复制 = 剪贴板内容正确 **且** 工具栏仍可见；文案断言要考虑 i18n（aria-label 随语言变）。
+- 收尾：删临时脚本、停本地服务、清理临时 profile。
+
+## 参考资料
+`reference/` 下有两个同类扩展项目（见 `reference/README.md`）；对组件结构、消息通信、UI 方案没把握时先看它们。
