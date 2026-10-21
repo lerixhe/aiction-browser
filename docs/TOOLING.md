@@ -34,7 +34,8 @@ logo_raw.jpg ──[ generate-icons.ts ]──> src/assets/icon.png + store/icon
 | 8 | 宣传图设计简报 | `docs/gemini-promo-brief.md`（非代码） | 配色表 + 4 张宣传图标语清单（第 6 项 promo 工具的实际来源） | — | 历史输入 |
 
 其余易被误当成「工具」的东西：`docs/images/options-ui/*.jpg` 是**手工截的**设置页改造前后对比图，
-没有生成脚本；`docs/images/demo.gif` 同样手工录制。
+没有生成脚本。旧的 README 配图（工具栏 / 对话窗 / 设置页截图与 7MB 演示 gif）已删除，
+README 现在直接引用 `store/screenshots/` 的成品图，不再手录。
 
 ## 2. 各工具详解
 
@@ -131,6 +132,7 @@ npx tsx scripts/check-icons.ts
 | 给 `ACTION_ICON_LIBRARY` 加 / 删图标 | 同步 `scripts/bundle-icons.ts` 的清单 → `npm run bundle-icons`（`build` 会自动跑）→ 建议 `npx tsx scripts/check-icons.ts` |
 | 改划词工具栏 / 对话窗 / 设置页 UI | `npm run build` → `npm run screenshots` → `npm run screenshots:frame`（选择器与拖拽坐标可能要改，见 `scripts/store-screenshots/README.md` 末节） |
 | 只调截图边框 / 背景 / 虚拟地址栏 / 主题 | `npm run screenshots:frame`（不必重拍） |
+| 换 README 里的截图 | 无需单独操作：`README.md` / `README.zh-CN.md` 直接引用 `store/screenshots/*.png`，重跑上面两步即同步更新；换张数 / 改名才要动 README |
 | 改品牌名 / 短描述 / 标语 | `store/listing.md` 与 `public/_locales/{en,zh_CN}/messages.json` 必须**逐字符一致**（其余 8 种语言的 `public/_locales/<id>/messages.json` 是各自翻译，不参与这条约束；所有 `_locales` 的 extName / extDescription 长度上限由 `npm run check:i18n` 断言）；然后 `node scripts/store-screenshots/promo.mjs` 重出宣传图 |
 | 改 promo 版式 / 标语 | `node scripts/store-screenshots/promo.mjs` |
 | 加 / 换商店截图张数 | 同时改 `shoot.mjs` 的 `STEPS` 分支、`frame.mjs` 的 `SHOTS` 表、`frame.html` 的 `SHOTS` 表（虚拟域名 / 主题）、`store/README.md` 与 `scripts/store-screenshots/README.md` 的表格 |

@@ -33,10 +33,11 @@
 
 ## 参考素材
 
-项目中已有以下截图可作为视觉参考：
+视觉参考直接用 `store/screenshots/` 里的上架成品图（1280×800，虚拟浏览器窗口 + 品牌背景），
+以及 `store/promo/` 的宣传图。旧的 `docs/images/*.png|jpg|gif` 演示图与新 UI 早已不符，已删除。
 
-- `docs/images/bar.png` — 工具栏截图
-- `docs/images/chat.png` — 聊天窗口截图
-- `docs/images/actions.jpg` — 操作配置截图
-- `docs/images/providers.jpg` — 服务商配置截图
-- `docs/images/demo.gif` — 完整演示动画
+- `store/screenshots/01-select-toolbar.png` — 划词工具栏
+- `store/screenshots/02-instant-answer.png` — 卡片态流式回答
+- `store/screenshots/03-follow-up-chat.png` — 深色主题下的追问对话
+- `store/screenshots/04-custom-actions.png` — 设置页自定义动作
+- `store/promo/marquee-1400x560.png` — 龙头宣传图（版式参考）

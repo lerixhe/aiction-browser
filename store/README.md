@@ -37,6 +37,9 @@ node scripts/store-screenshots/frame.mjs   # ② 合成带框成品 → screensh
 | `03-follow-up-chat.png` | 深色主题下的聊天追问（面板与文章并排，深色背景） |
 | `04-custom-actions.png` | 设置页自定义动作（列表 + 提示词模板） |
 
+仓库根的 `README.md` / `README.zh-CN.md` 直接引用这四个成品图（`store/screenshots/*.png`），
+不再单独维护一套 README 图片；重拍后 README 自动同步。
+
 待补素材：无。
 
 ## 宣传图（`promo/`）

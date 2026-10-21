@@ -30,11 +30,8 @@ docs/
 
 ### [images/](./images/)
 
-存放文档中使用的图片资源，包括：
-- 架构图
-- 流程图
-- UI 截图（设置页改造前/后原型见 `images/options-ui/`）
-- 组件示例
+文档里手工截的图片资源。当前只剩 `images/options-ui/`（设置页改造前 / 后对比图），由
+[OPTIONS_UI.md](./OPTIONS_UI.md) 引用。README 配图与商店素材都在 `store/`，不放在这里。
 
 ### [OPTIONS_UI.md](./OPTIONS_UI.md)
 
