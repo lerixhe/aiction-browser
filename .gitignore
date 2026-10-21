@@ -10,3 +10,6 @@ reference
 .demo
 
 .tmp-ui-audit
+
+# 商业与后端内部文档（定价 / 额度 / 风控 / 网关实现），不入公开仓库
+.private-docs
