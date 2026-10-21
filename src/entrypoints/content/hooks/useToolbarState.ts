@@ -4,9 +4,6 @@ import { getSettings } from "@/shared/storage"
 import { trackEvent, lengthBucket, type AnalyticsSource } from "@/shared/analytics"
 import type { ActionTemplate, QuickAction, SelectionAnchor, SelectionContext } from "@/shared/types"
 
-/** 划词工具栏出现事件的节流窗口：同一页连续划词只保留一条 */
-const TOOLBAR_SHOWN_THROTTLE_MS = 5000
-
 /**
  * Hook for managing toolbar state and custom actions
  * @param source 触发来源（web / pdf），仅作为埋点维度
@@ -20,7 +17,8 @@ export function useToolbarState(source: AnalyticsSource = "web") {
 
   const toolbarVisibleRef = useRef(false)
   const selectionContextRef = useRef<SelectionContext | null>(null)
-  const lastToolbarShownAtRef = useRef(0)
+  /** 上次上报的工具栏落位；同一落位的重复触发不算新的渲染 */
+  const lastShownKeyRef = useRef<string | null>(null)
 
   // Sync refs with state
   useEffect(() => {
@@ -33,20 +31,21 @@ export function useToolbarState(source: AnalyticsSource = "web") {
 
   // Load actions from settings
   useEffect(() => {
-    void getSettings().then((settings) => {
-      setActions(settings.actions.filter((a) => a.enabled !== false))
-      setQuickActions(settings.quickActions.filter((a) => a.enabled))
-    })
+    const loadActions = () => {
+      void getSettings().then((settings) => {
+        setActions(settings.actions.filter((a) => a.enabled !== false))
+        setQuickActions(settings.quickActions.filter((a) => a.enabled))
+      })
+    }
+
+    loadActions()
 
     const onStorageChanged: Parameters<typeof chrome.storage.onChanged.addListener>[0] = (_changes, areaName) => {
       if (areaName !== "sync") {
         return
       }
 
-      void getSettings().then((settings) => {
-        setActions(settings.actions.filter((a) => a.enabled !== false))
-        setQuickActions(settings.quickActions.filter((a) => a.enabled))
-      })
+      loadActions()
     }
 
     chrome.storage.onChanged.addListener(onStorageChanged)
@@ -58,6 +57,8 @@ export function useToolbarState(source: AnalyticsSource = "web") {
     setToolbarVisible(false)
     setToolbarAnchor(null)
     setSelectionContext(null)
+    // 收起后再次出现算一次新的渲染
+    lastShownKeyRef.current = null
   }, [])
 
   // Open toolbar with context and anchor
@@ -66,10 +67,10 @@ export function useToolbarState(source: AnalyticsSource = "web") {
     setToolbarAnchor(anchor)
     setToolbarVisible(true)
 
-    // 划词流失率：工具栏出现次数 vs action_clicked 次数（节流，避免连续划词刷量）
-    const now = Date.now()
-    if (now - lastToolbarShownAtRef.current >= TOOLBAR_SHOWN_THROTTLE_MS) {
-      lastToolbarShownAtRef.current = now
+    // 划词流失率埋点：工具栏出现 = 1 次渲染；可见期间没有位移的重复触发不重复计
+    const shownKey = `${anchor.mouseX},${anchor.mouseY}`
+    if (lastShownKeyRef.current !== shownKey) {
+      lastShownKeyRef.current = shownKey
       void trackEvent("selection_toolbar_shown", {
         source,
         char_length_bucket: lengthBucket(context.text.length)

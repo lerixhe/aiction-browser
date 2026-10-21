@@ -127,10 +127,15 @@
 | `action_clicked` | `action_id`, `is_custom`, `custom_action_count`, `source`(`web`/`pdf`) | `content/App.tsx` `handleAction`；`pdf-viewer/PdfViewer.tsx` `handleAction` | 各动作使用频次，可按来源与自定义/内置拆开 |
 | `quick_action_clicked` | `action_type`(`copyToClipboard`/`speakText`), `source` | 两处的 `handleQuickAction` | 快捷动作使用量（**朗读是否被触发也靠这里**） |
 | `free_input_submitted` | `input_length`, `source` | 两处的 `handleFreeSubmit` | 自由输入（追问输入框）使用量 |
-| `selection_toolbar_shown` | `source`, `char_length_bucket` | `hooks/useToolbarState.ts` `openToolbar`（5s 节流，同页连续划词只留一条） | **划词流失率**：工具栏出现次数 vs `action_clicked` 次数（只上报长度分桶，不报选区内容） |
+| `selection_toolbar_shown` | `source`, `char_length_bucket` | `hooks/useToolbarState.ts` `openToolbar`（按工具栏落位去重，**无时间节流**） | **划词流失率**：工具栏渲染次数 vs `action_clicked` 次数（只上报长度分桶，不报选区内容） |
 
 - 动作身份只靠 `action_id`（内置 = `explain` / `translate`；自定义 = `custom-<timestamp>`）+ `is_custom` 表达，**不再上报动作文案**（内置动作的本地化 label 也一并去掉，避免维护两个会漂移的维度）。
 - `is_custom` 判定统一走 `isBuiltinActionId()`（`src/shared/defaults.ts` 的 `BUILTIN_ACTION_IDS`），不要再在业务代码里手写 `new Set(["explain", "translate"])`。
+
+**`selection_toolbar_shown` 的计数口径 = 工具栏渲染次数**：工具栏**出现一次算一次**（划词出现、出现在新位置）。
+- 只在 **`openToolbar` 真正带来新落位**时上报，落位键 = 鼠标坐标（`mouseX,mouseY`）；同一落位的重复触发不重复计；
+- 工具栏收起（`closeToolbar`）时清空落位键，再次出现重新计一次；
+- 不做时间节流：连续划词每次都算。
 
 ### 2.4 自定义 Actions 管理（options / popup，P1，2026-10-18 落地）
 
@@ -334,7 +339,7 @@
 ### P2 — chat 维度、划词流失率与朗读链路 ✅ 全部实现（2026-10-18）
 
 已完成：
-- `selection_toolbar_shown`（划词流失率，5s 节流，见 §2.3）；
+- `selection_toolbar_shown`（划词流失率，见 §2.3）；
 - `chat_completed` / `chat_cancelled` / `chat_failed` 统一补上 `source`、`turn_index` / `is_follow_up`、`provider_type`、`ttft_ms`；
 - `chat_failed` 新增 `error_code` 归因（`classifyChatError()`，background 在 `ChatStreamFailedEvent.code` 里优先给出结构化归因）；
 - `chat_stopped_by_user`（用户主动停止，与关闭面板导致的 abort 区分开）；
@@ -488,3 +493,4 @@
 | 2026-10-20 | **v0.6.0 发布｜净变化汇总（事件 +1 → 40 个）** | **事件**：+`popup_ask_clicked`（`result`/`source`）。**属性**：`chat_failed` 与 `api_test_completed`（失败分支）追加 `error_name` / `http_status` / `error_detail` / `response_body` + provider 身份（`provider_name` / `provider_id` / `models_dev_id` / `api_base_url` / `is_custom_endpoint` / `has_api_key`）；`api_test_completed` 追加 `stage` / `streaming` / `ttft_ms` / `finish_reason` / `warnings` + 请求形态快照（`message_count` / `input_chars` / `truncated` / `max_tokens` / `context_size` / `reasoning` / `reasoning_effort` / `provider_options`）；`edge_tts_synthesize` 的 `error` 拆为 `error_name` + `error_detail`。**机制**：新增 `src/shared/redact.ts`（只抹凭据）与出口护栏 `sanitizeProperties()`；`classifyChatError()` 删除全部关键词/正则兜底。**0.5.0 → 0.6.0 其余事件（含 `popup_opened` / `provider_switched` / `action_enabled_toggled`）事件名与属性零增删**；`provider_switched` 名称禁令虽已放开，实际仍未上报 `from/to_provider` |
 | 2026-10-20 | i18n 语言偏好值域改名（属性值变更，事件数不变） | 「跟随系统」→「自动（跟随浏览器）」：`settings.language` 的自动项存储值由 `system` 改为 `browser`（读取时兼容旧值，写回即迁移）；`language_changed` 的 `from_language` / `to_language` 值域随之变为 `browser` + 各 locale id，**历史 `system` 与 `browser` 同义**；判定来源收敛为只读 `chrome.i18n.getUILanguage()`（不再读 `navigator.*`，避免 macOS 上退化成跟随系统） |
 | 2026-10-20 | SDK 身份改为 init 时 bootstrap（机制修复，事件/属性零变更） | `initContentScriptAnalytics()` 原先 `persistence: "memory"` + `loaded` 里 `ph.identify(distinctId)`：每次页面加载 SDK 都会先铸一个匿名 ID 再被 merge 进稳定 person，累积触及 PostHog 的 person distinct-ID 上限后事件不再归属该 person（`posthog-js` 1.434.2 会打 `no bootstrap.distinctID was provided` 警告）。改为 `bootstrap: { distinctID: distinctId, isIdentifiedID: true }` 并删除 `loaded` 里的 `identify()`；`persistence: "memory"` 保持不变。background 的 HTTP 通道本就显式带 `distinct_id`，不受影响 |
+| 2026-10-20 | `selection_toolbar_shown` 口径改为「工具栏渲染次数」 | **移除 5s 时间节流**（原实现会把同一页连续划词只留一条，使流失率分母偏小）。口径：工具栏出现一次算一次——`openToolbar` 带来新落位（鼠标坐标）才算，同一落位的重复触发合并；收起时清空落位键，再次出现重新计。可见期间再划一段（新位置）各记一条。属性零增删 |
