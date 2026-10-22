@@ -4,7 +4,7 @@ import { ERROR_MESSAGES, UI_MESSAGES } from "@/shared/constants"
 import { streamChat } from "@/shared/messaging"
 import { buildContextSystemMessage, resolveUILanguageLabel } from "@/shared/prompt"
 import { trackEvent, type AnalyticsSource } from "@/shared/analytics"
-import { classifyChatError, describeApiError, type ApiErrorDiagnostics } from "@/shared/errors"
+import { classifyChatError, describeApiError, type ApiErrorDiagnostics, type ChatErrorCode } from "@/shared/errors"
 import { providerTypeOf, providerIdentityOf, type ProviderIdentityProps } from "@/shared/provider-type"
 import { getSettings, getActiveProvider } from "@/shared/storage"
 import type { ChatMessage, ChatRequestState, ExtensionSettings, SelectionContext } from "@/shared/types"
@@ -201,7 +201,7 @@ export function useChatState(source: AnalyticsSource = "web") {
         let streamedContent = ""
         let streamedReasoning = ""
         let terminalState: "completed" | "cancelled" | "failed" | null = null
-        let failedCode: string = "unknown"
+        let failedCode: ChatErrorCode = "unknown"
         let failedDiagnostics: ApiErrorDiagnostics | null = null
         let failedProvider: ProviderIdentityProps = providerIdentity
 
@@ -285,7 +285,9 @@ export function useChatState(source: AnalyticsSource = "web") {
             setRequestState({
               status: "failed",
               assistantMessageId: assistantMessage.id,
-              error: event.error
+              error: event.error,
+              // 归因码要带到状态里：面板的失败态 CTA 靠它决定「去登录」还是什么都不显示
+              code: failedCode
             })
 
             const afterFailure = updateMessageContent(messagesRef.current, assistantMessage.id, event.error)
@@ -352,7 +354,12 @@ export function useChatState(source: AnalyticsSource = "web") {
         )
 
         const message = error instanceof Error ? error.message : ERROR_MESSAGES.UNKNOWN_ERROR
-        setRequestState({ status: "failed", assistantMessageId: assistantMessage.id, error: message })
+        setRequestState({
+          status: "failed",
+          assistantMessageId: assistantMessage.id,
+          error: message,
+          code: classifyChatError(error)
+        })
         const afterFailure = updateMessageContent(messagesRef.current, assistantMessage.id, `${ERROR_MESSAGES.REQUEST_FAILED}：${message}`)
         messagesRef.current = afterFailure
         setMessages(afterFailure)

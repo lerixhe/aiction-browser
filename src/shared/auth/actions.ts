@@ -23,8 +23,12 @@ function build(kind: AuthAction["kind"], label: string, path: string): AuthActio
   return { kind, label, url: `${WEB_BASE}${path}` }
 }
 
+/**
+ * 登录 CTA。文案刻意是「前往设置登录」而不是「登录」：
+ * 面板里的这个按钮会把用户从内容页带走，必须提前说清落点（唯一消费方是面板失败态）。
+ */
 export function logInAction(t: Translate): AuthAction {
-  return build("login", t("options.account.signIn"), WEB_ROUTES.login)
+  return build("login", t("chat.signInCta"), WEB_ROUTES.login)
 }
 
 export function upgradeAction(t: Translate): AuthAction {

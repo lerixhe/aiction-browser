@@ -81,6 +81,7 @@ export default function ChatSession({ init, source, pinned, revealNonce, onPinne
       capturedText={init.capturedText}
       messages={chat.messages}
       requestState={chat.requestState.status}
+      failureCode={chat.requestState.status === "failed" ? chat.requestState.code : undefined}
       modelName={chat.modelName}
       source={source}
       pinned={pinned}

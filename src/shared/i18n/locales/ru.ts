@@ -49,6 +49,7 @@ export default {
   "chat.unpinPanel": "Открепить панель разговора",
   "chat.pinShort": "Закрепить",
   "chat.copyMessage": "Копировать ответ",
+  "chat.signInCta": "Войти в настройках",
   "chat.copyShort": "Копировать",
   "chat.copied": "Скопировано",
   "chat.expandChat": "Уточнить",

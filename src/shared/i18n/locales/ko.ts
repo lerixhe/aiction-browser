@@ -49,6 +49,7 @@ export default {
   "chat.unpinPanel": "대화 패널 고정 해제",
   "chat.pinShort": "고정",
   "chat.copyMessage": "답변 복사",
+  "chat.signInCta": "설정에서 로그인",
   "chat.copyShort": "복사",
   "chat.copied": "복사됨",
   "chat.expandChat": "추가 질문",

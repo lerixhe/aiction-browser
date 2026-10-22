@@ -47,6 +47,7 @@ const messages = {
   "chat.unpinPanel": "Unpin conversation panel",
   "chat.pinShort": "Pin",
   "chat.copyMessage": "Copy answer",
+  "chat.signInCta": "Go to settings to sign in",
   "chat.copyShort": "Copy",
   "chat.copied": "Copied",
   "chat.expandChat": "Follow up",

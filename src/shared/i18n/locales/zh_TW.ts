@@ -49,6 +49,7 @@ export default {
   "chat.unpinPanel": "取消釘選對話面板",
   "chat.pinShort": "釘選",
   "chat.copyMessage": "複製回覆",
+  "chat.signInCta": "前往設定登入",
   "chat.copyShort": "複製",
   "chat.copied": "已複製",
   "chat.expandChat": "追問",

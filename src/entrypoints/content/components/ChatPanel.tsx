@@ -16,6 +16,9 @@ import { copyText } from "@/shared/clipboard"
 import { trackEvent, type AnalyticsSource } from "@/shared/analytics"
 import { useI18n } from "@/shared/i18n/context"
 import { toSingleLine } from "@/entrypoints/content/utils/reasoningText"
+import { logInAction, upgradeAction } from "@/shared/auth/actions"
+import { MESSAGE_TYPES } from "@/shared/constants"
+import type { ChatErrorCode } from "@/shared/errors"
 import type { ChatMessage, ChatRequestState } from "@/shared/types"
 
 /** 卡片态宽度（新触发时的默认形态，内容直铺、窄一些、贴选区） */
@@ -339,6 +342,15 @@ function ExpandChatIcon({ size, color }: { size: number; color: string }) {
 }
 
 /** 生成中的跳动圆点（用于消息区底部「AI 正在生成中…」提示） */
+/** 失败态 CTA 的图标：右上箭头，暗示「会离开当前页面」 */
+function FailureCtaIcon({ color, size = 13 }: { color: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block" }}>
+      <path d="M7 17L17 7M17 7H8M17 7v9" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 function ThinkingDot({ color, size = 6 }: { color: string; size?: number }) {
   return (
     <span
@@ -812,6 +824,11 @@ interface Props {
   capturedText: string
   messages: ChatMessage[]
   requestState: ChatRequestState["status"]
+  /**
+   * 失败归因码（仅 `requestState === "failed"` 时有值）。
+   * 面板只认两类：需要登录（`no_api_key` / `auth`）与额度耗尽（`quota_exceeded`）。
+   */
+  failureCode?: ChatErrorCode
   modelName?: string
   /** 触发来源（web 网页 / pdf 阅读器）：仅作为埋点维度 */
   source: AnalyticsSource
@@ -844,6 +861,7 @@ export default function ChatPanel({
   capturedText,
   messages,
   requestState,
+  failureCode,
   modelName,
   source,
   pinned,
@@ -1085,6 +1103,32 @@ export default function ChatPanel({
 
   const isStreaming = requestState === "streaming"
   const sendDisabled = isStreaming || !input.trim()
+
+  /**
+   * 失败态 CTA：只有两类归因值得把用户带走。
+   * - 需要登录（`no_api_key` / `auth`）→ 打开设置页的账号分区
+   * - 额度耗尽（`quota_exceeded`，M2 才会触发）→ 打开定价页
+   * 其余失败（超时 / 网络 / 端点错误）留在原地，用户重试即可——不要把所有失败都变成推销。
+   */
+  const failureAction = useMemo(() => {
+    if (requestState !== "failed" || !failureCode) return null
+    if (failureCode === "quota_exceeded") return upgradeAction(t)
+    if (failureCode === "no_api_key" || failureCode === "auth") return logInAction(t)
+    return null
+  }, [requestState, failureCode, t])
+
+  const handleFailureAction = useCallback(() => {
+    if (!failureAction) return
+    if (failureAction.kind === "login") {
+      // 走 OPEN_OPTIONS：`openOptionsPage()` 不支持 hash，而 CTA 必须落到 #account
+      void chrome.runtime.sendMessage({
+        type: MESSAGE_TYPES.OPEN_OPTIONS,
+        payload: { hash: "account", entry: "chat" }
+      })
+      return
+    }
+    void chrome.tabs.create({ url: failureAction.url })
+  }, [failureAction])
   const hasCapturedText = capturedText.length > 0
   /** 卡片态只呈现 AI 生成的内容（隐藏用户气泡与输入框）；聊天态保持全部消息 */
   const visibleMessages = mode === "card" ? messages.filter((item) => item.role === "assistant") : messages
@@ -1275,6 +1319,14 @@ export default function ChatPanel({
         }
         [data-composer-input]::-webkit-scrollbar-thumb:hover {
           background-color: ${theme.text.secondary}59;
+        }
+        /* 失败态 CTA：hover 加深底色、键盘聚焦用主色焦点环（鼠标点击不显示） */
+        [data-failure-cta="true"]:hover {
+          background-color: ${theme.accent.primary}24;
+        }
+        [data-failure-cta="true"]:focus-visible {
+          outline: 2px solid ${theme.accent.primary}59;
+          outline-offset: 1px;
         }
       `}</style>
 
@@ -1503,6 +1555,36 @@ export default function ChatPanel({
             }}>
             <ThinkingDot color={theme.accent.primary} />
             {t("chat.generating")}
+          </div>
+        ) : null}
+
+        {/* 失败态 CTA：只在「需要登录」与「额度耗尽」两种归因下出现。
+            这是唯一会把用户从内容页带走的入口，所以按钮文案必须是明确动作，
+            且**不关闭面板**（点击能被 composedPath() 判成扩展内部，不触发点外关闭）。 */}
+        {failureAction ? (
+          <div style={{ marginTop: visibleMessages.length > 0 ? uiSpace[10] : 0 }}>
+            <button
+              type="button"
+              data-failure-cta="true"
+              onClick={handleFailureAction}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: uiSpace[6],
+                height: 30,
+                padding: `0 ${uiSpace[12]}px`,
+                borderRadius: uiRadius.md,
+                border: `1px solid ${theme.accent.primary}66`,
+                background: `${theme.accent.primary}14`,
+                color: theme.accent.primary,
+                fontSize: uiTypography.fontSize.sm,
+                fontWeight: uiTypography.fontWeight.medium,
+                fontFamily: "inherit",
+                cursor: "pointer"
+              }}>
+              <FailureCtaIcon color="currentColor" />
+              {failureAction.label}
+            </button>
           </div>
         ) : null}
       </div>

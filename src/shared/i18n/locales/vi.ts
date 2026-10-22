@@ -49,6 +49,7 @@ export default {
   "chat.unpinPanel": "Bỏ ghim bảng trò chuyện",
   "chat.pinShort": "Ghim",
   "chat.copyMessage": "Sao chép câu trả lời",
+  "chat.signInCta": "Mở cài đặt để đăng nhập",
   "chat.copyShort": "Sao chép",
   "chat.copied": "Đã sao chép",
   "chat.expandChat": "Hỏi tiếp",

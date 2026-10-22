@@ -49,6 +49,7 @@ export default {
   "chat.unpinPanel": "会話パネルの固定を解除",
   "chat.pinShort": "固定",
   "chat.copyMessage": "回答をコピー",
+  "chat.signInCta": "設定を開いてログイン",
   "chat.copyShort": "コピー",
   "chat.copied": "コピーしました",
   "chat.expandChat": "追加で質問",

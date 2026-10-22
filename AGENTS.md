@@ -202,6 +202,9 @@ models.dev / OpenRouter 的 `limit.output`、`top_provider.max_completion_tokens
   取色一律用主题的 `accent.primary`（品牌/交互色，含「播放完毕」的对钩而不是 success 绿），
   失败态才保留 `state.error`。退场计时器与倒计时圆环同帧启停，
   **退场时长常量在两个文件各定义一次，改要同步改**。
+- **失败态 CTA** 只在 `no_api_key` / `auth` / `quota_exceeded` 三种归因下出现，落点是
+  `OPEN_OPTIONS#account` 或定价页；点击**不关闭面板**（`data-failure-cta` 供样式与测试定位）。
+  其余失败（超时 / 网络 / 端点）不给 CTA——把失败都变成推销等于另一种静默失败。
 - 层级：工具栏 `uiLayer.overlay` > 面板 `uiLayer.panel`。
 - 拆组件时 `<style>` 里的全局样式（`@keyframes` 等）容易整块丢失（不报错、动画静默失效），拆前列清单指定归属。
 
