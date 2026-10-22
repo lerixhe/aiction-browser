@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+
+import { trackEvent, usedRatioBucket } from "@/shared/analytics"
 
 import { manageSubscriptionAction } from "@/shared/auth/actions"
 import { WEB_BASE } from "@/shared/auth/config"
@@ -46,6 +48,8 @@ export function AccountSection({ settings, saveSettingsNow }: AccountSectionProp
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null)
   const [entitlementsFailed, setEntitlementsFailed] = useState(false)
   const [confirmSignOut, setConfirmSignOut] = useState(false)
+  /** 额度提示每个挂载只上报一次（React 重渲染会反复触发 effect） */
+  const quotaBannerReportedRef = useRef(false)
 
   const signedIn = snapshot.state === "signed-in"
 
@@ -100,10 +104,24 @@ export function AccountSection({ settings, saveSettingsNow }: AccountSectionProp
     }
   }
 
+  // 账号区「可见」：只有真的能看到额度（有会话且快照就绪）才上报，未登录没有额度可看
+  useEffect(() => {
+    if (quotaBannerReportedRef.current || loading) return
+    if (snapshot.state === "signed-out") return
+    quotaBannerReportedRef.current = true
+    void trackEvent("quota_banner_shown", {
+      plan: snapshot.plan,
+      used_ratio_bucket: usedRatioBucket(snapshot.quota?.usedRatio),
+      surface: "options",
+      source: "options"
+    })
+  }, [loading, snapshot])
+
   const handleSignIn = async () => {
     if (signingIn) return
     setSigningIn(true)
     setActionError(null)
+    void trackEvent("auth_sign_in_started", { entry: "options", source: "options" })
     try {
       const response = (await chrome.runtime.sendMessage({
         type: MSG.AUTH_SIGN_IN,

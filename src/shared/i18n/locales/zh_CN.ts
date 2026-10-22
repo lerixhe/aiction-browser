@@ -287,7 +287,7 @@ export default {
   "options.about.tagline": "GPL-3.0 开源协议",
   "options.about.emailLabel": "Email：support@aiction.app",
   "options.about.telemetryTitle": "匿名使用统计",
-  "options.about.telemetryDesc": "匿名收集使用数据与错误信息，不会上传你选中的文字或 API Key。",
+  "options.about.telemetryDesc": "匿名收集使用数据与错误信息（含登录状态与套餐档位），不会上传你选中的文字、邮箱或 API Key。",
   "options.about.telemetryEnabled": "已开启",
   "options.about.telemetryDisabled": "已关闭",
   "options.about.copyright": "© 2026 AIction All rights reserved.",

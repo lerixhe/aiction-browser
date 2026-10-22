@@ -28,6 +28,22 @@ export function lengthBucket(length: number): string {
   return "200+"
 }
 
+/**
+ * 额度使用率分桶（`quota_banner_shown.used_ratio_bucket`）。
+ *
+ * 只报档位不报精确比例：精确值对「要不要引导升级」没有增量信息，
+ * 但能区分「零使用」与「快用完」——而这两者的转化意图完全不同。
+ * `unknown` 是真实取值：面板侧不知道 plan / 额度（只拿到失败归因），不能默认为 0。
+ */
+export function usedRatioBucket(ratio: number | null | undefined): string {
+  if (ratio === null || ratio === undefined || !Number.isFinite(ratio)) return "unknown"
+  if (ratio <= 0) return "0"
+  if (ratio < 0.5) return "<50"
+  if (ratio < 0.8) return "<80"
+  if (ratio < 1) return "<100"
+  return "100"
+}
+
 // ── 上报出口的凭据护栏（机制保证，见 docs/ANALYTICS.md §3.11）────────
 //
 // 业务侧怎么写都不影响这条底线：**API Key / Token 永远不会离开本机**。

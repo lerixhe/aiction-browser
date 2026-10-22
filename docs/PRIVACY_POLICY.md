@@ -31,6 +31,11 @@ This Privacy Policy describes how AIction ("we", "our", or "the extension") coll
 - API connection test results (success/failure, latency)
 - **Error diagnostics** (see below)
 - Anonymous usage identifier (randomly generated UUID)
+- **Account state for the official service** (enum values only): a randomly generated device id,
+  sign-in state (`signed-in` / `anonymous` / `signed-out`), your plan tier (`free` / `pro` / `max`),
+  and a **bucketed** quota usage ratio (`0` / `<50%` / `<80%` / `<100%` / `100%`).
+  Sign-in events record the entry point (`popup` / `options`) and a coarse failure reason
+  (`window_closed` / `state_mismatch` / `server_error` / `network`) — never an email, user id, or token.
 
 **Error Diagnostics:**
 When an AI request, connection test, or text-to-speech request fails, we record a diagnostic entry containing:
@@ -44,6 +49,7 @@ Before leaving your browser, these fields are scrubbed of credentials: API keys 
 > Note: provider error responses can echo back part of the request (for example a validation error may quote the message content that was rejected). If that happens, the echoed text is uploaded as part of the error message. We do not upload your AI conversations, selected text, or page content as separate fields.
 
 **What We Do NOT Collect:**
+- Your email address, user id, or any sign-in credential (account state is reported as enum values only)
 - Your selected text content (as a separate field — see the note above about provider error echoes)
 - Your conversations with AI
 - **Your API keys or tokens** (removed by a hard outbound filter that drops credential-named fields and scrubs token-shaped values)

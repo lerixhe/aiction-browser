@@ -1117,6 +1117,19 @@ export default function ChatPanel({
     return null
   }, [requestState, failureCode, t])
 
+  // 失败态 CTA「被看到」：面板侧只拿得到失败归因，plan / 额度填 unknown（不猜）
+  const quotaBannerReportedRef = useRef(false)
+  useEffect(() => {
+    if (!failureAction || quotaBannerReportedRef.current) return
+    quotaBannerReportedRef.current = true
+    void trackEvent("quota_banner_shown", {
+      plan: "unknown",
+      used_ratio_bucket: "unknown",
+      surface: "panel",
+      source
+    })
+  }, [failureAction, source])
+
   const handleFailureAction = useCallback(() => {
     if (!failureAction) return
     if (failureAction.kind === "login") {

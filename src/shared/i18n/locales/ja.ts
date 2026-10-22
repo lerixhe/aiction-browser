@@ -287,7 +287,7 @@ export default {
   "options.about.tagline": "GPL-3.0 オープンソース",
   "options.about.emailLabel": "メール: support@aiction.app",
   "options.about.telemetryTitle": "匿名の利用統計",
-  "options.about.telemetryDesc": "選択したテキストや API キーを送信せず、利用状況とエラー情報のみを匿名で収集します。",
+  "options.about.telemetryDesc": "利用状況とエラー情報（ログイン状態・プランを含む）のみを匿名で収集します。選択したテキスト、メールアドレス、API キーは送信しません。",
   "options.about.telemetryEnabled": "有効",
   "options.about.telemetryDisabled": "無効",
   "options.about.copyright": "© 2026 AIction All rights reserved.",

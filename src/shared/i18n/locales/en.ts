@@ -285,7 +285,7 @@ const messages = {
   "options.about.tagline": "GPL-3.0 open source",
   "options.about.emailLabel": "Email: support@aiction.app",
   "options.about.telemetryTitle": "Anonymous usage data",
-  "options.about.telemetryDesc": "We only collect anonymous usage and error data, never your selected text or API keys.",
+  "options.about.telemetryDesc": "We only collect anonymous usage and error data (including sign-in state and plan tier), never your selected text, email, or API keys.",
   "options.about.telemetryEnabled": "Enabled",
   "options.about.telemetryDisabled": "Disabled",
   "options.about.copyright": "© 2026 AIction All rights reserved.",

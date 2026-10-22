@@ -287,7 +287,7 @@ export default {
   "options.about.tagline": "Mã nguồn mở GPL-3.0",
   "options.about.emailLabel": "Email: support@aiction.app",
   "options.about.telemetryTitle": "Thống kê ẩn danh",
-  "options.about.telemetryDesc": "Chúng tôi chỉ thu thập ẩn danh tình trạng sử dụng và lỗi, không gửi văn bản bạn chọn hay API key.",
+  "options.about.telemetryDesc": "Chúng tôi chỉ thu thập ẩn danh tình trạng sử dụng và lỗi (bao gồm trạng thái đăng nhập và gói), không gửi văn bản bạn chọn, email hay API key.",
   "options.about.telemetryEnabled": "Bật",
   "options.about.telemetryDisabled": "Tắt",
   "options.about.copyright": "© 2026 AIction Bảo lưu mọi quyền.",

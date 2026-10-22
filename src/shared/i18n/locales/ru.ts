@@ -287,7 +287,7 @@ export default {
   "options.about.tagline": "Открытый код · GPL-3.0",
   "options.about.emailLabel": "Эл. почта: support@aiction.app",
   "options.about.telemetryTitle": "Анонимная статистика",
-  "options.about.telemetryDesc": "Мы анонимно собираем статистику использования и ошибки, не отправляя выделенный текст и ключи API.",
+  "options.about.telemetryDesc": "Мы анонимно собираем статистику использования и ошибки (включая статус входа и тариф), не отправляя выделенный текст, email и ключи API.",
   "options.about.telemetryEnabled": "Включена",
   "options.about.telemetryDisabled": "Отключена",
   "options.about.copyright": "© 2026 AIction. Все права защищены.",

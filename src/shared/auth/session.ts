@@ -35,6 +35,7 @@ import {
 import type { AuthErrorCode, AuthSnapshot, PersistedAuth, PrincipalKind, SignInResult } from "@/shared/auth/types"
 import { isPlanId } from "@/shared/auth/types"
 import { MESSAGE_TYPES } from "@/shared/constants"
+import { trackBackgroundEvent } from "@/shared/analytics"
 
 // ── 模块级状态（background 是单实例，但会被并发唤醒）─────────────
 
@@ -58,6 +59,25 @@ export function resetAuthSession(): void {
 }
 
 // ── 小工具 ─────────────────────────────────────────────────────
+
+/** 登录耗时分桶（`auth_sign_in_completed.duration_bucket`） */
+function signInDurationBucket(durationMs: number): string {
+  if (durationMs < 2000) return "<2s"
+  if (durationMs < 10_000) return "2-10s"
+  return ">10s"
+}
+
+/**
+ * 失败归因 → 埋点枚举（SPEC §9）。
+ * `CANCELLED` 也是失败事件的一种（`reason: window_closed`）：用户中途放弃同样是有用的信号，
+ * 只是不该弹错、也不该进错误监控。
+ */
+function signInFailureReason(code: AuthErrorCode): string {
+  if (code === "CANCELLED") return "window_closed"
+  if (code === "STATE_MISMATCH") return "state_mismatch"
+  if (code === "NETWORK") return "network"
+  return "server_error"
+}
 
 function buildSignedOutSnapshot(): AuthSnapshot {
   // `updatedAt` 用真实时间：它参与订阅端去重，0 留给 facade 的兜底值（表示「从未有过快照」）
@@ -256,11 +276,17 @@ export async function getAccessToken(options: { force?: boolean } = {}): Promise
  * `reason` 只用于日志与调用方判断，**不上报**（凭据相关一律不进埋点）。
  */
 export async function invalidateSession(reason: AuthErrorCode): Promise<void> {
+  // 先看一眼有没有会话：并发的两个 401 都会走到这里，重复上报会让「被动登出」次数翻倍
+  const previous = await readSession()
+
   generation++
   inflightRefresh = null
   await clearSession()
   clearEntitlementsCache()
   await persistSnapshot(buildSignedOutSnapshot())
+  if (previous) {
+    void trackBackgroundEvent("auth_signed_out", { initiated: "revoked" })
+  }
   if (reason !== "REFRESH_REVOKED") {
     console.warn(`[auth] 会话失效：${reason}`)
   }
@@ -354,10 +380,19 @@ async function exchangeCode(input: { code: string; verifier: string; extId: stri
 }
 
 async function performSignIn(input: { entry: "popup" | "options" }): Promise<SignInResult> {
-  // M1 不用 entry，T6 的埋点（登录入口来源）才需要它
-  void input.entry
+  const { entry } = input
+  const startedAt = Date.now()
 
-  if (!canUseIdentity()) return { status: "failed", code: "SERVER_ERROR" }
+  /**
+   * 统一的失败/取消出口：每个分支都必须经过这里，否则埋点会漏（漏报比错报更难查）。
+   * `cancelled` 与 `failed` 共用同一个事件，用 `reason` 区分——用户中途放弃也是信号。
+   */
+  const fail = (code: AuthErrorCode): SignInResult => {
+    void trackBackgroundEvent("auth_sign_in_failed", { entry, reason: signInFailureReason(code) })
+    return code === "CANCELLED" ? { status: "cancelled" } : { status: "failed", code }
+  }
+
+  if (!canUseIdentity()) return fail("SERVER_ERROR")
 
   const extId = extensionId()
   const redirectUri = identityRedirectUrl()
@@ -372,34 +407,33 @@ async function performSignIn(input: { entry: "popup" | "options" }): Promise<Sig
     callbackUrl = await launchWebAuthFlow(authorizeUrl)
   } catch {
     await clearPending()
-    return { status: "failed", code: "NETWORK" }
+    return fail("NETWORK")
   }
 
-  // 用户关窗：不是错误，不弹错、不上报
+  // 用户关窗：不是错误（不弹错），但埋点仍记一条 reason=window_closed
   if (!callbackUrl) {
     await clearPending()
-    return { status: "cancelled" }
+    return fail("CANCELLED")
   }
 
   const pending = await readPending()
   // ★ 先删再看结果：无论成败都只允许用一次（防重放）
   await clearPending()
 
-  if (!pending) return { status: "failed", code: "STATE_MISMATCH" }
-  if (Date.now() - pending.createdAt > PENDING_TTL_MS) return { status: "failed", code: "STATE_MISMATCH" }
+  if (!pending) return fail("STATE_MISMATCH")
+  if (Date.now() - pending.createdAt > PENDING_TTL_MS) return fail("STATE_MISMATCH")
 
   const callback = parseCallbackUrl(callbackUrl)
-  if (callback.state !== pending.state) return { status: "failed", code: "STATE_MISMATCH" }
+  if (callback.state !== pending.state) return fail("STATE_MISMATCH")
   // error=access_denied（用户点了拒绝）也算取消
-  if (!callback.code) return { status: "cancelled" }
+  if (!callback.code) return fail("CANCELLED")
 
   let tokens: ExchangedTokens
   try {
     // code 一次性：服务端回 400 一律按「已用过 / 过期」处理，**不重试**
     tokens = await exchangeCode({ code: callback.code, verifier: pending.verifier, extId })
   } catch (error) {
-    const authError = toAuthError(error)
-    return { status: "failed", code: authError.code }
+    return fail(toAuthError(error).code)
   }
 
   // 新会话：让登出前的旧刷新彻底失效
@@ -427,6 +461,12 @@ async function performSignIn(input: { entry: "popup" | "options" }): Promise<Sig
 
   // 权益拉取失败不影响「登录成功」这个事实（失败不降级，快照保留刚才的 plan）
   await refreshSnapshotFromServer().catch(() => undefined)
+
+  void trackBackgroundEvent("auth_sign_in_completed", {
+    entry,
+    method: "pkce",
+    duration_bucket: signInDurationBucket(Date.now() - startedAt)
+  })
   return { status: "signed-in" }
 }
 
@@ -458,6 +498,7 @@ export async function signOut(): Promise<void> {
   await persistSnapshot(buildSignedOutSnapshot())
 
   if (previous) {
+    void trackBackgroundEvent("auth_signed_out", { initiated: "user" })
     void authFetch("/auth/logout", {
       auth: false,
       method: "POST",

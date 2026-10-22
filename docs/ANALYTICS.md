@@ -10,7 +10,7 @@
 | 数据接收端 | PostHog（`https://us.i.posthog.com`，项目 token 常量见 `src/shared/analytics.ts`） |
 | 埋点唯一入口 | `src/shared/analytics.ts`（所有上报必须经过它，禁止在业务代码里直接 `fetch` PostHog） |
 | 事件定义分散位置 | content / pdf-viewer / popup / options / background（见下方清单） |
-| 当前事件数 | 40 |
+| 当前事件数 | 45 |
 | 用户开关 | `settings.telemetryEnabled`（Options → 关于 → 协助改善用户体验，默认 `true`） |
 | 隐私承诺 | `docs/PRIVACY_POLICY.md`「Analytics Provider: PostHog」章节 |
 
@@ -59,7 +59,8 @@
 | `aiction:optionsEntry` | Options 页入口标记（`popup`），Options 读取后立即清除 | `Popup.tsx` → `OptionsPage.tsx` |
 | `aiction:lastActiveDate` | 上次上报活跃的本地日期（`YYYY-MM-DD`） | `background.ts` `reportDailyActive()` |
 
-- 不含任何真实身份、登录信息；扩展无账号体系。
+- 不含任何真实身份。M1 起有账号体系，但埋点仍只到**设备级**：登录后不调 `identify()`，
+  上报的账号信息只有枚举（登录状态、套餐档位、额度使用率档位），邮箱 / userId / token 一律不上报。
 - 一次性事件用标记位控制，跨会话/跨页面只计一次；属性里同时带 `is_first: true` 或 `is_first_custom: true`，便于直接切分。
 - 注意：SDK 用 `persistence: "memory"` + 无 pageview，PostHog 侧的「Session」概念对扩展场景基本失效 → 涉及会话的指标靠自定义事件（`daily_active`，见 §2.1），Dashboard 配置见 §6。
 
@@ -85,7 +86,7 @@
 
 ---
 
-## 2. 现存事件清单（共 40 个）
+## 2. 现存事件清单（共 45 个）
 
 > 表格中的「触发位置」写函数/组件名而非行号，避免代码变动后失效。
 
@@ -250,6 +251,30 @@
 - `duration_ms` 是从开始朗读（含合成等待）到终局的墙钟时间，会包含用户暂停的时间。
 
 未覆盖：播放中的控制操作本身没有任何事件（暂停/继续、拖进度、换语音、换语速）——见 §5 P3 候选。
+
+---
+
+### 2.9 账号与登录（M1，background + options / popup / 面板）
+
+| 事件名 | 属性 | 触发位置 | 用途 |
+|--------|------|----------|------|
+| `auth_sign_in_started` | `entry`(`popup`/`options`), `source` | Options 账号分区 / Popup 账号行的登录按钮（发出 `AUTH_SIGN_IN` 前） | 登录意图：有多少人真的点了登录 |
+| `auth_sign_in_completed` | `entry`, `method`(`pkce`), `duration_bucket`(`<2s`/`2-10s`/`>10s`) | `shared/auth/session.ts` `performSignIn`（换 token 成功、会话落库后） | 登录成功率与耗时（授权页那一跳的体感） |
+| `auth_sign_in_failed` | `entry`, `reason`(`window_closed`/`state_mismatch`/`server_error`/`network`) | 同上，**每个失败/取消分支**（统一经 `fail()` 出口） | 登录漏斗的流失点：关窗 vs 服务端错误 |
+| `auth_signed_out` | `initiated`(`user`/`revoked`) | `signOut()` / `invalidateSession()` | 主动登出 vs 被撤销（refresh 失效） |
+| `quota_banner_shown` | `plan`, `used_ratio_bucket`(`0`/`<50`/`<80`/`<100`/`100`/`unknown`), `surface`(`options`/`popup`/`panel`) | 账号分区、Popup 账号行、面板失败态 CTA 的**首次渲染** | 额度/登录引导的曝光量（分母是它，分子是点击） |
+
+口径说明：
+- `auth_sign_in_failed.reason = window_closed` **不是错误**：用户在授权页关窗或点拒绝同样是放弃信号，记一条才能算漏斗；
+  它不弹提示、不进错误监控（`cancelled` 在 UI 侧是静默复位）。
+- `quota_banner_shown` 每个界面挂载只报一次（`useRef` 去重），React 重渲染不会刷量；未登录（`signed-out`）不上报——
+  没有额度可看，报出来只会污染分母。
+- `used_ratio_bucket` 只报档位：精确比例对「要不要引导升级」没有增量信息。
+  **面板侧 `plan` / `used_ratio_bucket` 恒为 `unknown`**：面板只拿得到失败归因，不为了一个埋点去读账号快照。
+- **禁止上报**邮箱、`userId` 明文、任何 token 或额度原始数值；M1 不做 `identify()`（仍是设备级 `distinct_id`，
+  与「匿名额度」一起留到 M4 评估，见 §1.2）。
+- 埋点位置分工：`auth_sign_in_*` / `auth_signed_out` 在 background（`session.ts`，用 `trackBackgroundEvent`），
+  `auth_sign_in_started` / `quota_banner_shown` 在 UI（`trackEvent`）。
 
 ---
 
@@ -496,3 +521,4 @@
 | 2026-10-20 | SDK 身份改为 init 时 bootstrap（机制修复，事件/属性零变更） | `initContentScriptAnalytics()` 原先 `persistence: "memory"` + `loaded` 里 `ph.identify(distinctId)`：每次页面加载 SDK 都会先铸一个匿名 ID 再被 merge 进稳定 person，累积触及 PostHog 的 person distinct-ID 上限后事件不再归属该 person（`posthog-js` 1.434.2 会打 `no bootstrap.distinctID was provided` 警告）。改为 `bootstrap: { distinctID: distinctId, isIdentifiedID: true }` 并删除 `loaded` 里的 `identify()`；`persistence: "memory"` 保持不变。background 的 HTTP 通道本就显式带 `distinct_id`，不受影响 |
 | 2026-10-20 | `selection_toolbar_shown` 口径改为「工具栏渲染次数」 | **移除 5s 时间节流**（原实现会把同一页连续划词只留一条，使流失率分母偏小）。口径：工具栏出现一次算一次——`openToolbar` 带来新落位（鼠标坐标）才算，同一落位的重复触发合并；收起时清空落位键，再次出现重新计。可见期间再划一段（新位置）各记一条。属性零增删 |
 | 2026-10-22 | 登录功能 M1 地基（`ChatErrorCode` 新增一桶，事件数不变） | `ChatErrorCode` 新增 `quota_exceeded`（HTTP **402**，由结构化 `statusCode` 判定，不做文本推断），为 M2 的额度墙预留归因；M1 不加任何登录相关事件（`auth_*` 随 UI 在 T6 一并入表）。`classifyChatError()` 桶数 10 → 11 |
+| 2026-10-22 | 登录功能 M1 埋点（+5 → 45 个事件） | 新增 §2.9：`auth_sign_in_started` / `auth_sign_in_completed` / `auth_sign_in_failed`（`cancelled` 也记一条，`reason = window_closed`）/ `auth_signed_out`（`user` / `revoked`）/ `quota_banner_shown`（`surface` 三处、挂载去重、失败侧填 `unknown`）；background 由 `session.ts` 上报、UI 侧三个入口上报；新增 `usedRatioBucket()`；§1.2「扩展无账号体系」表述更新为「账号体系存在，但埋点仍只到设备级」 |

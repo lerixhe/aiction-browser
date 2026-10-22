@@ -3,7 +3,7 @@ import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState }
 import { getSettings, saveSettings } from "@/shared/storage"
 import { OPTIONS_ENTRY_STORAGE_KEY, MESSAGE_TYPES } from "@/shared/constants"
 import { requestOpenChatInActiveTab } from "@/shared/messaging"
-import { trackEvent } from "@/shared/analytics"
+import { trackEvent, usedRatioBucket } from "@/shared/analytics"
 import { isBuiltinActionId } from "@/shared/defaults"
 import { providerTypeOf } from "@/shared/provider-type"
 import { useUiThemeName } from "@/shared/ui/theme"
@@ -154,6 +154,8 @@ export default function Popup() {
   const [signInError, setSignInError] = useState(false)
   /** 只读快照：凭据永远拿不到（见 shared/auth/facade.ts） */
   const { snapshot: authSnapshot } = useAuthSnapshot()
+  /** 额度提示每个 Popup 挂载只上报一次 */
+  const quotaBannerReportedRef = useRef(false)
   const providerMenuRef = useRef<HTMLDivElement | null>(null)
 
   const providers = settings?.providers ?? []
@@ -317,6 +319,7 @@ export default function Popup() {
     if (signingIn) return
     setSigningIn(true)
     setSignInError(false)
+    void trackEvent("auth_sign_in_started", { entry: "popup", source: "popup" })
     try {
       // 授权窗口会让 popup 失焦关闭；失败（identity 不可用 / 无接收方）则留在原地提示
       await chrome.runtime.sendMessage({ type: MESSAGE_TYPES.AUTH_SIGN_IN, payload: { entry: "popup" } })
@@ -346,6 +349,19 @@ export default function Popup() {
     }
     window.close()
   }
+
+  // 账号行「可见」：登录后头部会显示套餐徽标，属同一类额度提示
+  useEffect(() => {
+    if (quotaBannerReportedRef.current) return
+    if (authSnapshot.state === "signed-out") return
+    quotaBannerReportedRef.current = true
+    void trackEvent("quota_banner_shown", {
+      plan: authSnapshot.plan,
+      used_ratio_bucket: usedRatioBucket(authSnapshot.quota?.usedRatio),
+      surface: "popup",
+      source: "popup"
+    })
+  }, [authSnapshot])
 
   // ---------- 样式 ----------
   // 深色下 warning 本身足够亮；浅色下 #F59E0B 在白底上对比度不足，文字换深一档

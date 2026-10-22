@@ -4,7 +4,22 @@
  * 这组用例保护的是**最容易造成线上事故的四件事**：
  * 并发刷新把用户踢下线、登出后被迟到的刷新「复活」、一次 500 就丢会话、无会话时发空 Bearer。
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+
+/**
+ * 埋点用 spy 代替真实上报：真实实现会走 posthog + fetch，
+ * 会把 fetch 桩的调用计数搅乱（本文件大量断言「只发一次请求」）。
+ */
+const { authEvents } = vi.hoisted(() => ({
+  authEvents: [] as Array<{ name: string; props?: Record<string, unknown> }>
+}))
+
+vi.mock("@/shared/analytics", () => ({
+  trackEvent: async () => undefined,
+  trackBackgroundEvent: async (name: string, props?: Record<string, unknown>) => {
+    authEvents.push({ name, props })
+  }
+}))
 import { resetAnonymousIdCache } from "@/shared/anonymous-id"
 import { PENDING_TTL_MS } from "@/shared/auth/config"
 import { clearEntitlementsCache } from "@/shared/auth/entitlements"
@@ -67,6 +82,7 @@ const entitlementsOk = (plan = "pro", limit = 1000, used = 250) =>
   })
 
 beforeEach(() => {
+  authEvents.length = 0
   stub = installChromeStub()
   resetAuthSession()
   clearEntitlementsCache()
@@ -339,6 +355,97 @@ describe("signOut", () => {
     installFetchStub([() => jsonResponse(204)])
     await expect(signOut()).resolves.toBeUndefined()
     expect((await readSnapshot())?.state).toBe("signed-out")
+  })
+})
+
+describe("埋点", () => {
+  const approve = (authorizeUrl: string) => {
+    const state = new URL(authorizeUrl).searchParams.get("state")!
+    return `https://stub-extension-id.chromiumapp.org/?code=code-1&state=${state}`
+  }
+
+  it("登录成功上报 auth_sign_in_completed（entry / method / 耗时分桶）", async () => {
+    stub.setWebAuthFlow(approve)
+    installFetchStub([tokenExchangeOk, () => entitlementsOk()])
+
+    await signIn({ entry: "options" })
+    await nextTick()
+
+    const completed = authEvents.find((event) => event.name === "auth_sign_in_completed")
+    expect(completed?.props).toEqual({ entry: "options", method: "pkce", duration_bucket: "<2s" })
+    expect(authEvents.some((event) => event.name === "auth_sign_in_failed")).toBe(false)
+  })
+
+  it("用户关窗 → auth_sign_in_failed{reason: window_closed}（放弃也是信号）", async () => {
+    stub.setWebAuthFlow(undefined)
+    installFetchStub([() => jsonResponse(500)])
+
+    await signIn({ entry: "popup" })
+    await nextTick()
+
+    const failed = authEvents.find((event) => event.name === "auth_sign_in_failed")
+    expect(failed?.props).toEqual({ entry: "popup", reason: "window_closed" })
+  })
+
+  it("state 不匹配 → reason: state_mismatch", async () => {
+    stub.setWebAuthFlow("https://stub-extension-id.chromiumapp.org/?code=c&state=wrong")
+    installFetchStub([tokenExchangeOk])
+
+    await signIn({ entry: "options" })
+    await nextTick()
+
+    expect(authEvents.find((event) => event.name === "auth_sign_in_failed")?.props).toEqual({
+      entry: "options",
+      reason: "state_mismatch"
+    })
+  })
+
+  it("换 token 被拒 → reason: server_error", async () => {
+    stub.setWebAuthFlow(approve)
+    installFetchStub([() => jsonResponse(400, { error: { code: "invalid_request" } })])
+
+    await signIn({ entry: "options" })
+    await nextTick()
+
+    expect(authEvents.find((event) => event.name === "auth_sign_in_failed")?.props).toEqual({
+      entry: "options",
+      reason: "server_error"
+    })
+  })
+
+  it("用户主动登出 → auth_signed_out{initiated: user}", async () => {
+    await seedSession()
+    installFetchStub([() => jsonResponse(204)])
+
+    await signOut()
+    await nextTick()
+
+    expect(authEvents.find((event) => event.name === "auth_signed_out")?.props).toEqual({ initiated: "user" })
+  })
+
+  it("refresh 被撤销 → auth_signed_out{initiated: revoked}，且只报一次", async () => {
+    await seedSession({ accessTokenExpiresAt: Date.now() + MINUTE })
+    installFetchStub([() => unauthorized("refresh_revoked")])
+
+    await expect(getAccessToken()).rejects.toMatchObject({ code: "REFRESH_REVOKED" })
+    // 再来一次类似的失效（并发 401 的第二个人）：此时已无会话，不该重复上报
+    await expect(getAccessToken()).rejects.toMatchObject({ code: "NO_SESSION" })
+    await nextTick()
+
+    const signOuts = authEvents.filter((event) => event.name === "auth_signed_out")
+    expect(signOuts).toHaveLength(1)
+    expect(signOuts[0].props).toEqual({ initiated: "revoked" })
+  })
+
+  it("埋点属性里没有任何凭据或邮箱", async () => {
+    stub.setWebAuthFlow(approve)
+    installFetchStub([tokenExchangeOk, () => entitlementsOk()])
+
+    await signIn({ entry: "options" })
+    await nextTick()
+
+    const serialized = JSON.stringify(authEvents)
+    expect(serialized).not.toMatch(/token|u\*\*\*|user-1/i)
   })
 })
 
