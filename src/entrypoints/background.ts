@@ -13,6 +13,7 @@ import type {
 } from "@/shared/types"
 import { MESSAGE_TYPES, ERROR_MESSAGES, OPEN_OPTIONS_ENTRIES, OPTIONS_ENTRY_STORAGE_KEY } from "@/shared/constants"
 import { i18nStore } from "@/shared/i18n/index"
+import { initBackgroundI18n } from "@/shared/i18n/background"
 import {
   formatApiError,
   getErrorMessage,
@@ -236,9 +237,32 @@ async function streamChat(
   onEvent({ type: "completed" })
 }
 
+/**
+ * 右键菜单：标题是本地化文案，而 Chrome **不会更新已创建菜单的标题**，
+ * 所以「安装/更新」与「语言变化」都要重建一次（见 `initBackgroundI18n` 的 onLocaleChange）。
+ */
+function syncContextMenus(): void {
+  try {
+    chrome.contextMenus.removeAll(() => {
+      chrome.contextMenus.create({
+        id: "open-pdf-with-aiction",
+        title: i18nStore.t("background.openPdfWithAIction"),
+        contexts: ["page", "frame"],
+        documentUrlPatterns: ["*://*/*.pdf", "*://*/*.PDF", "file://*/*.pdf", "file://*/*.PDF"]
+      })
+    })
+  } catch {
+    // 没有 contextMenus 权限 / 上下文失效：菜单不是核心功能，静默跳过
+  }
+}
+
 export default defineBackground(() => {
   // 每日活跃：SW 被唤醒即算（顶层 + onStartup 双保险，由 storage 里的日期去重）
   void reportDailyActive()
+
+  // background 的 locale：`ERROR_MESSAGES.*` 与右键菜单标题都走 i18nStore，
+  // 而 React 的 I18nRoot 覆盖不到 service worker，不初始化就永远是英文。
+  const i18nReady = initBackgroundI18n({ onLocaleChange: () => syncContextMenus() })
 
   // 会话初始化（SPEC §5.2）：先信本地快照，token 的补齐在后台跑、不阻塞消息响应。
   // 失败也不能影响 SW 启动——按「未登录 / 匿名未配置」继续跑即可。
@@ -320,19 +344,8 @@ export default defineBackground(() => {
       })
     }
 
-    chrome.contextMenus.removeAll(() => {
-      chrome.contextMenus.create({
-        id: "open-pdf-with-aiction",
-        title: i18nStore.t("background.openPdfWithAIction"),
-        contexts: ["page", "frame"],
-        documentUrlPatterns: [
-          "*://*/*.pdf",
-          "*://*/*.PDF",
-          "file://*/*.pdf",
-          "file://*/*.PDF"
-        ]
-      })
-    })
+    // 菜单标题是本地化文案：先等 locale 就绪，否则首次安装会建成英文菜单（且之后不会自动更新）
+    void i18nReady.finally(syncContextMenus)
   })
 
   chrome.contextMenus.onClicked.addListener((info, tab) => {

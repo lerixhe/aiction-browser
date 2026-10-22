@@ -144,6 +144,10 @@ models.dev / OpenRouter 的 `limit.output`、`top_provider.max_completion_tokens
   缺键 / 多键 / 拼错键名都是编译错误。所有用户可见文案走 `t()`，不硬编码。
 - 偏好 `settings.language`：`"browser"`（跟随浏览器 UI 语言）或某个 locale id。历史值 `"system"` 由
   `normalizeLanguagePreference()` 读取时迁移；已下线语言的存量值判为非法 → 回退自动项，**无需迁移代码**。
+- **background 也要初始化**：SW 启动时调 `initBackgroundI18n()`（`shared/i18n/background.ts`）把 locale 对齐到
+  `settings.language` 并跟随 sync 变化。React 的 `I18nRoot` 只覆盖 content / options / popup，
+  漏掉这一步的表现是「UI 是中文、错误提示与右键菜单是英文」，且不会报任何错。
+  `onLocaleChange` 用来重建一次性文案（Chrome 不会更新已创建菜单的标题）。
 - **语言判定只看 `chrome.i18n.getUILanguage()`**，不读 `navigator.language`（macOS 上它反映系统语言，
   读进来会让「跟随浏览器」静默退化成「跟随系统」）；`chrome` 判定必须 `typeof chrome !== "undefined"`
   （可选链挡不住变量未声明的 ReferenceError）。标签解析交 `Intl.Locale.maximize()`，匹配从注册表派生：

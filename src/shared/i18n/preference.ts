@@ -35,3 +35,13 @@ export function normalizeLanguagePreference(value: unknown): LanguagePreference 
 export function preferenceToLocale(preference: LanguagePreference): Locale {
   return preference === AUTO_LANGUAGE ? resolveBrowserLocale() : resolveLocale(preference)
 }
+
+/**
+ * 存储原文（可能是历史值 `system`、非法值或 undefined）→ 实际生效的 locale。
+ *
+ * UI 侧（`useI18nLocale`）与 background（`initBackgroundI18n`）共用这一条解析链：
+ * 两处各写一份回退逻辑，早晚会出现「设置页显示中文、右键菜单却是英文」这类不一致。
+ */
+export function resolveLocalePreference(value: unknown): Locale {
+  return preferenceToLocale(normalizeLanguagePreference(value) ?? DEFAULT_LANGUAGE_PREFERENCE)
+}

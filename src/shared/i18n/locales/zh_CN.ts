@@ -1,7 +1,7 @@
 import type { MessageKey } from "./en"
 
 export default {
-  "errors.noApiKey": "请先在设置台填写 API Key。",
+  "errors.noApiKey": "请先在设置中填写 API Key。",
   "errors.streamDisconnected": "流式连接已断开",
   "errors.requestFailed": "请求失败",
   "errors.unknownError": "未知错误",
