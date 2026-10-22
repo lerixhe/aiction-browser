@@ -13,7 +13,13 @@ import type { ApiErrorCode, AuthErrorCode } from "@/shared/auth/types"
 export class AuthError extends Error {
   constructor(
     public readonly code: AuthErrorCode,
-    message?: string
+    message?: string,
+    /**
+     * HTTP 状态码（仅当错误真是一个 HTTP 响应时才有）。
+     * 存在的理由：`SERVER_ERROR` 同时覆盖 4xx（客户端 bug）与 5xx（服务端抖动），
+     * 而调用方需要据此决定「暴露」还是「静默降级」——带着结构化事实比再用 code 猜细分。
+     */
+    public readonly status?: number
   ) {
     super(message ?? code)
     this.name = "AuthError"

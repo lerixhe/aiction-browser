@@ -5,8 +5,18 @@
  * SPEC §6 明确「其余模块不得自己拼」。M2 会改成从 `/v1/meta` 下发，届时只动这里。
  */
 
+/**
+ * 本地 / CI 覆盖端点：扩展运行时没有 `process`（恒为 undefined），
+ * 只在 tsx 脚本与 CI 冒烟里用来把代码指向 mock 网关。
+ */
+function endpointOverride(): string | undefined {
+  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
+  return env?.AICTION_API_BASE || undefined
+}
+
 /** 官方 API 网关。dev 走本地 mock（`scripts/mock-official-api.mjs`，见 SPEC §13） */
-export const API_BASE = import.meta.env?.DEV ? "http://127.0.0.1:8787" : "https://api.aiction.app"
+export const API_BASE =
+  endpointOverride() ?? (import.meta.env?.DEV ? "http://127.0.0.1:8787" : "https://api.aiction.app")
 
 /** 官网（授权页 / 定价页 / 账单页）。dev 走本地假站点 */
 export const WEB_BASE = import.meta.env?.DEV ? "http://127.0.0.1:8788" : "https://aiction.app"
@@ -53,3 +63,9 @@ export const WEB_ROUTES = {
   pricing: "/pricing",
   billing: "/billing"
 } as const
+
+/**
+ * 授权页归属：契约 §3.2 的 URL 属于 **Web 域**（浏览器导航 + Cookie 会话），
+ * 所以生产必须走 `WEB_BASE`；dev 下由 mock 网关兼任（它能直接扮演授权页，省一个服务）。
+ */
+export const AUTHORIZE_BASE = import.meta.env?.DEV ? API_BASE : WEB_BASE

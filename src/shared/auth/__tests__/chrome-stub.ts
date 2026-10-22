@@ -11,7 +11,6 @@ export interface StorageStub {
   /** 各区域的 set 调用次数，用于断言写入落点 */
   calls: { local: number; session: number; sync: number }
 }
-
 function createArea(map: Map<string, unknown>, onSet: () => void) {
   return {
     get: async (key: string) => (map.has(key) ? { [key]: map.get(key) } : {}),
@@ -26,7 +25,7 @@ function createArea(map: Map<string, unknown>, onSet: () => void) {
 }
 
 /** 安装桩，返回可控句柄；`session: false` 模拟不支持 `storage.session` 的旧浏览器 */
-export function installChromeStub(opts: { session?: boolean } = {}): StorageStub {
+export function installChromeStub(opts: { session?: boolean; runtimeId?: string } = {}): StorageStub {
   const stub: StorageStub = {
     local: new Map(),
     session: opts.session === false ? null : new Map(),
@@ -48,6 +47,10 @@ export function installChromeStub(opts: { session?: boolean } = {}): StorageStub
 
   const globalWithChrome = globalThis as { chrome?: unknown }
   globalWithChrome.chrome = {
+    runtime: {
+      id: opts.runtimeId ?? "stub-extension-id",
+      getManifest: () => ({ version: "0.0.0-test" })
+    },
     storage: { local, sync, ...(session ? { session } : {}) }
   }
 
