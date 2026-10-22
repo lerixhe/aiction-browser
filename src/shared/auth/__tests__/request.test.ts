@@ -5,34 +5,15 @@
  * 其余 401 立刻登出；402/429/5xx/网络错误一律**保留会话**只报错。
  * 一次 500 就把用户踢下线、或并发刷新导致后到的 token 失效，都是线上事故。
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { resetAnonymousIdCache } from "@/shared/anonymous-id"
 import { AuthError } from "@/shared/auth/errors"
 import { apiJson, authFetch, configureAuthRequest, resetAuthRequest } from "@/shared/auth/request"
 import type { AuthTokenProvider } from "@/shared/auth/request"
 import { installChromeStub, uninstallChromeStub } from "./chrome-stub"
+import { installFetchStub, jsonResponse, unauthorized } from "./fetch-stub"
 
 const originalFetch = globalThis.fetch
-
-type FetchCall = { url: string; init: RequestInit }
-
-function installFetchStub(factories: Array<() => Response | Promise<Response>>): FetchCall[] {
-  const calls: FetchCall[] = []
-  let index = 0
-  globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    calls.push({ url: String(input), init: init ?? {} })
-    const factory = factories[Math.min(index, factories.length - 1)]
-    index++
-    return factory()
-  }) as unknown as typeof fetch
-  return calls
-}
-
-const jsonResponse = (status: number, body: unknown = {}) =>
-  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } })
-
-const unauthorized = (code?: string) =>
-  jsonResponse(401, code ? { error: { code, message: "nope" } } : { error: { message: "no code" } })
 
 let invalidations: string[] = []
 

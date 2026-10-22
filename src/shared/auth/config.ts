@@ -68,4 +68,4 @@ export const WEB_ROUTES = {
  * 授权页归属：契约 §3.2 的 URL 属于 **Web 域**（浏览器导航 + Cookie 会话），
  * 所以生产必须走 `WEB_BASE`；dev 下由 mock 网关兼任（它能直接扮演授权页，省一个服务）。
  */
-export const AUTHORIZE_BASE = import.meta.env?.DEV ? API_BASE : WEB_BASE
+export const AUTHORIZE_BASE = endpointOverride() ?? (import.meta.env?.DEV ? API_BASE : WEB_BASE)

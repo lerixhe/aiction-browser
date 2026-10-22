@@ -4,32 +4,16 @@
  * 关键口径：**失败一律静默降级为 null**（429 / 网络 / 5xx），
  * 因为匿名用户本来就没有「必须成功」的契约；但客户端配置错误（400）要抛出来。
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { resetAnonymousIdCache } from "@/shared/anonymous-id"
 import { DEVICE_RENEW_BUFFER_MS } from "@/shared/auth/config"
 import { ensureDeviceToken } from "@/shared/auth/device"
 import { resetAuthRequest } from "@/shared/auth/request"
 import { AUTH_STORAGE_KEYS } from "@/shared/auth/types"
 import { installChromeStub, uninstallChromeStub, type StorageStub } from "./chrome-stub"
+import { installFetchStub, jsonResponse } from "./fetch-stub"
 
 const originalFetch = globalThis.fetch
-
-type FetchCall = { url: string; init: RequestInit }
-
-function installFetchStub(factories: Array<() => Response | Promise<Response>>): FetchCall[] {
-  const calls: FetchCall[] = []
-  let index = 0
-  globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    calls.push({ url: String(input), init: init ?? {} })
-    const factory = factories[Math.min(index, factories.length - 1)]
-    index++
-    return factory()
-  }) as unknown as typeof fetch
-  return calls
-}
-
-const jsonResponse = (status: number, body: unknown = {}) =>
-  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } })
 
 const deviceOk = (token = "device-token-1", expiresIn = 30 * 24 * 60 * 60) =>
   jsonResponse(200, { access_token: token, token_type: "Bearer", expires_in: expiresIn })
