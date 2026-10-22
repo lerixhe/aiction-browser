@@ -59,6 +59,8 @@ Before leaving your browser, these fields are scrubbed of credentials: API keys 
 
 **Analytics Provider:** We use PostHog for anonymous usage analytics. Analytics can be disabled at any time in the extension settings.
 
+**Sign-in (separate from analytics):** Signing in is optional and is the only flow that talks to our own API. It exchanges a randomly generated device id, this extension's id, and — only after you approve the sign-in page — a session token. The token stays in the extension's background context (never in page scripts, never synced to your Google account), and signing out removes it from this device. Credentials are never sent to PostHog. Without signing in, every feature works exactly as before.
+
 ### 3. Text Processing
 
 When you select text and use AI features:

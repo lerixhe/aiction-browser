@@ -128,7 +128,7 @@ Then:
 
 ## Privacy
 
-Selected text, page content and AI replies go straight from your browser to the endpoint you configured — they never reach our servers. There is no account system and we never see your API key. Anonymous usage statistics (feature counts, response latency) can be turned off in Settings → About. See [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md).
+Selected text, page content and AI replies go straight from your browser to the endpoint you configured — they never reach our servers. Signing in is entirely optional: without an account you get every feature, and we never see your API key. Anonymous usage statistics (feature counts, response latency) can be turned off in Settings → About. See [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md).
 
 ## Architecture
 
