@@ -290,6 +290,7 @@ export default {
   "options.about.telemetryEnabled": "有効",
   "options.about.telemetryDisabled": "無効",
   "options.about.copyright": "© 2026 AIction All rights reserved.",
+  "popup.account.open": "アカウント設定を開く",
   "popup.engine": "AI エンジン",
   "popup.unnamedProvider": "名前のないプロバイダー",
   "popup.addProvider": "API プロバイダーを追加",

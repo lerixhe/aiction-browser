@@ -1,7 +1,7 @@
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { getSettings, saveSettings } from "@/shared/storage"
-import { OPTIONS_ENTRY_STORAGE_KEY } from "@/shared/constants"
+import { OPTIONS_ENTRY_STORAGE_KEY, MESSAGE_TYPES } from "@/shared/constants"
 import { requestOpenChatInActiveTab } from "@/shared/messaging"
 import { trackEvent } from "@/shared/analytics"
 import { isBuiltinActionId } from "@/shared/defaults"
@@ -12,6 +12,7 @@ import { ActionIcon } from "@/shared/ui/iconify"
 import { BrandIcon } from "@/shared/ui/icons"
 import { ProviderLogoById } from "@/entrypoints/options/ProviderLogo"
 import { ToggleSwitch } from "@/shared/ui/toggle-switch"
+import { useAuthSnapshot } from "@/shared/auth/use-auth-snapshot"
 import { useI18n } from "@/shared/i18n/context"
 import type { ActionTemplate, ExtensionSettings, ProviderConfig } from "@/shared/types"
 
@@ -148,6 +149,11 @@ export default function Popup() {
   const [hovered, setHovered] = useState<string | null>(null)
   /** 「在当前页面提问」失败提示（页面没有 content script 时） */
   const [askFailed, setAskFailed] = useState(false)
+  /** 账号登录中（防连点开两个授权窗口）与失败提示 */
+  const [signingIn, setSigningIn] = useState(false)
+  const [signInError, setSignInError] = useState(false)
+  /** 只读快照：凭据永远拿不到（见 shared/auth/facade.ts） */
+  const { snapshot: authSnapshot } = useAuthSnapshot()
   const providerMenuRef = useRef<HTMLDivElement | null>(null)
 
   const providers = settings?.providers ?? []
@@ -300,6 +306,47 @@ export default function Popup() {
     window.close()
   }
 
+  /**
+   * 账号：登录 / 打开账号设置。
+   *
+   * 两者都放在**头部右端**，因为 Popup 的高度预算是硬约束
+   * （动作列表 204 固定、总高 < 600），账号控件不能新增纵向行。
+   * 控件高度与品牌图标齐平（22px），不会把头部撑高。
+   */
+  const handleAccountSignIn = async () => {
+    if (signingIn) return
+    setSigningIn(true)
+    setSignInError(false)
+    try {
+      // 授权窗口会让 popup 失焦关闭；失败（identity 不可用 / 无接收方）则留在原地提示
+      await chrome.runtime.sendMessage({ type: MESSAGE_TYPES.AUTH_SIGN_IN, payload: { entry: "popup" } })
+    } catch {
+      setSignInError(true)
+      window.setTimeout(() => setSignInError(false), 3000)
+    } finally {
+      setSigningIn(false)
+    }
+  }
+
+  const openAccountSettings = async () => {
+    try {
+      const response = (await chrome.runtime.sendMessage({
+        type: MESSAGE_TYPES.OPEN_OPTIONS,
+        payload: { hash: "account", entry: "popup" }
+      })) as { success?: boolean } | undefined
+      if (!response?.success) throw new Error("open options failed")
+    } catch {
+      // 退回普通打开（没有 hash）：不要让按钮点了没反应
+      try {
+        await chrome.storage.local.set({ [OPTIONS_ENTRY_STORAGE_KEY]: "popup" })
+      } catch {
+        // Extension context may have been invalidated
+      }
+      void chrome.runtime.openOptionsPage()
+    }
+    window.close()
+  }
+
   // ---------- 样式 ----------
   // 深色下 warning 本身足够亮；浅色下 #F59E0B 在白底上对比度不足，文字换深一档
   const warnTextColor = themeName === "dark" ? theme.state.warning : "#B45309"
@@ -337,6 +384,70 @@ export default function Popup() {
     padding: "1px 6px",
     borderRadius: uiRadius.pill,
     fontFamily: uiTypography.fontFamilyMono
+  }
+
+  // ── 账号控件（头部右端，高度与品牌图标齐平，不吃纵向空间）──
+  const accountSlotStyle: CSSProperties = {
+    marginLeft: "auto",
+    display: "flex",
+    alignItems: "center",
+    height: 22
+  }
+
+  const signInButtonStyle: CSSProperties = {
+    height: 22,
+    padding: "0 9px",
+    display: "inline-flex",
+    alignItems: "center",
+    border: `1px solid ${signInError ? theme.state.error : theme.border.default}`,
+    borderRadius: 6,
+    background: "transparent",
+    color: signInError ? theme.state.error : theme.accent.primary,
+    fontSize: 11,
+    fontWeight: uiTypography.fontWeight.semibold,
+    fontFamily: "inherit",
+    opacity: signingIn ? 0.6 : 1,
+    cursor: signingIn ? "default" : "pointer"
+  }
+
+  const accountChipStyle: CSSProperties = {
+    height: 22,
+    padding: "0 5px 0 0",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    border: "none",
+    borderRadius: 6,
+    background: "transparent",
+    color: "inherit",
+    fontFamily: "inherit",
+    cursor: "pointer"
+  }
+
+  const avatarStyle: CSSProperties = {
+    width: 20,
+    height: 20,
+    borderRadius: "50%",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: `${theme.accent.primary}1F`,
+    color: theme.accent.primary,
+    fontSize: 10,
+    fontWeight: uiTypography.fontWeight.semibold,
+    textTransform: "uppercase"
+  }
+
+  const planBadgeStyle: CSSProperties = {
+    height: 16,
+    padding: "0 5px",
+    display: "inline-flex",
+    alignItems: "center",
+    borderRadius: uiRadius.pill,
+    background: theme.bg.surfaceMuted,
+    color: theme.text.secondary,
+    fontSize: 9.5,
+    fontWeight: uiTypography.fontWeight.semibold
   }
 
   const labelStyle: CSSProperties = {
@@ -828,11 +939,34 @@ export default function Popup() {
         }
       `}</style>
 
-      {/* 头部：品牌 + 版本 */}
+      {/* 头部：品牌 + 版本 + 账号（账号控件不吃纵向空间，见 SPEC §8.2） */}
       <div style={headStyle}>
         <BrandIcon size={22} />
         <span style={brandNameStyle}>AIction</span>
         <span style={versionStyle}>v{chrome.runtime.getManifest().version}</span>
+
+        <div style={accountSlotStyle}>
+          {authSnapshot.state === "signed-in" ? (
+            <button
+              type="button"
+              onClick={() => void openAccountSettings()}
+              title={`${authSnapshot.email ?? ""} · ${t(`options.account.plan.${authSnapshot.plan}`)}`.trim()}
+              aria-label={t("popup.account.open")}
+              style={accountChipStyle}>
+              <span style={avatarStyle}>{(authSnapshot.email ?? "A").trim().charAt(0)}</span>
+              <span style={planBadgeStyle}>{t(`options.account.plan.${authSnapshot.plan}`)}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void handleAccountSignIn()}
+              disabled={signingIn}
+              title={signInError ? t("options.account.signInFailed") : t("options.account.statusGuest")}
+              style={signInButtonStyle}>
+              {t("options.account.signIn")}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* AI 引擎：当前 provider + 模型（可切换） */}

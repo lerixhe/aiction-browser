@@ -213,6 +213,8 @@ Shadow DOM 下 `document.activeElement` 不可靠，要穿透嵌套 `shadowRoot`
 ## UI 布局硬约束
 - Popup 宽度 360；动作列表可视高度 204（6 × 34），筛选条仅在动作 > 6 个时出现；
   动作再多内部滚动，总高不随动作数增长（Chrome popup 上限 600px）。
+  **新增元素一律不占纵向空间**：账号控件（登录按钮 / 头像 + 套餐徽标）在头部右端，
+  高 22 与品牌图标齐平，头部高度恒为 34（22 + paddingBottom 12）。
   跳设置页前先 `await` 写 `OPTIONS_ENTRY_STORAGE_KEY`，再 `window.close()`。
 - 对话面板宽度受视口约束（下限 320）；卡片态比聊天态窄一档，聊天态要放得下更长的追问与输入区。
 - 输入框自增高（24 → 132，超出内部滚动），Enter 发送 / Shift+Enter 换行。

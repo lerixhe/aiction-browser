@@ -290,6 +290,7 @@ export default {
   "options.about.telemetryEnabled": "Bật",
   "options.about.telemetryDisabled": "Tắt",
   "options.about.copyright": "© 2026 AIction Bảo lưu mọi quyền.",
+  "popup.account.open": "Mở cài đặt tài khoản",
   "popup.engine": "Bộ máy AI",
   "popup.unnamedProvider": "Nhà cung cấp chưa đặt tên",
   "popup.addProvider": "Thêm một nhà cung cấp API",

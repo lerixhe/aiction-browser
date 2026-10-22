@@ -290,6 +290,7 @@ export default {
   "options.about.telemetryEnabled": "사용",
   "options.about.telemetryDisabled": "사용 안 함",
   "options.about.copyright": "© 2026 AIction All rights reserved.",
+  "popup.account.open": "계정 설정 열기",
   "popup.engine": "AI 엔진",
   "popup.unnamedProvider": "이름 없는 공급자",
   "popup.addProvider": "API 공급자 추가",

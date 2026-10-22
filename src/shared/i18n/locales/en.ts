@@ -288,6 +288,7 @@ const messages = {
   "options.about.telemetryEnabled": "Enabled",
   "options.about.telemetryDisabled": "Disabled",
   "options.about.copyright": "© 2026 AIction All rights reserved.",
+  "popup.account.open": "Open account settings",
   "popup.engine": "AI Engine",
   "popup.unnamedProvider": "Unnamed Provider",
   "popup.addProvider": "Add an API provider",

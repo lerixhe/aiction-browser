@@ -290,6 +290,7 @@ export default {
   "options.about.telemetryEnabled": "已开启",
   "options.about.telemetryDisabled": "已关闭",
   "options.about.copyright": "© 2026 AIction All rights reserved.",
+  "popup.account.open": "打开账号设置",
   "popup.engine": "AI 引擎",
   "popup.unnamedProvider": "未命名提供商",
   "popup.addProvider": "添加 API 提供商",

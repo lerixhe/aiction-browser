@@ -290,6 +290,7 @@ export default {
   "options.about.telemetryEnabled": "啟用",
   "options.about.telemetryDisabled": "停用",
   "options.about.copyright": "© 2026 AIction 版權所有。",
+  "popup.account.open": "開啟帳號設定",
   "popup.engine": "AI 引擎",
   "popup.unnamedProvider": "未命名供應商",
   "popup.addProvider": "新增 API 供應商",

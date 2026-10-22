@@ -290,6 +290,7 @@ export default {
   "options.about.telemetryEnabled": "Включена",
   "options.about.telemetryDisabled": "Отключена",
   "options.about.copyright": "© 2026 AIction. Все права защищены.",
+  "popup.account.open": "Открыть настройки аккаунта",
   "popup.engine": "Движок ИИ",
   "popup.unnamedProvider": "Провайдер без имени",
   "popup.addProvider": "Добавьте провайдера API",
