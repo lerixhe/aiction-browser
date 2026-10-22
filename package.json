@@ -11,6 +11,8 @@
     "bundle-icons": "npx tsx scripts/bundle-icons.ts",
     "check:i18n": "npx tsx scripts/check-i18n.ts",
     "check:auth-boundary": "npx tsx scripts/check-auth-boundary.ts",
+    "mock:api": "node scripts/mock-official-api.mjs",
+    "mock:api:selftest": "node scripts/mock-official-api.mjs --selftest",
     "build": "npm run bundle-icons && npm run check:auth-boundary && wxt build",
     "build:firefox": "npm run bundle-icons && npm run check:auth-boundary && wxt build -b firefox",
     "zip": "wxt zip",

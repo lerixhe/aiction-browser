@@ -12,6 +12,8 @@ AI 调用统一走 Vercel AI SDK：`shared/model-provider.ts` 按 provider 的 `
 - `npm test`（vitest）：单测固定 `environment: node`，`chrome.*` 由 `src/shared/auth/__tests__/chrome-stub.ts` 注入，
   不引 jsdom——组件行为走手测清单，别为了几行 DOM 断言引一整套浏览器环境。
 - `npm run check:auth-boundary`：凭据边界检查（已在 `build` 前置里）。
+- `npm run mock:api`：官方 API 本地 mock（`127.0.0.1:8787`，dev 下 `API_BASE` 指向它；`--selftest` 跑端点自检）。
+  额度 / plan 数值均为占位符，真实值只由服务端下发。
 - 素材 / 设计类：`icons`、`bundle-icons`（build 前置自动跑）、`screenshots`、`screenshots:frame`。
 
 ## 改什么必须同步什么
