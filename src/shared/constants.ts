@@ -23,8 +23,20 @@ export const MESSAGE_TYPES = {
   /** 任意 → background：读权益（`force` 越过 5min TTL） */
   ENTITLEMENTS_REQUEST: "AICTION_ENTITLEMENTS_REQUEST",
   /** background → 任意：快照变更（不落盘的场景走这条；落盘变更靠 storage.onChanged） */
-  AUTH_CHANGED: "AICTION_AUTH_CHANGED"
+  AUTH_CHANGED: "AICTION_AUTH_CHANGED",
+  /**
+   * 任意 → background：开设置页并落到指定锚点。
+   * 存在的理由：`chrome.runtime.openOptionsPage()` **不支持 hash**，而面板失败态 CTA 必须落到 `#account`。
+   */
+  OPEN_OPTIONS: "AICTION_OPEN_OPTIONS"
 } as const
+
+/**
+ * `OPEN_OPTIONS` 允许携带的来源标记（写进 `aiction:optionsEntry`，由 Options 页读完清除）。
+ * **必须白名单**：这个值最终会作为埋点属性 `options_opened.entry`，自由文本进埋点是禁止的。
+ */
+export const OPEN_OPTIONS_ENTRIES = ["chat", "popup", "quota"] as const
+export type OpenOptionsEntry = (typeof OPEN_OPTIONS_ENTRIES)[number]
 
 // Stream event types
 export const STREAM_EVENTS = {

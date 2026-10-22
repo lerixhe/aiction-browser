@@ -229,3 +229,40 @@ export function parseAuthSnapshot(raw: unknown): AuthSnapshot | null {
 
   return snapshot
 }
+
+// ── 消息协议（SPEC §7）──────────────────────────────
+
+/**
+ * 跨上下文消息的响应形状（空域一律 `chrome.runtime.sendMessage`）。
+ * 响应里**禁止出现任何 token 字段**（含 `access` / `refresh` / `token` 字样）。
+ */
+export interface AuthSignInResponse {
+  success: boolean
+  /** `failed` 时 `success` 为 false，并带 `code` 说明原因 */
+  status?: "signed-in" | "cancelled" | "failed"
+  code?: AuthErrorCode
+  error?: string
+}
+
+export interface AuthSignOutResponse {
+  success: boolean
+  error?: string
+}
+
+export interface AuthStateResponse {
+  success: boolean
+  snapshot?: AuthSnapshot
+  error?: string
+}
+
+export interface EntitlementsResponse {
+  success: boolean
+  /** `null` = 本次没拿到（调用方应保留旧状态，不要当成「没有权益」） */
+  entitlements?: Entitlements | null
+  error?: string
+}
+
+export interface OpenOptionsResponse {
+  success: boolean
+  error?: string
+}

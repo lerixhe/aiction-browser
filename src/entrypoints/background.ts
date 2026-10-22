@@ -11,7 +11,7 @@ import type {
   TtsSynthesizeRequest,
   TtsSynthesizeResponse
 } from "@/shared/types"
-import { MESSAGE_TYPES, ERROR_MESSAGES } from "@/shared/constants"
+import { MESSAGE_TYPES, ERROR_MESSAGES, OPEN_OPTIONS_ENTRIES, OPTIONS_ENTRY_STORAGE_KEY } from "@/shared/constants"
 import { i18nStore } from "@/shared/i18n/index"
 import {
   formatApiError,
@@ -29,6 +29,15 @@ import { providerIdentityOf, type ProviderIdentityProps } from "@/shared/provide
 import { prepareChatRequest, describeCallWarning, type ChatRequestPlan } from "@/shared/chat-stream"
 import { fetchModelsDev } from "@/shared/models-dev"
 import { fetchOpenRouterModels } from "@/shared/openrouter"
+import { getSnapshot, initializeSession, signIn, signOut } from "@/shared/auth/session"
+import { getEntitlements } from "@/shared/auth/entitlements"
+import type {
+  AuthSignInResponse,
+  AuthSignOutResponse,
+  AuthStateResponse,
+  EntitlementsResponse,
+  OpenOptionsResponse
+} from "@/shared/auth/types"
 
 import {
   trackBackgroundEvent,
@@ -230,6 +239,12 @@ async function streamChat(
 export default defineBackground(() => {
   // 每日活跃：SW 被唤醒即算（顶层 + onStartup 双保险，由 storage 里的日期去重）
   void reportDailyActive()
+
+  // 会话初始化（SPEC §5.2）：先信本地快照，token 的补齐在后台跑、不阻塞消息响应。
+  // 失败也不能影响 SW 启动——按「未登录 / 匿名未配置」继续跑即可。
+  void initializeSession().catch((error: unknown) => {
+    console.warn("[auth] 会话初始化失败（按未登录处理）", getErrorMessage(error))
+  })
 
   chrome.runtime.onStartup.addListener(() => {
     void reportDailyActive()
@@ -708,4 +723,109 @@ export default defineBackground(() => {
 
     return true
   })
+
+  // ── 账号（M1，SPEC §7）────────────────────────────────────
+  // 五个监听全部在模块加载期注册（AGENTS.md 不变量 3），且都不碰生命周期回调
+
+  chrome.runtime.onMessage.addListener(
+    (request: { type?: string; payload?: { entry?: unknown } }, _sender, sendResponse) => {
+      if (request?.type !== MESSAGE_TYPES.AUTH_SIGN_IN) return false
+
+      const entry = request.payload?.entry === "popup" ? "popup" : "options"
+      void (async () => {
+        try {
+          const result = await signIn({ entry })
+          sendResponse({
+            success: result.status !== "failed",
+            status: result.status,
+            ...(result.status === "failed" ? { code: result.code } : {})
+          } satisfies AuthSignInResponse)
+        } catch (error: unknown) {
+          // signIn 自己会把可预期错误折成 status: failed，走到这里说明是意外，原文透出便于排查
+          sendResponse({
+            success: false,
+            status: "failed",
+            error: getErrorMessage(error)
+          } satisfies AuthSignInResponse)
+        }
+      })()
+      return true
+    }
+  )
+
+  chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+    if (request?.type !== MESSAGE_TYPES.AUTH_SIGN_OUT) return false
+
+    void (async () => {
+      try {
+        await signOut() // 内部已经「先清本地、再 fire-and-forget 通知服务端」
+        sendResponse({ success: true } satisfies AuthSignOutResponse)
+      } catch (error: unknown) {
+        sendResponse({ success: false, error: getErrorMessage(error) } satisfies AuthSignOutResponse)
+      }
+    })()
+    return true
+  })
+
+  chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+    if (request?.type !== MESSAGE_TYPES.AUTH_STATE_REQUEST) return false
+
+    void (async () => {
+      try {
+        // 响应键集固定为 { success, snapshot }：**不得出现任何 token 字段**
+        sendResponse({ success: true, snapshot: await getSnapshot() } satisfies AuthStateResponse)
+      } catch (error: unknown) {
+        sendResponse({ success: false, error: getErrorMessage(error) } satisfies AuthStateResponse)
+      }
+    })()
+    return true
+  })
+
+  chrome.runtime.onMessage.addListener(
+    (request: { type?: string; payload?: { force?: unknown } }, _sender, sendResponse) => {
+      if (request?.type !== MESSAGE_TYPES.ENTITLEMENTS_REQUEST) return false
+
+      void (async () => {
+        try {
+          // 拿不到就返回 null（不是「没有权益」），由 UI 保留旧状态
+          const entitlements = await getEntitlements({ force: request.payload?.force === true })
+          sendResponse({ success: true, entitlements } satisfies EntitlementsResponse)
+        } catch (error: unknown) {
+          sendResponse({ success: false, error: getErrorMessage(error) } satisfies EntitlementsResponse)
+        }
+      })()
+      return true
+    }
+  )
+
+  chrome.runtime.onMessage.addListener(
+    (
+      request: { type?: string; payload?: { hash?: unknown; entry?: unknown } },
+      _sender,
+      sendResponse
+    ) => {
+      if (request?.type !== MESSAGE_TYPES.OPEN_OPTIONS) return false
+
+      const hash = request.payload?.hash === "account" ? "account" : undefined
+      const rawEntry = request.payload?.entry
+      const entry =
+        typeof rawEntry === "string" ? OPEN_OPTIONS_ENTRIES.find((item) => item === rawEntry) : undefined
+
+      void (async () => {
+        try {
+          // `chrome.runtime.openOptionsPage()` 不支持 hash；entry 标记由 Options 页读完清除
+          if (entry) {
+            await chrome.storage.local.set({ [OPTIONS_ENTRY_STORAGE_KEY]: entry })
+          }
+          await chrome.tabs.create({
+            url: chrome.runtime.getURL(`options.html${hash ? `#${hash}` : ""}`)
+          })
+          sendResponse({ success: true } satisfies OpenOptionsResponse)
+        } catch (error: unknown) {
+          sendResponse({ success: false, error: getErrorMessage(error) } satisfies OpenOptionsResponse)
+        }
+      })()
+      return true
+    }
+  )
 })

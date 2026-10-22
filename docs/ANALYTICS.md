@@ -118,7 +118,8 @@
 - `source` 的取值类型是 `AnalyticsSource`（`"web" | "pdf" | "popup" | "options" | "background"`，定义在 `analytics.ts`）。background 侧通过 `resolvePortSource(port)` 由 port 来源页面推导（PDF 阅读器是扩展页面 → `pdf`，其余 → `web`）。
 - `provider_configured` 不用「保存 provider 时」触发：保存 ≠ 可用（Key 可能无效、模型可能不存在），只有真实请求成功才算配好。
 - `action_triggered_without_provider` 只在 background 上报一次，content 侧的「未配置」提示沿用同一路（不再重复上报，避免双计数）。
-- `options_opened.entry` 目前只有 `popup` / `direct` 两种（首次安装手动进设置页无法与普通入口区分）。
+- `options_opened.entry` 的写入方只有两处：Popup 跳转（`popup`）与 `OPEN_OPTIONS` 消息（`chat` / `quota`）；
+  取值由 `OPEN_OPTIONS_ENTRIES` 白名单约束（自由文本进埋点是禁止的），没有标记时落 `direct`。
 
 ### 2.3 核心使用行为（content script + pdf-viewer，共用同一套事件名）
 
