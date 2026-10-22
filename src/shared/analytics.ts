@@ -1,11 +1,14 @@
 import posthog from "posthog-js/dist/module.no-external"
 
+import { getAnonymousId } from "@/shared/anonymous-id"
 import { scrubCredentials } from "@/shared/redact"
+
+// 匿名设备标识是基础设施（账号风控与 device token 共用），实现已抽到 `anonymous-id.ts` 以免
+// 只想拿 ID 的模块被 posthog 拖下水；这里 re-export 保持原有 import 路径不变
+export { getAnonymousId } from "@/shared/anonymous-id"
 
 const POSTHOG_PROJECT_TOKEN = "phc_tPo8ytSVcKEozs6qbNTWEkDTnqXoxUoBuaNo2fu7v2Rh"
 const POSTHOG_HOST = "https://us.i.posthog.com"
-
-const ANONYMOUS_ID_KEY = "aiction:anonymousId"
 
 /** 事件来源上下文（埋点属性 `source` 的取值，见 docs/ANALYTICS.md §3） */
 export type AnalyticsSource = "web" | "pdf" | "popup" | "options" | "background"
@@ -96,35 +99,8 @@ export function sanitizeProperties(
 }
 
 // ── Anonymous ID ────────────────────────────────────────────────
-
-let cachedAnonymousId: string | null = null
-
-export async function getAnonymousId(): Promise<string> {
-  if (cachedAnonymousId) {
-    return cachedAnonymousId
-  }
-
-  try {
-    const result = await chrome.storage.local.get(ANONYMOUS_ID_KEY)
-    const existing = result[ANONYMOUS_ID_KEY] as string | undefined
-    if (existing) {
-      cachedAnonymousId = existing
-      return existing
-    }
-  } catch {
-    // Extension context may have been invalidated
-  }
-
-  const newId = crypto.randomUUID()
-  try {
-    await chrome.storage.local.set({ [ANONYMOUS_ID_KEY]: newId })
-  } catch {
-    // Ignore storage errors
-  }
-
-  cachedAnonymousId = newId
-  return newId
-}
+// 实现见 `@/shared/anonymous-id`（上方 re-export）：全扩展只有一个 anonymousId，
+// 由 getAnonymousId() 懒生成并缓存。
 
 // ── Telemetry enabled check ─────────────────────────────────────
 
