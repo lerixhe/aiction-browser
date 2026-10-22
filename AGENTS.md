@@ -9,6 +9,9 @@ AI 调用统一走 Vercel AI SDK：`shared/model-provider.ts` 按 provider 的 `
 ## 命令
 - `npm run dev` / `dev:firefox`、`build`、`zip`。
 - **改代码后必须跑 `npm run typecheck` + `npm run build`**；动了 i18n 还要跑 `npm run check:i18n`。
+- `npm test`（vitest）：单测固定 `environment: node`，`chrome.*` 由 `src/shared/auth/__tests__/chrome-stub.ts` 注入，
+  不引 jsdom——组件行为走手测清单，别为了几行 DOM 断言引一整套浏览器环境。
+- `npm run check:auth-boundary`：凭据边界检查（已在 `build` 前置里）。
 - 素材 / 设计类：`icons`、`bundle-icons`（build 前置自动跑）、`screenshots`、`screenshots:frame`。
 
 ## 改什么必须同步什么
@@ -20,6 +23,7 @@ AI 调用统一走 Vercel AI SDK：`shared/model-provider.ts` 按 provider 的 `
 | PostHog 埋点 | `docs/ANALYTICS.md` §2 事件清单 + §8 变更记录；必要时 `docs/PRIVACY_POLICY.md` 与 `about.telemetryDesc` 文案 |
 | 素材工具 | `docs/TOOLING.md`（§1 工具矩阵、§3 已知未修问题、§6 变更记录） |
 | 界面语言 | 见下文「i18n」三处改动 |
+| 账号 / 登录（`src/shared/auth/**`、`ProviderConfig.kind`） | 先读 `.private-docs/LOGIN_IMPL_SPEC.md`；动了 auth 模块导出面要同步 `scripts/check-auth-boundary.ts` 的白名单 |
 
 素材纪律：`scripts/` 下已有一整套生成上架素材与设计预览的工具，**不要重复造轮子**；
 改 UI / 图标 / 文案后先查 `docs/TOOLING.md` §4「什么情况下要跑哪个工具」；
@@ -88,6 +92,10 @@ AI 调用统一走 Vercel AI SDK：`shared/model-provider.ts` 按 provider 的 `
 7. **工具栏动作一律不关闭工具栏**（普通动作、朗读、复制都不调 `closeToolbar()`）；
    复制临时借用页面选区后必须原样还原。
 8. 输入框 Enter 发送必须判 `nativeEvent.isComposing`（IME 组合确认不是发送）。
+9. **凭据只在 background**：token 不进 `storage.sync`、不进消息负载、不进埋点、不进 DOM；
+   `entrypoints/content/**` 与 `pdf-viewer/**` 只允许 import
+   `@/shared/auth/{types,facade,use-auth-snapshot,actions}`，由 `scripts/check-auth-boundary.ts` 在 build 前强制。
+   access token 放 `storage.session`（content 技术上读不到），refresh token 放 `storage.local`（只靠纪律）。
 
 ## 配置迁移与默认值
 - 向 `DEFAULT_SETTINGS` / `DEFAULT_QUICK_ACTIONS` **加新项**：`normalizeSettings()` 必须按 id 合并

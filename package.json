@@ -10,11 +10,14 @@
     "dev:firefox": "wxt -b firefox",
     "bundle-icons": "npx tsx scripts/bundle-icons.ts",
     "check:i18n": "npx tsx scripts/check-i18n.ts",
-    "build": "npm run bundle-icons && wxt build",
-    "build:firefox": "npm run bundle-icons && wxt build -b firefox",
+    "check:auth-boundary": "npx tsx scripts/check-auth-boundary.ts",
+    "build": "npm run bundle-icons && npm run check:auth-boundary && wxt build",
+    "build:firefox": "npm run bundle-icons && npm run check:auth-boundary && wxt build -b firefox",
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "postinstall": "wxt prepare",
     "icons": "npx tsx scripts/generate-icons.ts",
     "screenshots": "node scripts/store-screenshots/shoot.mjs",
@@ -44,6 +47,7 @@
     "@wxt-dev/auto-icons": "^1.1.1",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
+    "vitest": "^5.0.5",
     "wxt": "^0.20.26"
   }
 }
