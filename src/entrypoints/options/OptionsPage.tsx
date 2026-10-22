@@ -7,6 +7,7 @@ import { useI18n } from "@/shared/i18n/context"
 import { getSettings, saveSettings } from "@/shared/storage"
 import type { ExtensionSettings } from "@/shared/types"
 import { ActionsSection } from "./ActionsSection"
+import { AccountSection } from "./AccountSection"
 import { AppearanceSection } from "./AppearanceSection"
 import { AboutSection } from "./AboutSection"
 import { BackupSection } from "./BackupSection"
@@ -18,12 +19,13 @@ import { SystemPromptSection } from "./SystemPromptSection"
 import { Button, EmptyState, PageShell, SectionCard, Skeleton } from "./ui"
 import { useProviderManager } from "./useProviderManager"
 
-const SECTION_KEYS = ["appearance", "connection", "actions", "systemPrompt", "backup", "about"] as const
+const SECTION_KEYS = ["appearance", "account", "connection", "actions", "systemPrompt", "backup", "about"] as const
 
 type Section = (typeof SECTION_KEYS)[number]
 
 const SECTION_ICONS: Record<Section, string> = {
   appearance: "tabler:palette",
+  account: "tabler:user-circle",
   connection: "tabler:api",
   actions: "tabler:sparkles",
   systemPrompt: "tabler:file-text",
@@ -203,6 +205,7 @@ export default function OptionsPage() {
 
   const sectionContent: Record<Section, () => JSX.Element> = {
     appearance: () => <AppearanceSection settings={settings} saveSettingsNow={saveSettingsNow} />,
+    account: () => <AccountSection settings={settings} saveSettingsNow={saveSettingsNow} />,
     connection: renderConnection,
     actions: () => <ActionsSection settings={settings} saveSettingsNow={saveSettingsNow} />,
     systemPrompt: () => <SystemPromptSection settings={settings} saveSettingsNow={saveSettingsNow} />,

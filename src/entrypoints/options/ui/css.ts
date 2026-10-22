@@ -1166,6 +1166,98 @@ export function createOptionsCss(theme: UiTheme): string {
     margin-top: 22px;
   }
 
+  /* ── 账号（SPEC §8.1）────────────────────── */
+
+  .opt-account-inline {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  /* 邮箱可能很长：截断 + title 属性留存完整值（不靠换行破坏行高） */
+  .opt-account-email {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: ${optSize.rowTitleSize}px;
+    color: ${theme.text.primary};
+  }
+
+  .opt-account-plan {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
+    font-size: ${optSize.rowDescSize}px;
+    color: ${theme.text.secondary};
+  }
+
+  .opt-account-plan-name {
+    font-size: ${optSize.rowTitleSize}px;
+    font-weight: 500;
+    color: ${theme.text.primary};
+  }
+
+  .opt-account-plan-status {
+    padding: 0 6px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    border-radius: ${optSize.smallRadius}px;
+    background: ${theme.bg.surfaceAlt};
+    color: ${theme.text.secondary};
+  }
+
+  /* 套餐徽标（纯展示，不是按钮——所以不用 .opt-chip） */
+  .opt-badge {
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    padding: 0 8px;
+    border: 1px solid ${accent}33;
+    border-radius: ${optSize.smallRadius}px;
+    background: ${accent}14;
+    color: ${accent};
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .opt-usage {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .opt-usage-bar {
+    height: 6px;
+    border-radius: 999px;
+    background: ${theme.bg.surfaceAlt};
+    overflow: hidden;
+  }
+
+  .opt-usage-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: ${accent};
+    transition: width 0.2s ease;
+  }
+
+  .opt-usage-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: ${optSize.rowDescSize}px;
+    color: ${theme.text.secondary};
+  }
+
   @keyframes opt-fade-in {
     from { opacity: 0; }
     to { opacity: 1; }
