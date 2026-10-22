@@ -51,11 +51,15 @@ export function isAbortError(error: unknown): boolean {
 /**
  * 对话失败的归因枚举（只上报枚举，不上报错误原文，见 docs/ANALYTICS.md §3）。
  * 取值与 background 侧 `ChatStreamFailedEvent.code` 保持一致。
+ *
+ * `quota_exceeded`（HTTP 402）是 M2 额度墙的预留桶：M1 只做归因，不接升级 CTA。
+ * 它由**结构化 status 判断**得出，不从响应体文本推。
  */
 export type ChatErrorCode =
   | "timeout"
   | "auth"
   | "rate_limit"
+  | "quota_exceeded"
   | "network"
   | "aborted"
   | "no_api_key"
@@ -80,7 +84,7 @@ export function getStatusCode(error: unknown): number | undefined {
 }
 
 /**
- * 把错误归入**粗分类**兜底枚举（10 个桶），仅用于趋势 / 占比这类聚合分析。
+ * 把错误归入**粗分类**兜底枚举（11 个桶），仅用于趋势 / 占比这类聚合分析。
  *
  * **只看事实，不猜类型**（docs/ANALYTICS.md §3.10）：
  * 1. `error.name` 字段（结构化）；
@@ -105,6 +109,7 @@ export function classifyChatError(error: unknown): ChatErrorCode {
 
   const status = getStatusCode(error)
   if (status === 401 || status === 403) return "auth"
+  if (status === 402) return "quota_exceeded"
   if (status === 404) return "missing_config"
   if (status === 408 || status === 504) return "timeout"
   if (status === 429) return "rate_limit"

@@ -11,7 +11,19 @@ export const MESSAGE_TYPES = {
   OPENROUTER_MODELS_REQUEST: "AICTION_OPENROUTER_MODELS_REQUEST",
   TTS_SYNTHESIZE_REQUEST: "AICTION_TTS_SYNTHESIZE_REQUEST",
   /** Popup → content script：在当前页面直接打开一个空的对话面板（不划词也能提问） */
-  OPEN_CHAT: "AICTION_OPEN_CHAT"
+  OPEN_CHAT: "AICTION_OPEN_CHAT",
+  // ── 账号 / 登录（M1）────────────────────────────────────
+  // 常量先落（T0），监听与广播在 T2 实现。
+  /** UI → background：发起登录（拉起 identity 授权页） */
+  AUTH_SIGN_IN: "AICTION_AUTH_SIGN_IN",
+  /** UI → background：登出 */
+  AUTH_SIGN_OUT: "AICTION_AUTH_SIGN_OUT",
+  /** 任意 → background：读快照（content 冷启动补读；**响应里不得含 token**） */
+  AUTH_STATE_REQUEST: "AICTION_AUTH_STATE_REQUEST",
+  /** 任意 → background：读权益（`force` 越过 5min TTL） */
+  ENTITLEMENTS_REQUEST: "AICTION_ENTITLEMENTS_REQUEST",
+  /** background → 任意：快照变更（不落盘的场景走这条；落盘变更靠 storage.onChanged） */
+  AUTH_CHANGED: "AICTION_AUTH_CHANGED"
 } as const
 
 // Stream event types

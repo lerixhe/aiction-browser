@@ -239,7 +239,10 @@ function validateProviders(items: unknown[]): ProviderConfig[] {
         model: typeof record.model === "string" ? record.model : DEFAULT_CUSTOM_MODEL_PROVIDER.model,
         apiBaseUrl: typeof record.apiBaseUrl === "string" ? record.apiBaseUrl : undefined,
         modelParams: validateModelParams(record.modelParams),
-        modelsDevId: typeof record.modelsDevId === "string" ? record.modelsDevId : undefined
+        modelsDevId: typeof record.modelsDevId === "string" ? record.modelsDevId : undefined,
+        // 读取时兜底：缺省 = "byok"。`official` 不进 providers[]（运行时构造），
+        // 这里保留原文只是为了让异常存档不至于被静默改写。
+        kind: record.kind === "official" ? "official" : "byok"
       }
     })
 }
@@ -294,6 +297,10 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
   // 语言偏好：旧值 "system"（旧版「跟随系统」）由 normalizeLanguagePreference 迁移为 "browser"
   const language = normalizeLanguagePreference(saved.language) ?? DEFAULT_SETTINGS.language
 
+  // 官方服务相关字段：只做校验，**不写回默认值**（undefined 是有意义的「未选择」）
+  const officialModel = typeof saved.officialModel === "string" && saved.officialModel.trim() ? saved.officialModel.trim() : undefined
+  const useOfficialService = typeof saved.useOfficialService === "boolean" ? saved.useOfficialService : undefined
+
   return {
     providers,
     activeProviderId,
@@ -303,7 +310,9 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     quickActions,
     tts,
     telemetryEnabled,
-    systemPrompt
+    systemPrompt,
+    officialModel,
+    useOfficialService
   }
 }
 
@@ -327,13 +336,18 @@ export async function getSettings(): Promise<ExtensionSettings> {
 const THEME_CACHE_KEY = "aiction:theme"
 
 export function trimProviders(providers: ProviderConfig[]): ProviderConfig[] {
-  return providers.map((provider) => ({
-    ...provider,
-    name: provider.name.trim(),
-    apiBaseUrl: provider.apiBaseUrl?.trim() || undefined,
-    apiKey: provider.apiKey.trim(),
-    model: provider.model.trim()
-  }))
+  return providers.map((provider) => {
+    const trimmed: ProviderConfig = {
+      ...provider,
+      name: provider.name.trim(),
+      apiBaseUrl: provider.apiBaseUrl?.trim() || undefined,
+      apiKey: provider.apiKey.trim(),
+      model: provider.model.trim()
+    }
+    // `kind` 缺省即 "byok"：不往存档里写冗余字段，保持与旧版本一致的存储形态
+    if (trimmed.kind === "byok") delete trimmed.kind
+    return trimmed
+  })
 }
 
 export async function saveSettings(settings: ExtensionSettings): Promise<void> {

@@ -55,6 +55,12 @@ export interface ModelParams {
   structuredOutputs?: boolean
 }
 
+/**
+ * 服务来源：`byok` = 用户自己的 API Key（现有链路）；`official` = 官方托管服务（需登录）。
+ * 只在运行时构造，**不写入 `providers[]`**（不可编辑 / 删除 / 导出）。
+ */
+export type ProviderKind = "byok" | "official"
+
 export interface ProviderConfig {
   id: string
   name: string
@@ -63,6 +69,8 @@ export interface ProviderConfig {
   apiBaseUrl?: string
   modelParams: ModelParams
   modelsDevId?: string
+  /** 缺省一律视为 "byok"（老存档零迁移；读取时兜底，不写回默认值） */
+  kind?: ProviderKind
 }
 
 export interface ExtensionSettings {
@@ -76,6 +84,14 @@ export interface ExtensionSettings {
   telemetryEnabled: boolean
   /** 系统提示词模板，支持 {selection} {pageTitle} {pageUrl} {metaDescription} {surround} 占位符；空白则回退默认模板 */
   systemPrompt: string
+  /** 官方服务选用的模型（登录后可用）；M1 只做展示，M2 才接入真实链路 */
+  officialModel?: string
+  /**
+   * 是否优先使用官方服务。`undefined` = 跟随会话状态
+   * （已登录 / 已领到匿名 device token 才走官方服务；未登录时行为与现状一致），
+   * 解析规则收敛在 `shared/provider-resolve.ts`。
+   */
+  useOfficialService?: boolean
 }
 
 export interface SelectionContext {
@@ -165,7 +181,13 @@ export type ChatRequestState =
   | { status: "idle" }
   | { status: "streaming"; assistantMessageId: string }
   | { status: "cancelled"; assistantMessageId: string }
-  | { status: "failed"; assistantMessageId: string; error: string }
+  | {
+      status: "failed"
+      assistantMessageId: string
+      error: string
+      /** 失败归因（用于面板失败态 CTA，见 `ChatPanel`）；旧端可能不带 */
+      code?: ChatErrorCode
+    }
 
 // Stream handler options
 export interface StreamChatOptions {

@@ -181,7 +181,7 @@
 - `ttft_ms`：首个内容块（含思考块）到达耗时——比 `duration_ms` 更能反映「是不是卡住了」。
 - `provider_type`：`models_dev` / `custom` / `none`（依旧不上报 provider 名称）。
 - `error_code`：`ChatErrorCode` 枚举（`classifyChatError()`，`src/shared/errors.ts`）：
-  `no_api_key` / `missing_config` / `no_content` / `timeout` / `auth` / `rate_limit` / `network` / `aborted` / `provider_error` / `unknown`。
+  `no_api_key` / `missing_config` / `no_content` / `timeout` / `auth` / `rate_limit` / `quota_exceeded` / `network` / `aborted` / `provider_error` / `unknown`。
   优先用 background 在 `ChatStreamFailedEvent.code` 里给出的结构化归因，缺省时在 content 侧用同一函数兜底（只看 `error.name` / 自造文案常量 / `statusCode`，**不做关键词或正则推断**）。
 - `chat_stopped_by_user` 与 `chat_cancelled` 的关系：用户停止 → **两个事件都会上报**（一个是「用户意图」，一个是「流的终态」），比值即「被停止占比」。
 - `chat_failed` 的诊断属性两处都带：background 在 `ChatStreamFailedEvent.diagnostics` / `.provider` 里给出，
@@ -268,10 +268,10 @@
 8. **改属性不要破坏已有口径**：优先「追加」，必须移除旧属性时在 §8 记录并在 PostHog 侧同步改图表。
 9. 新增事件时，属性尽量带**同一套维度名**（`source`、`model`、`provider_type`、`is_custom`、`enabled`、`turn_index`、`error_code`），便于交叉分析。
 10. **错误诊断：粗分类 + 原文全量**（`describeApiError()`，`src/shared/errors.ts`）。属性名固定：
-    - `error_code`：`ChatErrorCode` 粗分类（10 个桶，`classifyChatError()`）。**刻意做得很粗**，
+    - `error_code`：`ChatErrorCode` 粗分类（11 个桶，`classifyChatError()`）。**刻意做得很粗**，
       且**只依据事实、不做任何推断**：`error.name`、我们自己写的文案常量（`ERROR_MESSAGES.*`）、
-      结构化 `statusCode`（401/403→`auth`、404→`missing_config`、408/504→`timeout`、429→`rate_limit`、
-      其余 ≥400→`provider_error`）。都对不上就落 `unknown` 兜底。
+      结构化 `statusCode`（401/403→`auth`、402→`quota_exceeded`、404→`missing_config`、408/504→`timeout`、
+      429→`rate_limit`、其余 ≥400→`provider_error`）。都对不上就落 `unknown` 兜底。
       **禁止**用 `/timeout|unauthorized|rate limit/` 之类关键词从错误文案里猜类型——各家文案差异极大，
       猜错的桶会直接误导分析（原文里的真实原因反而被忽略）。曾实现过关键词兜底，已移除。
     - `error_name`：错误类名原文（`AI_APICallError` / `TypeError` …）。
@@ -494,3 +494,4 @@
 | 2026-10-20 | i18n 语言偏好值域改名（属性值变更，事件数不变） | 「跟随系统」→「自动（跟随浏览器）」：`settings.language` 的自动项存储值由 `system` 改为 `browser`（读取时兼容旧值，写回即迁移）；`language_changed` 的 `from_language` / `to_language` 值域随之变为 `browser` + 各 locale id，**历史 `system` 与 `browser` 同义**；判定来源收敛为只读 `chrome.i18n.getUILanguage()`（不再读 `navigator.*`，避免 macOS 上退化成跟随系统） |
 | 2026-10-20 | SDK 身份改为 init 时 bootstrap（机制修复，事件/属性零变更） | `initContentScriptAnalytics()` 原先 `persistence: "memory"` + `loaded` 里 `ph.identify(distinctId)`：每次页面加载 SDK 都会先铸一个匿名 ID 再被 merge 进稳定 person，累积触及 PostHog 的 person distinct-ID 上限后事件不再归属该 person（`posthog-js` 1.434.2 会打 `no bootstrap.distinctID was provided` 警告）。改为 `bootstrap: { distinctID: distinctId, isIdentifiedID: true }` 并删除 `loaded` 里的 `identify()`；`persistence: "memory"` 保持不变。background 的 HTTP 通道本就显式带 `distinct_id`，不受影响 |
 | 2026-10-20 | `selection_toolbar_shown` 口径改为「工具栏渲染次数」 | **移除 5s 时间节流**（原实现会把同一页连续划词只留一条，使流失率分母偏小）。口径：工具栏出现一次算一次——`openToolbar` 带来新落位（鼠标坐标）才算，同一落位的重复触发合并；收起时清空落位键，再次出现重新计。可见期间再划一段（新位置）各记一条。属性零增删 |
+| 2026-10-22 | 登录功能 M1 地基（`ChatErrorCode` 新增一桶，事件数不变） | `ChatErrorCode` 新增 `quota_exceeded`（HTTP **402**，由结构化 `statusCode` 判定，不做文本推断），为 M2 的额度墙预留归因；M1 不加任何登录相关事件（`auth_*` 随 UI 在 T6 一并入表）。`classifyChatError()` 桶数 10 → 11 |
