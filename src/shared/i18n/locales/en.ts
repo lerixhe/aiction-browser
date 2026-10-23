@@ -94,7 +94,7 @@ const messages = {
   "options.account.status.none": "No subscription",
   "options.account.pastDueHint": "Payment failed. Update your payment method and try again.",
   "options.account.usageTitle": "Usage this period",
-  "options.account.usageDesc": "You will be warned before the quota runs out",
+  "options.account.usageDesc": "Share of the quota used in the current period.",
   "options.account.usagePercent": "$1% used",
   "options.account.usageReset": "Resets $1",
   "options.account.usageUnknown": "Usage unavailable",

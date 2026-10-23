@@ -33,8 +33,8 @@ const ALLOWED_AUTH_MODULES = new Set(["types", "facade", "use-auth-snapshot", "a
 /** 一律禁止（无论哪个入口） */
 const FORBIDDEN_SPECIFIERS = new Set(["/shared/provider-credentials"])
 
-/** 抓 `from "x"` / `export … from "x"` / 动态 `import("x")` 三种形态 */
-const IMPORT_PATTERN = /(?:from\s*|import\s*\(\s*)["']([^"']+)["']/g
+/** 抓 `from "x"` / 副作用 `import "x"` / 动态 `import("x")` 三种形态 */
+const IMPORT_PATTERN = /(?:from\s*|import\s*\(\s*|import\s+)["']([^"']+)["']/g
 
 const AUTH_PREFIX = "/shared/auth"
 
@@ -66,6 +66,20 @@ function normalize(specifier: string): string {
   return specifier
 }
 
+/**
+ * 相对路径 → 仓库内路径（`/shared/auth/session`）。
+ *
+ * 不处理相对导入是个真漏洞：`import { getAccessToken } from "../../shared/auth/session"`
+ * 同样是凭据进内容脚本，而它看起来完全不像禁区（没有 `@` 前缀，自动补全也不会拦住你）。
+ * 返回 `null` 表示指向 `src/` 之外（或算不出来），不归本脚本管。
+ */
+function relativeToSrc(file: string, specifier: string): string | null {
+  const absolute = path.resolve(path.dirname(file), specifier)
+  const relative = path.relative(path.resolve(ROOT, "src"), absolute)
+  if (!relative || relative.startsWith("..")) return null
+  return `/${relative.split(path.sep).join("/")}`
+}
+
 function checkFile(file: string): void {
   const relative = path.relative(ROOT, file)
   const content = fs.readFileSync(file, "utf8")
@@ -75,9 +89,14 @@ function checkFile(file: string): void {
   while ((match = IMPORT_PATTERN.exec(content)) !== null) {
     const raw = match[1]
     const specifier = normalize(raw)
-    if (!specifier.startsWith("@")) continue
+    // 别名（`@/` / `~/`）直接剥前缀；相对路径按文件位置换算成仓库内路径；其余（包名）不管
+    const withoutAlias = specifier.startsWith("@")
+      ? specifier.slice(1)
+      : raw.startsWith(".")
+        ? relativeToSrc(file, raw)
+        : null
+    if (!withoutAlias) continue
 
-    const withoutAlias = specifier.slice(1) // 去掉开头的 @，剩下 "/shared/..."
     const line = content.slice(0, match.index).split("\n").length
 
     const forbidden = [...FORBIDDEN_SPECIFIERS].find(

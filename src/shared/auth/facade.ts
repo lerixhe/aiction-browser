@@ -41,11 +41,24 @@ export async function readAuthSnapshot(): Promise<AuthSnapshot> {
  * 2. `runtime.onMessage(AUTH_CHANGED)`：用于「不落盘的变化」（M2 的权益刷新走这条）。
  *
  * 去重按 `updatedAt`：乱序到达的旧消息直接丢弃，同版本只回调一次。
+ *
+ * **“快照被删除”是例外**：`storage.remove()` 的 `newValue` 为 `undefined`，若直接回退成
+ * `signedOutSnapshot()`（`updatedAt: 0`），它会被「旧版本丢弃」的逻辑吃掉 ——
+ * 于是已经打开的页面会卡在上一份登录态，直到用户手动刷新。删除意味着
+ * 「状态已经不存在」而不是「更旧的状态」，必须绕过时间戳比较（`force`）。
  */
 export function subscribeAuthSnapshot(listener: (snapshot: AuthSnapshot) => void): () => void {
   let lastUpdatedAt = -1
 
-  const emit = (snapshot: AuthSnapshot) => {
+  const emit = (snapshot: AuthSnapshot, options: { force?: boolean } = {}) => {
+    if (options.force) {
+      // 「快照被删除」：先把去重基准复位，再无条件通知。
+      // 复位成 -1 而不是当前时间：后续可能还有一个 updatedAt 更早的迟到投递（background 写→删的顺序）,
+      // 拿删除时刻当基准会把它当成「旧版本」丢掉，UI 就永远停在 signed-out 了。
+      lastUpdatedAt = -1
+      listener(snapshot)
+      return
+    }
     if (snapshot.updatedAt === lastUpdatedAt) return
     if (snapshot.updatedAt < lastUpdatedAt) return
     lastUpdatedAt = snapshot.updatedAt
@@ -56,7 +69,14 @@ export function subscribeAuthSnapshot(listener: (snapshot: AuthSnapshot) => void
     if (areaName !== "local") return
     const change = changes[AUTH_STORAGE_KEYS.snapshot]
     if (!change) return
-    emit(parseAuthSnapshot(change.newValue) ?? signedOutSnapshot())
+
+    const parsed = parseAuthSnapshot(change.newValue)
+    if (parsed) {
+      emit(parsed)
+      return
+    }
+    // 被删除（或内容损坏）：内容损坏也按删除处理（storage 层会自己清掉坏 key）
+    emit({ state: "signed-out", plan: "anonymous", updatedAt: Date.now() }, { force: true })
   }
 
   const onMessage: Parameters<typeof chrome.runtime.onMessage.addListener>[0] = (message) => {

@@ -96,7 +96,7 @@ export default {
   "options.account.status.none": "Нет подписки",
   "options.account.pastDueHint": "Оплата не прошла. Обновите способ оплаты и попробуйте снова.",
   "options.account.usageTitle": "Расход за период",
-  "options.account.usageDesc": "Мы предупредим, когда лимит будет заканчиваться",
+  "options.account.usageDesc": "Доля квоты, использованная в текущем периоде.",
   "options.account.usagePercent": "Использовано $1%",
   "options.account.usageReset": "Сброс $1",
   "options.account.usageUnknown": "Расход недоступен",

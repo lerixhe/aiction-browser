@@ -96,7 +96,7 @@ export default {
   "options.account.status.none": "無訂閱",
   "options.account.pastDueHint": "付款失敗，請更新付款方式後再試",
   "options.account.usageTitle": "本期用量",
-  "options.account.usageDesc": "額度快用完時會有提示",
+  "options.account.usageDesc": "目前週期已用的額度佔比。",
   "options.account.usagePercent": "已用 $1%",
   "options.account.usageReset": "$1 重設",
   "options.account.usageUnknown": "暫時無法取得用量",

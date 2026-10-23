@@ -35,6 +35,7 @@ import {
   readPending,
   readSnapshot,
   readSession,
+  writePending,
   writePersisted,
   writeSession,
   writeSnapshot
@@ -356,6 +357,16 @@ describe("signOut", () => {
     await expect(signOut()).resolves.toBeUndefined()
     expect((await readSnapshot())?.state).toBe("signed-out")
   })
+
+  it("登出同时清掉登录挂起态（残留的 state/verifier 只会让下次回跳撞 STATE_MISMATCH）", async () => {
+    await seedSession()
+    await writePending({ state: "pending-state", verifier: "pending-verifier", createdAt: Date.now() })
+    installFetchStub([() => jsonResponse(204)])
+
+    await signOut()
+
+    expect(await readPending()).toBeNull()
+  })
 })
 
 describe("埋点", () => {
@@ -363,6 +374,21 @@ describe("埋点", () => {
     const state = new URL(authorizeUrl).searchParams.get("state")!
     return `https://stub-extension-id.chromiumapp.org/?code=code-1&state=${state}`
   }
+
+  it("identity 不可用（权限缺失 / 功能开关关闭）→ NOT_AVAILABLE，不冒充 server_error", async () => {
+    // 回滚登录入口那天不能得到一张全是「服务端错误」的漏斗图
+    const chromeStub = (globalThis as { chrome?: Record<string, any> }).chrome!
+    chromeStub.identity.launchWebAuthFlow = undefined
+    const calls = installFetchStub([() => jsonResponse(200, {})])
+
+    const result = await signIn({ entry: "options" })
+    await nextTick()
+
+    expect(result).toEqual({ status: "failed", code: "NOT_AVAILABLE" })
+    expect(calls).toHaveLength(0)
+    const failed = authEvents.find((event) => event.name === "auth_sign_in_failed")
+    expect(failed?.props).toEqual({ entry: "options", reason: "unavailable" })
+  })
 
   it("登录成功上报 auth_sign_in_completed（entry / method / 耗时分桶）", async () => {
     stub.setWebAuthFlow(approve)
@@ -450,13 +476,42 @@ describe("埋点", () => {
 })
 
 describe("initializeSession（冷启动）", () => {
-  it("有快照 → 直接返回，不发请求", async () => {
-    await writeSnapshot({ state: "signed-out", plan: "anonymous", updatedAt: 1 })
+  it("有 signed-in 快照 → 直接返回，不发请求", async () => {
+    await writeSnapshot({ state: "signed-in", plan: "pro", updatedAt: 1 })
     const calls = installFetchStub([() => jsonResponse(500)])
 
     const snapshot = await initializeSession()
-    expect(snapshot.state).toBe("signed-out")
+    expect(snapshot.state).toBe("signed-in")
+    await nextTick()
     expect(calls).toHaveLength(0)
+  })
+
+  it("有 signed-out 快照 → 立即返回，同时后台补领 / 续签 device token", async () => {
+    // 旧实现的判断是「只有完全没有快照才领 device token」：首次领取赶上网络抖动
+    // 写下 signed-out 快照后，这批用户就**永久**没有匿名主体（30 天到期后也无续签时机）。
+    await writeSnapshot({ state: "signed-out", plan: "anonymous", updatedAt: 1 })
+    const calls = installFetchStub([() => jsonResponse(200, { access_token: "device-at", expires_in: 2592000 })])
+
+    const snapshot = await initializeSession()
+    expect(snapshot.state).toBe("signed-out") // 首帧不等请求
+
+    await nextTick()
+    expect(calls.some((call) => call.url.includes("/auth/device"))).toBe(true)
+    expect((await readSnapshot())?.state).toBe("anonymous")
+  })
+
+  it("补领 device token 时用户刚好登录了 → 不用匿名快照覆盖 signed-in", async () => {
+    await writeSnapshot({ state: "signed-out", plan: "anonymous", updatedAt: 1 })
+    installFetchStub([() => jsonResponse(200, { access_token: "device-at", expires_in: 2592000 })])
+
+    const pending = initializeSession()
+    await seedSession() // 领取期间登录完成
+    await writeSnapshot({ state: "signed-in", plan: "pro", updatedAt: Date.now() })
+    await pending
+    await nextTick()
+    await nextTick()
+
+    expect((await readSnapshot())?.state).toBe("signed-in")
   })
 
   it("只有持久层（浏览器重启清空 session）→ 先给 signed-in，再后台补 access", async () => {

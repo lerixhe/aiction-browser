@@ -186,6 +186,14 @@ export type AuthErrorCode =
   | "RATE_LIMITED"
   | "SERVER_ERROR"
   | "QUOTA_EXCEEDED"
+  /**
+   * 登录**能力**不可用（`identity` 权限缺失、`OFFICIAL_AUTH_ENABLED` 关闭、非 Chrome 环境）。
+   *
+   * 与 `SERVER_ERROR` 分开是刻意的：功能开关关掉 / 权限被拒 / 浏览器不支持都是「本端做不到」，
+   * 不是服务端出错。混在一起的话，回滚登录入口那天会得到一张全是“服务端错误”的漏斗图，
+   * 分不清是自己关了开关还是后端挂了。
+   */
+  | "NOT_AVAILABLE"
 
 /** 登录结果：`cancelled` 是正常路径（用户关窗），不是错误，**不上报失败埋点**。 */
 export type SignInResult =

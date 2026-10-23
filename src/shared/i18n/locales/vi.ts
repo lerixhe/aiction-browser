@@ -96,7 +96,7 @@ export default {
   "options.account.status.none": "Không có đăng ký",
   "options.account.pastDueHint": "Thanh toán thất bại. Vui lòng cập nhật phương thức thanh toán rồi thử lại.",
   "options.account.usageTitle": "Mức dùng trong kỳ",
-  "options.account.usageDesc": "Bạn sẽ được nhắc trước khi hết hạn mức",
+  "options.account.usageDesc": "Tỷ lệ hạn mức đã dùng trong kỳ hiện tại.",
   "options.account.usagePercent": "Đã dùng $1%",
   "options.account.usageReset": "Đặt lại $1",
   "options.account.usageUnknown": "Không lấy được mức dùng",

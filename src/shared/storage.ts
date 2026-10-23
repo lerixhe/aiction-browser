@@ -335,9 +335,22 @@ export async function getSettings(): Promise<ExtensionSettings> {
 
 const THEME_CACHE_KEY = "aiction:theme"
 
+/**
+ * 保存前规范化 provider 列表。
+ *
+ * 两个 `kind` 值的处置不对称，理由不同：
+ * - `byok` 是缺省值，写进去只是冗余（保持与旧版本的存储形态一致）；
+ * - `official` **根本不该存在于 `providers[]`**（不进列表、不可编辑/删除/导出，
+ *   只能在运行时由 `buildOfficialProvider` 构造）。校验层会把它当合法值留下，
+ *   所以导出/导入或旧存档里可能真带进来一条 —— 这种项留着就是个“空 apiKey 的幽灵提供商”，直接剔。
+ */
 export function trimProviders(providers: ProviderConfig[]): ProviderConfig[] {
-  return providers.map((provider) => {
-    const trimmed: ProviderConfig = {
+  const trimmed: ProviderConfig[] = []
+
+  for (const provider of providers) {
+    if (provider.kind === "official") continue
+
+    const next: ProviderConfig = {
       ...provider,
       name: provider.name.trim(),
       apiBaseUrl: provider.apiBaseUrl?.trim() || undefined,
@@ -345,9 +358,11 @@ export function trimProviders(providers: ProviderConfig[]): ProviderConfig[] {
       model: provider.model.trim()
     }
     // `kind` 缺省即 "byok"：不往存档里写冗余字段，保持与旧版本一致的存储形态
-    if (trimmed.kind === "byok") delete trimmed.kind
-    return trimmed
-  })
+    if (next.kind === "byok") delete next.kind
+    trimmed.push(next)
+  }
+
+  return trimmed
 }
 
 export async function saveSettings(settings: ExtensionSettings): Promise<void> {

@@ -260,12 +260,14 @@
 |--------|------|----------|------|
 | `auth_sign_in_started` | `entry`(`popup`/`options`), `source` | Options 账号分区 / Popup 账号行的登录按钮（发出 `AUTH_SIGN_IN` 前） | 登录意图：有多少人真的点了登录 |
 | `auth_sign_in_completed` | `entry`, `method`(`pkce`), `duration_bucket`(`<2s`/`2-10s`/`>10s`) | `shared/auth/session.ts` `performSignIn`（换 token 成功、会话落库后） | 登录成功率与耗时（授权页那一跳的体感） |
-| `auth_sign_in_failed` | `entry`, `reason`(`window_closed`/`state_mismatch`/`server_error`/`network`) | 同上，**每个失败/取消分支**（统一经 `fail()` 出口） | 登录漏斗的流失点：关窗 vs 服务端错误 |
+| `auth_sign_in_failed` | `entry`, `reason`(`window_closed`/`state_mismatch`/`server_error`/`network`/`unavailable`) | 同上，**每个失败/取消分支**（统一经 `fail()` 出口） | 登录漏斗的流失点：关窗 vs 服务端错误 |
 | `auth_signed_out` | `initiated`(`user`/`revoked`) | `signOut()` / `invalidateSession()` | 主动登出 vs 被撤销（refresh 失效） |
 | `quota_banner_shown` | `plan`, `used_ratio_bucket`(`0`/`<50`/`<80`/`<100`/`100`/`unknown`), `surface`(`options`/`popup`/`panel`) | 账号分区、Popup 账号行、面板失败态 CTA 的**首次渲染** | 额度/登录引导的曝光量（分母是它，分子是点击） |
 
 口径说明：
 - `auth_sign_in_failed.reason = window_closed` **不是错误**：用户在授权页关窗或点拒绝同样是放弃信号，记一条才能算漏斗；
+- `auth_sign_in_failed.reason = unavailable` 表示**本端能力缺失**（`identity` 权限被拒 / `OFFICIAL_AUTH_ENABLED` 关闭 /
+  非 Chrome 环境），不是服务端出错。回滚登录入口时 `reason` 必须能区分这两者，否则会得到一张全是「服务端错误」的漏斗图；
   它不弹提示、不进错误监控（`cancelled` 在 UI 侧是静默复位）。
 - `quota_banner_shown` 每个界面挂载只报一次（`useRef` 去重），React 重渲染不会刷量；未登录（`signed-out`）不上报——
   没有额度可看，报出来只会污染分母。
@@ -522,3 +524,4 @@
 | 2026-10-20 | `selection_toolbar_shown` 口径改为「工具栏渲染次数」 | **移除 5s 时间节流**（原实现会把同一页连续划词只留一条，使流失率分母偏小）。口径：工具栏出现一次算一次——`openToolbar` 带来新落位（鼠标坐标）才算，同一落位的重复触发合并；收起时清空落位键，再次出现重新计。可见期间再划一段（新位置）各记一条。属性零增删 |
 | 2026-10-22 | 登录功能 M1 地基（`ChatErrorCode` 新增一桶，事件数不变） | `ChatErrorCode` 新增 `quota_exceeded`（HTTP **402**，由结构化 `statusCode` 判定，不做文本推断），为 M2 的额度墙预留归因；M1 不加任何登录相关事件（`auth_*` 随 UI 在 T6 一并入表）。`classifyChatError()` 桶数 10 → 11 |
 | 2026-10-22 | 登录功能 M1 埋点（+5 → 45 个事件） | 新增 §2.9：`auth_sign_in_started` / `auth_sign_in_completed` / `auth_sign_in_failed`（`cancelled` 也记一条，`reason = window_closed`）/ `auth_signed_out`（`user` / `revoked`）/ `quota_banner_shown`（`surface` 三处、挂载去重、失败侧填 `unknown`）；background 由 `session.ts` 上报、UI 侧三个入口上报；新增 `usedRatioBucket()`；§1.2「扩展无账号体系」表述更新为「账号体系存在，但埋点仍只到设备级」 |
+| 2026-10-22 | 评审修复：`auth_sign_in_failed.reason` 增加 `unavailable` | 原实现把「identity 权限缺失 / 登录功能开关关闭」归到 `server_error`，回滚入口那天会分不清是自己关了开关还是后端挂了。事件数与其余属性不变 |

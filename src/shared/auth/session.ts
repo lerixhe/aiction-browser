@@ -76,6 +76,7 @@ function signInFailureReason(code: AuthErrorCode): string {
   if (code === "CANCELLED") return "window_closed"
   if (code === "STATE_MISMATCH") return "state_mismatch"
   if (code === "NETWORK") return "network"
+  if (code === "NOT_AVAILABLE") return "unavailable"
   return "server_error"
 }
 
@@ -287,9 +288,9 @@ export async function invalidateSession(reason: AuthErrorCode): Promise<void> {
   if (previous) {
     void trackBackgroundEvent("auth_signed_out", { initiated: "revoked" })
   }
-  if (reason !== "REFRESH_REVOKED") {
-    console.warn(`[auth] 会话失效：${reason}`)
-  }
+  // 撤销类（refresh 失效 / token 无效）也记：线上「莫名掉登录」时最需要的就是这一行。
+  // 只有主动登出（`signOut()`）不走本函数，那条路径不需要告警。
+  console.warn(`[auth] 会话失效：${reason}`)
 }
 
 // ── 快照 ───────────────────────────────────────────────────────
@@ -303,11 +304,13 @@ export async function getSnapshot(): Promise<AuthSnapshot> {
     return stored
   }
 
-  // 没有快照时按存储推断：有持久层就认为已登录（首帧不闪未登录），真实状态由下一次请求校准
+  // 没有快照时按存储推断：有持久层就认为已登录（首帧不闪未登录），真实状态由下一次请求校准。
+  // 推断结果要**落盘**：否则每次调用都重新取 `Date.now()`，订阅端会反复收到“看起来是新版本”的同一份内容。
   const persisted = await readPersisted()
-  return persisted
+  const inferred: AuthSnapshot = persisted
     ? { state: "signed-in", plan: persisted.plan, updatedAt: Date.now() }
     : buildSignedOutSnapshot()
+  return persistSnapshot(inferred)
 }
 
 /**
@@ -392,7 +395,7 @@ async function performSignIn(input: { entry: "popup" | "options" }): Promise<Sig
     return code === "CANCELLED" ? { status: "cancelled" } : { status: "failed", code }
   }
 
-  if (!canUseIdentity()) return fail("SERVER_ERROR")
+  if (!canUseIdentity()) return fail("NOT_AVAILABLE")
 
   const extId = extensionId()
   const redirectUri = identityRedirectUrl()
@@ -494,6 +497,8 @@ export async function signOut(): Promise<void> {
 
   const previous = await readSession()
   await clearSession()
+  // 登录挂起态也要清：登出后残留的 state/verifier 只会让下一次回跳撞上 STATE_MISMATCH
+  await clearPending()
   clearEntitlementsCache()
   await persistSnapshot(buildSignedOutSnapshot())
 
@@ -515,25 +520,32 @@ export async function signOut(): Promise<void> {
  * 启动时初始化会话（SPEC §5.2 冷启动时序）。
  *
  * 顺序刻意是「先信本地快照」：
- * - 有快照 → 立刻返回（首帧不闪未登录），临近过期时**后台**刷新，不阻塞消息响应；
+ * - 有快照 → 立刻返回（首帧不闪未登录），signed-in 时**后台**刷新 token，不阻塞消息响应；
  * - 只有持久层（浏览器重启后 session 被清空）→ 先给 signed-in，再后台换 access；
  * - 什么都没有 → 领 device token，成功则 anonymous（失败静默，按未配置处理）。
  *
- * ⚠️ **M2 待补的两个缺口**（M1 无可见影响，接线官方链路时会同时暴露）：
- * 1. SPEC §5.1 要求 anonymous 之后「拉一次 `/v1/me`（拿匿名额度）」，当前**没做**。
- *    而且做了也拿不到：`getEntitlements` → `authFetch(auth: true)` → `getAccessToken()` 只认持久层，
- *    未登录必抛 `NO_SESSION`。也就是说 **device token 目前没有任何业务消费方**，只有 `device.ts` 自己读写；
- *    M2 必须让 `request.ts` 在无会话时改用 device token 认证（否则匿名用户的官方请求全部 401）。
- * 2. `ensureDeviceToken()` 只在「**完全没有快照**」这一支被调到：一旦写过快照（包括首次失败写下的
- *    signed-out），之后永远不会再领；device token 的 30 天到期也没有续签路径。
- *    修法：把条件改成读 `readDeviceToken()`（没领过 / 临期才领），而不是「无快照」。
+ * 两个容易漏的分支：
+ * - 快照是 **signed-out** 也要跑一次 device token（`ensureDeviceToken` 本地有有效值时直接返回、
+ *   不发请求）：首次领取赶上网络抖动会写下 signed-out 快照，只看「无快照才领」会让这类用户
+ *   **永久**没有匿名主体；同理 30 天到期后也没有任何续签时机。
+ * - 无快照分支的 `ensureDeviceToken()` 可能抛 4xx（客户bug）：本地 catch 成 null，
+ *   否则调用方拿到 reject 就与「匿名失败静默」的约定相违。
+ *
+ * ⚠️ **M2 待补的缺口**（M1 无可见影响，接线官方链路时才会暴露）：
+ * SPEC §5.1 要求 anonymous 之后「拉一次 `/v1/me`（拿匿名额度）」，当前**没做**。
+ * 而且做了也拿不到：`getEntitlements` → `authFetch(auth: true)` → `getAccessToken()` 只认持久层，
+ * 未登录必抛 `NO_SESSION`。也就是说 **device token 目前没有任何业务消费方**，只有 `device.ts` 自己读写；
+ * M2 必须让 `request.ts` 在无会话时改用 device token 认证（否则匿名用户的官方请求全部 401）。
  */
 export async function initializeSession(): Promise<AuthSnapshot> {
   const stored = await readSnapshot()
   if (stored) {
     cachedSnapshot = stored
-    if (stored.state !== "signed-out") {
+    if (stored.state === "signed-in") {
       void getAccessToken().catch(() => undefined)
+    } else if (stored.state === "signed-out") {
+      // 补领 / 续签匿名主体；成功才改快照，失败保持 signed-out（不弹错）
+      void promoteToAnonymous().catch(() => undefined)
     }
     return stored
   }
@@ -546,11 +558,31 @@ export async function initializeSession(): Promise<AuthSnapshot> {
     return snapshot
   }
 
-  const deviceToken = await ensureDeviceToken()
+  const deviceToken = await ensureDeviceToken().catch(() => null)
   const snapshot: AuthSnapshot = deviceToken
     ? { state: "anonymous", principalKind: "device", plan: "anonymous", updatedAt: Date.now() }
     : buildSignedOutSnapshot()
   return persistSnapshot(snapshot)
+}
+
+/**
+ * 尝试把 signed-out 快照升到 anonymous（领/续签 device token）。
+ *
+ * 写快照前重读一次：领取期间用户可能已经登录，不能拿一个匿名的旧快照盖掉 signed-in。
+ */
+async function promoteToAnonymous(): Promise<void> {
+  const token = await ensureDeviceToken().catch(() => null)
+  if (!token) return
+  // 重读**存储**而不是内存缓存：领取期间用户可能已经登录（真的登录会写存储），
+  // 拿一个匿名的旧快照盖掉 signed-in 比「没领到 device token」严重得多。
+  const current = await readSnapshot()
+  if (current && current.state !== "signed-out") return
+  await persistSnapshot({
+    state: "anonymous",
+    principalKind: "device",
+    plan: "anonymous",
+    updatedAt: Date.now()
+  })
 }
 
 // 依赖倒置：把 token 提供者与失效入口交给 request.ts（避免 request ↔ session 循环依赖）

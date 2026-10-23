@@ -17,8 +17,9 @@
  *   4. `plan` 可任意切换（`?plan=` / `MOCK_PLAN`），没有订阅状态机与结算。
  *   契约真源：`.private-docs/OFFICIAL_API_CONTRACT.md`。
  *
- * 额度数值是**占位符**（`limit` 可被 `MOCK_QUOTA_LIMIT` 覆盖）：
- * 真实额度只由服务端下发，客户端不得硬编码，mock 里也不放任何真实业务数值。
+ * 额度数值是**占位符**，且默认值刻意选得很小（`MOCK_QUOTA_LIMIT` 可覆盖）：
+ * 真实额度只由服务端下发，客户端不得硬编码，公开仓库里也不放**看起来像真的**业务数值。
+ * 默认 1000 的好处是：`used > 0` 时进度条直接拉到 100%，顺手把额度耗尽 / 402 的边缘路径跑到。
  *
  * 失败注入（环境变量，逗号分隔；`MOCK_FAIL=refresh_500,me_500`）：
  *   device_429        /auth/device 持续 429
@@ -37,7 +38,7 @@ const GRACE_MS = 60_000
 const CODE_TTL_MS = 5 * 60_000
 const ACCESS_TTL_SECONDS = 900
 const DEVICE_TTL_SECONDS = 30 * 24 * 60 * 60
-const DEFAULT_QUOTA_LIMIT = 1_000_000
+const DEFAULT_QUOTA_LIMIT = 1_000
 
 /** 契约 §1.3：除 Authorization 外的四个必需头（authorize 是浏览器导航，不校验） */
 const BASE_HEADERS = ["x-ext-id", "x-client-version", "x-device-id", "x-platform"]

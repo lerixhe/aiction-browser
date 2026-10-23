@@ -96,7 +96,7 @@ export default {
   "options.account.status.none": "サブスクリプションなし",
   "options.account.pastDueHint": "支払いに失敗しました。支払い方法を更新してからお試しください。",
   "options.account.usageTitle": "今回の期間の使用量",
-  "options.account.usageDesc": "上限が近づくと通知されます",
+  "options.account.usageDesc": "現在の期間で使用した割合です。",
   "options.account.usagePercent": "$1% 使用済み",
   "options.account.usageReset": "$1 にリセット",
   "options.account.usageUnknown": "使用量を取得できません",

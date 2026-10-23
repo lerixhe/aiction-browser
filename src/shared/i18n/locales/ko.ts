@@ -96,7 +96,7 @@ export default {
   "options.account.status.none": "구독 없음",
   "options.account.pastDueHint": "결제에 실패했습니다. 결제 수단을 업데이트한 뒤 다시 시도해 주세요.",
   "options.account.usageTitle": "이번 기간 사용량",
-  "options.account.usageDesc": "한도가 얼마 남지 않으면 알려 드립니다",
+  "options.account.usageDesc": "현재 기간에 사용한 비율입니다.",
   "options.account.usagePercent": "$1% 사용",
   "options.account.usageReset": "$1 초기화",
   "options.account.usageUnknown": "사용량을 가져올 수 없습니다",

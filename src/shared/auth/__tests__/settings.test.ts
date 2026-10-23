@@ -63,8 +63,15 @@ describe("trimProviders：存储形态保持干净", () => {
     expect(trimmed.name).toBe("A")
   })
 
-  it("kind: official 保留（不应出现，出现也如实保留供排查）", () => {
-    const [trimmed] = trimProviders([{ id: "a", name: "A", apiKey: "", model: "m", modelParams: {}, kind: "official" }])
-    expect(trimmed.kind).toBe("official")
+  it("kind: official 被剔除（它只能在运行时构造，永远不该落盘）", () => {
+    // 旧版曾“如实保留供排查”，实测代价更大：它会出现在提供商列表里供用户编辑 / 导出，
+    // 却是一个 apiKey 永远为空的幽灵项（点测试只会报错）。`official` 的唯一来源是
+    // `buildOfficialProvider()` 的运行时构造，所以存档里见到它必然是坏数据。
+    const trimmed = trimProviders([
+      { id: "a", name: "A", apiKey: "", model: "m", modelParams: {}, kind: "official" },
+      { id: "b", name: "B", apiKey: "k", model: "m", modelParams: {} }
+    ])
+
+    expect(trimmed.map((provider) => provider.id)).toEqual(["b"])
   })
 })

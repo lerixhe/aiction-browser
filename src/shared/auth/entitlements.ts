@@ -138,6 +138,10 @@ export function clearEntitlementsCache(): void {
  * 转成可分发快照。
  * `quota` 只保留 `{ usedRatio, resetAt }`（百分比口径）——UI 不需要原始 token 数，
  * 也避免把「用了多少 token」这种运营数据散落到各处。
+ *
+ * 进度条刻意只用 `used`、不含 `reserved`：`reserved` 是预扣中的临时量（契约 §4.1），
+ * 请求结束就会回填，加进去会让进度条在一次对话前后跳一下。差异量级极小（几十到几百分之一），
+ * 而「百分比只增不减」对用户更可信。
  */
 export function entitlementsToSnapshot(
   entitlements: Entitlements

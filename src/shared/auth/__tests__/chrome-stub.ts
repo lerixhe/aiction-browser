@@ -22,6 +22,13 @@ export interface StorageStub {
    * - `"error"` = 通过 `runtime.lastError` 表达（部分 Chrome 版本的真实表现）
    */
   setWebAuthFlow: (result: string | undefined | "error" | ((authorizeUrl: string) => string | undefined)) => void
+  /**
+   * 触发 `storage.onChanged`（`facade.subscribeAuthSnapshot` 的主通道）。
+   *
+   * `newValue === undefined` 表示 key 被删除 —— 删除与「写入一个旧版本」在语义上完全不同，
+   * 两者都必须在测试里能分别复现（曾经把删除当成旧版本丢掉，UI 就卡在登录态）。
+   */
+  emitStorageChange: (changes: Record<string, { oldValue?: unknown; newValue?: unknown }>, area?: string) => void
 }
 
 function createArea(map: Map<string, unknown>, onSet: () => void) {
@@ -43,6 +50,12 @@ export function installChromeStub(opts: { session?: boolean; runtimeId?: string 
   const webAuthFlowCalls: string[] = []
   const broadcasts: unknown[] = []
 
+  type ChangeListener = (
+    changes: Record<string, { oldValue?: unknown; newValue?: unknown }>,
+    areaName: string
+  ) => void
+  const changeListeners = new Set<ChangeListener>()
+
   let flowResult: string | undefined | "error" | ((authorizeUrl: string) => string | undefined) = undefined
   let lastError: { message: string } | undefined
 
@@ -55,6 +68,9 @@ export function installChromeStub(opts: { session?: boolean; runtimeId?: string 
     broadcasts,
     setWebAuthFlow: (result) => {
       flowResult = result
+    },
+    emitStorageChange: (changes, area = "local") => {
+      for (const listener of changeListeners) listener(changes, area)
     }
   }
 
@@ -71,6 +87,13 @@ export function installChromeStub(opts: { session?: boolean; runtimeId?: string 
     : undefined
 
   const globalWithChrome = globalThis as { chrome?: unknown }
+  /** `chrome.storage.onChanged`（只做 add / remove + 主动 emit，不自动跟随 set/remove） */
+  const onChanged = {
+    addListener: (listener: ChangeListener) => changeListeners.add(listener),
+    removeListener: (listener: ChangeListener) => changeListeners.delete(listener),
+    hasListener: (listener: ChangeListener) => changeListeners.has(listener)
+  }
+
   globalWithChrome.chrome = {
     runtime: {
       id: runtimeId,
@@ -103,7 +126,7 @@ export function installChromeStub(opts: { session?: boolean; runtimeId?: string 
         })
       }
     },
-    storage: { local, sync, ...(session ? { session } : {}) }
+    storage: { local, sync, onChanged, ...(session ? { session } : {}) }
   }
 
   return stub
