@@ -821,10 +821,20 @@ export default defineBackground(() => {
     ) => {
       if (request?.type !== MESSAGE_TYPES.OPEN_OPTIONS) return false
 
-      const hash = request.payload?.hash === "account" ? "account" : undefined
+      const rawHash = request.payload?.hash
+      const hash = rawHash === "account" ? "account" : undefined
       const rawEntry = request.payload?.entry
       const entry =
         typeof rawEntry === "string" ? OPEN_OPTIONS_ENTRIES.find((item) => item === rawEntry) : undefined
+
+      // 白名单收敛是刻意的（不接受任意 hash / 任意 entry），但**不静默丢**：
+      // 发送方写错路由名时，这里的一行 warn 是唯一能排查的鼓点。
+      if (rawHash !== undefined && hash === undefined) {
+        console.warn("[options] 未知的 hash，已忽略", rawHash)
+      }
+      if (rawEntry !== undefined && entry === undefined) {
+        console.warn("[options] 未知的 entry，已忽略", rawEntry)
+      }
 
       void (async () => {
         try {

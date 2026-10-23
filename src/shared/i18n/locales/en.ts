@@ -81,6 +81,7 @@ const messages = {
   "options.account.planEnds": "Valid until $1",
   "options.account.planNoEnd": "No expiry date",
   "options.account.manage": "Manage subscription",
+  "options.account.openFailed": "Couldn't open the billing page. Please try again.",
   "options.account.upgrade": "Upgrade quota",
   "options.account.plan.anonymous": "Anonymous",
   "options.account.plan.free": "Free",

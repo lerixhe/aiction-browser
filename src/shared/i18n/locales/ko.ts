@@ -83,6 +83,7 @@ export default {
   "options.account.planEnds": "$1까지 유효",
   "options.account.planNoEnd": "만료일 없음",
   "options.account.manage": "구독 관리",
+  "options.account.openFailed": "결제 페이지를 열 수 없습니다. 다시 시도해 주세요.",
   "options.account.upgrade": "한도 업그레이드",
   "options.account.plan.anonymous": "익명",
   "options.account.plan.free": "무료",

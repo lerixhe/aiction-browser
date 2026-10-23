@@ -83,6 +83,7 @@ export default {
   "options.account.planEnds": "Действует до $1",
   "options.account.planNoEnd": "Без срока",
   "options.account.manage": "Управление подпиской",
+  "options.account.openFailed": "Не удалось открыть страницу оплаты. Попробуйте ещё раз.",
   "options.account.upgrade": "Увеличить лимит",
   "options.account.plan.anonymous": "Аноним",
   "options.account.plan.free": "Бесплатный",

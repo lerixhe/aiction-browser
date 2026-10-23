@@ -32,10 +32,15 @@ This Privacy Policy describes how AIction ("we", "our", or "the extension") coll
 - **Error diagnostics** (see below)
 - Anonymous usage identifier (randomly generated UUID)
 - **Account state for the official service** (enum values only): a randomly generated device id,
-  sign-in state (`signed-in` / `anonymous` / `signed-out`), your plan tier (`free` / `pro` / `max`),
-  and a **bucketed** quota usage ratio (`0` / `<50%` / `<80%` / `<100%` / `100%`).
+  sign-in state (`signed-in` / `anonymous` / `signed-out`), your plan tier
+  (`anonymous` / `free` / `pro` / `max` / `unknown` — `anonymous` is the unsigned-in device principal,
+  not a paid tier; `unknown` means that surface had no account snapshot to read),
+  and a **bucketed** quota usage ratio (`0` / `<50%` / `<80%` / `<100%` / `100%` / `unknown` — `unknown`
+  means the usage figure was not obtainable when the event fired, never a guess).
   Sign-in events record the entry point (`popup` / `options`) and a coarse failure reason
-  (`window_closed` / `state_mismatch` / `server_error` / `network`) — never an email, user id, or token.
+  (`window_closed` / `state_mismatch` / `server_error` / `network` / `unavailable` — `unavailable` means
+  the capability was missing on this device, e.g. permission denied or the feature switched off, and is
+  deliberately not reported as a server error) — never an email, user id, or token.
 
 **Error Diagnostics:**
 When an AI request, connection test, or text-to-speech request fails, we record a diagnostic entry containing:

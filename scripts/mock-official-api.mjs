@@ -34,7 +34,12 @@ import { createHash, randomBytes, randomUUID } from "node:crypto"
 import http from "node:http"
 
 const PORT = Number(process.env.PORT ?? 8787)
-const GRACE_MS = 60_000
+/**
+ * 刷新 token 的宽限窗口：**本地占位值**，不对应真实服务端配置
+ *（宽限 / 频控这类风控阈值属服务端，按仓库边界不入库，契约真源在 `.private-docs/`）。
+ * 需要验证「窗口内 / 窗口外」两端行为时用 `MOCK_GRACE_MS` 覆盖，不要改这里的默认值。
+ */
+const GRACE_MS = Number(process.env.MOCK_GRACE_MS ?? 60_000)
 const CODE_TTL_MS = 5 * 60_000
 const ACCESS_TTL_SECONDS = 900
 const DEVICE_TTL_SECONDS = 30 * 24 * 60 * 60
@@ -362,7 +367,7 @@ async function handleRequest(req, res) {
       })
     }
 
-    // ── 刷新（轮换 + 60s 宽限）────────────────────────────────
+    // ── 刷新（轮换 + 宽限窗口）────────────────────────────────
     if (req.method === "POST" && path === "/auth/refresh") {
       state.counters.refresh++
       if (!requireBaseHeaders(req, res)) return
@@ -458,6 +463,8 @@ async function handleRequest(req, res) {
         },
         features: {
           models: ["aiction-fast", "aiction-pro"],
+          // 下面三个数字全是**占位**（只为了让客户端拿到形状正确的数据），
+          // 真实上限由服务端下发，客户端不得据此做任何判断。
           max_output_tokens: 8192,
           concurrency: 3,
           context_chars: 200_000
@@ -571,7 +578,7 @@ td:first-child{white-space:nowrap;font-family:ui-monospace,monospace;color:#2563
 <tr><td>POST /auth/device</td><td>领匿名设备 token（同 device_id 幂等）</td></tr>
 <tr><td>GET /auth/extension/authorize</td><td>授权页：点「完成登录」即 302 回 <code>redirect_uri?code&amp;state</code></td></tr>
 <tr><td>POST /auth/extension/token</td><td>code + PKCE verifier 换 token（code 一次性、5 分钟）</td></tr>
-<tr><td>POST /auth/refresh</td><td>轮换 + 60s 宽限窗口（窗口内重放返回同一组新 token）</td></tr>
+<tr><td>POST /auth/refresh</td><td>轮换 + 宽限窗口（窗口内重放返回同一组新 token）</td></tr>
 <tr><td>POST /auth/logout</td><td>撤销当前设备全部 refresh，204</td></tr>
 <tr><td>GET /v1/me</td><td>权益快照（<code>?plan=pro</code> 可切换档位）</td></tr>
 <tr><td>GET /__state</td><td>调试：调用计数与 refresh 宽限剩余时间</td></tr>
@@ -762,7 +769,7 @@ async function runSelftest() {
     const record = state.refreshTokens.get(refresh2)
     record.rotatedAt = Date.now() - GRACE_MS - 1000
     const outsideGrace = await call("/auth/refresh", { method: "POST", body: { refresh_token: refresh2 } })
-    check("超出 60s 宽限的重放 → 401 refresh_revoked", outsideGrace.status === 401 && outsideGrace.json.error.code === "refresh_revoked")
+    check(`超出宽限窗口（${GRACE_MS / 1000}s）的重放 → 401 refresh_revoked`, outsideGrace.status === 401 && outsideGrace.json.error.code === "refresh_revoked")
 
     // 12. 登出撤销 refresh
     const logout = await call("/auth/logout", { method: "POST", accessToken: rotated2.json.access_token })

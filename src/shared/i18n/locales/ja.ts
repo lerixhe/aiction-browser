@@ -83,6 +83,7 @@ export default {
   "options.account.planEnds": "$1 まで有効",
   "options.account.planNoEnd": "有効期限なし",
   "options.account.manage": "サブスクリプション管理",
+  "options.account.openFailed": "請求ページを開けませんでした。もう一度お試しください。",
   "options.account.upgrade": "上限をアップグレード",
   "options.account.plan.anonymous": "匿名",
   "options.account.plan.free": "無料",

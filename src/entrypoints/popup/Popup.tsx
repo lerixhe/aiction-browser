@@ -154,7 +154,9 @@ export default function Popup() {
   const [signingIn, setSigningIn] = useState(false)
   const [signInError, setSignInError] = useState(false)
   /** 只读快照：凭据永远拿不到（见 shared/auth/facade.ts） */
-  const { snapshot: authSnapshot } = useAuthSnapshot()
+  const { snapshot: authSnapshot, loading: authLoading } = useAuthSnapshot()
+  /** 失败提示的复位计时器：重入时要清掉旧的，否则上一轮会把新一轮提前熄掉 */
+  const signInErrorTimerRef = useRef<number | null>(null)
   /** 额度提示每个 Popup 挂载只上报一次 */
   const quotaBannerReportedRef = useRef(false)
   const providerMenuRef = useRef<HTMLDivElement | null>(null)
@@ -324,7 +326,11 @@ export default function Popup() {
 
     const flagError = () => {
       setSignInError(true)
-      window.setTimeout(() => setSignInError(false), 3000)
+      if (signInErrorTimerRef.current !== null) window.clearTimeout(signInErrorTimerRef.current)
+      signInErrorTimerRef.current = window.setTimeout(() => {
+        signInErrorTimerRef.current = null
+        setSignInError(false)
+      }, 3000)
     }
 
     try {
@@ -362,6 +368,13 @@ export default function Popup() {
     }
     window.close()
   }
+
+  // 卸载时清掉失败提示的复位计时器（Popup 随时会被关，迟到的 setState 没有意义）
+  useEffect(() => {
+    return () => {
+      if (signInErrorTimerRef.current !== null) window.clearTimeout(signInErrorTimerRef.current)
+    }
+  }, [])
 
   // 账号行「可见」：登录后头部会显示套餐徽标，属同一类额度提示
   useEffect(() => {
@@ -421,6 +434,13 @@ export default function Popup() {
     display: "flex",
     alignItems: "center",
     height: 22
+  }
+
+  /** 快照加载期的占位：尺寸对齐「登录」按钮，避免头部布局跳动 */
+  const accountSlotPlaceholderStyle: CSSProperties = {
+    width: 48,
+    height: 22,
+    borderRadius: 6
   }
 
   const signInButtonStyle: CSSProperties = {
@@ -975,11 +995,17 @@ export default function Popup() {
         <span style={versionStyle}>v{chrome.runtime.getManifest().version}</span>
 
         <div style={accountSlotStyle}>
-          {authSnapshot.state === "signed-in" ? (
+          {authLoading ? (
+            // 快照未就绪：占位而不是先画「登录」。否则已登录用户每开一次 Popup 都会闪一帧「登录」
+            // 再跳成头像（SPEC §8.1 口径 1「三处都不能错」）。同尺寸占位保证头部恒 34px。
+            <span style={accountSlotPlaceholderStyle} aria-hidden="true" />
+          ) : authSnapshot.state === "signed-in" ? (
             <button
               type="button"
               onClick={() => void openAccountSettings()}
-              title={`${authSnapshot.email ?? ""} · ${t(`options.account.plan.${authSnapshot.plan}`)}`.trim()}
+              title={[authSnapshot.email, t(`options.account.plan.${authSnapshot.plan}`)]
+                .filter(Boolean)
+                .join(" · ")}
               aria-label={t("popup.account.open")}
               style={accountChipStyle}>
               <span style={avatarStyle}>{(authSnapshot.email ?? "A").trim().charAt(0)}</span>

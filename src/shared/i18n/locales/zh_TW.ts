@@ -83,6 +83,7 @@ export default {
   "options.account.planEnds": "有效期限至 $1",
   "options.account.planNoEnd": "無到期時間",
   "options.account.manage": "管理訂閱",
+  "options.account.openFailed": "打不開帳單頁，請重試。",
   "options.account.upgrade": "升級額度",
   "options.account.plan.anonymous": "匿名",
   "options.account.plan.free": "免費版",

@@ -83,6 +83,7 @@ export default {
   "options.account.planEnds": "Có hiệu lực đến $1",
   "options.account.planNoEnd": "Không có ngày hết hạn",
   "options.account.manage": "Quản lý đăng ký",
+  "options.account.openFailed": "Không mở được trang thanh toán. Vui lòng thử lại.",
   "options.account.upgrade": "Nâng hạn mức",
   "options.account.plan.anonymous": "Ẩn danh",
   "options.account.plan.free": "Miễn phí",

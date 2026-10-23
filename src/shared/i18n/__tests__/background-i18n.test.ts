@@ -137,6 +137,22 @@ describe("initBackgroundI18n", () => {
     expect(stub.listenerCount()).toBe(1)
   })
 
+  it("监听在任何 await 之前就注册好了（没有观测空窗）", () => {
+    const stub = installStub()
+    // 故意不 await：只要 init 能跑到第一个 await，监听就必须已经挂上
+    void initBackgroundI18n()
+    expect(stub.listenerCount()).toBe(1)
+  })
+
+  it("读设置期间到达的变化，不会被读回来的旧值盖掉", async () => {
+    const stub = installStub({ language: "ja" })
+    const pending = initBackgroundI18n()
+    // `getSettings()` 还在路上时用户刚改成韩语；先读后注册会在这里把 ko 盖回 ja
+    stub.emit("ko")
+    await pending
+    expect(i18nStore.getLocale()).toBe("ko")
+  })
+
   it("ERROR_MESSAGES 这类 getter 会在 locale 变化后立刻拿到新文案", async () => {
     const stub = installStub({ language: "ja" })
     await initBackgroundI18n()

@@ -55,8 +55,14 @@ export async function ensureDeviceToken(): Promise<string | null> {
     const token = data.access_token
     if (!token) return null
 
-    const expiresIn = typeof data.expires_in === "number" ? data.expires_in : 0
-    await writeDeviceToken({ token, expiresAt: Date.now() + expiresIn * 1000 })
+    // `expires_in` 是契约必填项。缺了就**不写缓存**：按 0 写会落一条「立刻过期」的假缓存，
+    // 每次冷启动都重打 /auth/device（幂等，但白花一次往返），而且把服务端字段缺失藏了起来。
+    const expiresIn = typeof data.expires_in === "number" && data.expires_in > 0 ? data.expires_in : null
+    if (expiresIn === null) {
+      console.warn("[auth] /auth/device 响应缺少 expires_in，本次不缓存 device token")
+    } else {
+      await writeDeviceToken({ token, expiresAt: Date.now() + expiresIn * 1000 })
+    }
     return token
   } catch (error) {
     const authError = toAuthError(error)

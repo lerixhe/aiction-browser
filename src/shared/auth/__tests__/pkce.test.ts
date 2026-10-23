@@ -35,8 +35,17 @@ describe("randomToken", () => {
     }
   })
 
-  it("两次调用不相同（熵来源是 crypto，不是 Math.random）", () => {
-    expect(randomToken()).not.toBe(randomToken())
+  /** SPEC §12.1 U1：`randomToken(32)` × 100 长度 43、字符集合规、100 次互不相同 */
+  it("100 次调用互不相同（熵来源是 crypto，不是 Math.random）", () => {
+    const seen = new Set<string>()
+    for (let index = 0; index < 100; index += 1) {
+      const token = randomToken()
+      expect(token).toHaveLength(43)
+      expect(token).toMatch(/^[A-Za-z0-9_-]+$/)
+      seen.add(token)
+    }
+    // 只比两次的话，一个「自带计数器 + 时间戳」的假随机源也能过
+    expect(seen.size).toBe(100)
   })
 
   it("不同长度按需产出", () => {

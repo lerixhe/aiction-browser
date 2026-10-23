@@ -1133,11 +1133,19 @@ export default function ChatPanel({
   const handleFailureAction = useCallback(() => {
     if (!failureAction) return
     if (failureAction.kind === "login") {
-      // 走 OPEN_OPTIONS：`openOptionsPage()` 不支持 hash，而 CTA 必须落到 #account
-      void chrome.runtime.sendMessage({
-        type: MESSAGE_TYPES.OPEN_OPTIONS,
-        payload: { hash: "account", entry: "chat" }
-      })
+      // 走 OPEN_OPTIONS：`openOptionsPage()` 不支持 hash，而 CTA 必须落到 #account。
+      // 与外链分支保持同一口径：把 rejection / 业务失败都摊到日志里，不裸发 `void`。
+      void chrome.runtime
+        .sendMessage({
+          type: MESSAGE_TYPES.OPEN_OPTIONS,
+          payload: { hash: "account", entry: "chat" }
+        })
+        .then((response: unknown) => {
+          if (response && (response as { success?: boolean }).success === false) {
+            console.warn("[chat] 打开账号设置失败", response)
+          }
+        })
+        .catch((error: unknown) => console.warn("[chat] 打开账号设置失败", error))
       return
     }
     // 外链必须由 background 代开：`chrome.tabs` **不暴露给 content script**，

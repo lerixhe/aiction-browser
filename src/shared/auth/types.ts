@@ -195,7 +195,13 @@ export type AuthErrorCode =
    */
   | "NOT_AVAILABLE"
 
-/** 登录结果：`cancelled` 是正常路径（用户关窗），不是错误，**不上报失败埋点**。 */
+/**
+ * 登录结果。
+ *
+ * `cancelled` 是**正常路径**（用户关窗 / 拒绝）：UI 不弹错、不复位成失败态。
+ * 但它**会记一条 `auth_sign_in_failed{reason: "window_closed"}`**——放弃也是漏斗信号，
+ * 只是不进错误监控（见 `session.ts` 的 `fail()` 与 `docs/ANALYTICS.md` §2.9）。
+ */
 export type SignInResult =
   | { status: "signed-in" }
   | { status: "cancelled" }

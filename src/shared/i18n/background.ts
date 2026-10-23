@@ -50,23 +50,29 @@ export async function initBackgroundI18n(options: BackgroundI18nOptions = {}): P
     }
   }
 
-  try {
-    const settings = await getSettings()
-    apply(settings.language)
-  } catch {
-    // 读设置失败（扩展上下文刚起来）：退回默认偏好（跟随浏览器），不要卡住初始化
-    apply(undefined)
-  }
+  /** 订阅之后是否已经收到过变化：收到过就不能再让「初始读」的旧值盖回去 */
+  let sawUpdate = false
 
   try {
+    // **先注册再读**：`getSettings()` 是异步的，先读后订阅会让 await 窗口里的 language 变化漏掉
+    //（表现：刚改成日文，background 仍说英文，直到下一次改设置）。
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== "sync") return
       const raw = changes[SETTINGS_KEY]
       if (!raw?.newValue) return
+      sawUpdate = true
       apply((raw.newValue as { language?: unknown }).language)
     })
   } catch {
     // 没有 storage 事件（极少见）只是不跟随变化，初始化本身仍然完成了
+  }
+
+  try {
+    const settings = await getSettings()
+    if (!sawUpdate) apply(settings.language)
+  } catch {
+    // 读设置失败（扩展上下文刚起来）：退回默认偏好（跟随浏览器），不要卡住初始化
+    if (!sawUpdate) apply(undefined)
   }
 
   return current

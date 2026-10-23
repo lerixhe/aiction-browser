@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import { trackEvent, usedRatioBucket } from "@/shared/analytics"
 
 import { manageSubscriptionAction, subscriptionStatusKey } from "@/shared/auth/actions"
-import { OFFICIAL_AI_ENABLED, WEB_BASE } from "@/shared/auth/config"
+import { OFFICIAL_AI_ENABLED, WEB_BASE, WEB_ROUTES } from "@/shared/auth/config"
 import type {
   AuthSignInResponse,
   AuthSignOutResponse,
@@ -156,9 +156,17 @@ export function AccountSection({ settings, saveSettingsNow }: AccountSectionProp
   }
 
   const handleManageSubscription = () => {
-    // `manageUrl` 由服务端下发；拿不到时退到账单页（地址始终可点，不静默失败）
-    const url = entitlements?.subscription.manageUrl || `${WEB_BASE}/billing`
-    void chrome.tabs.create({ url })
+    // `manageUrl` 由服务端下发；拿不到时退到账单页。
+    // 路由字面量只在 `config.ts` 的 `WEB_ROUTES` 里拼，别处一律引常量（否则统一改域 / 改路径时必漏）。
+    const url = entitlements?.subscription.manageUrl || `${WEB_BASE}${WEB_ROUTES.billing}`
+    const fail = () => setActionError(t("options.account.openFailed"))
+    // `chrome.tabs.create` 在扩展上下文失效（重载后遗留的页面）后会**同步抛** TypeError，
+    // 不会变成 rejection：只挂 `.catch` 接不住，两路都兜住，否则就是最典型的「点了没反应」。
+    try {
+      void chrome.tabs.create({ url }).catch(fail)
+    } catch {
+      fail()
+    }
   }
 
   // ── 渲染 ────────────────────────────────────────────────

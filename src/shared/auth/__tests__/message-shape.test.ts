@@ -17,10 +17,17 @@ import type {
 /**
  * 凭据类**键名**模式。
  *
- * 不能写成裸 `/token/i`：`maxOutputTokens`（模型能力）与 `quota.unit: "tokens"`（额度单位）
- * 都是合法字段，会被误判成泄露。凭据键名有自己的前缀特征，按前缀匹配。
+ * 不能写成裸 `/(token|secret)/i`：`maxOutputTokens`（模型能力）与 `quota.unit: "tokens"`（额度单位）
+ * 都是合法字段，会被误判成泄露。
+ *
+ * 也不能只做前缀锛定：`sessionToken` / `deviceToken` 这类「主语在前、token 在后」的键会漏网。
+ * 所以 token 一族按**整词 + 可选主语前缀**匹配（`token` / `accessToken` / `session_token` 全盖）。
+ * 尾部的复数 `s` 必须排除（`tokens` 是额度单位）—— 注意正则带 `/i`，不能用 `[A-Z]` 区分大小写，
+ * 所以干脆只认「整词 token」，到 `$` 为止；键名是我们自己定的，没有 `tokenExpiresAt` 这类尾巴写法。
+ * 其余凭据词仍按前缀匹配。
  */
-const CREDENTIAL_KEY_PATTERN = /^(access_?token|refresh_?token|id_?token|token|bearer|secret|api_?key|authorization|password)/i
+const CREDENTIAL_KEY_PATTERN =
+  /^(?:(?:access|refresh|id|session|device)_?)?token$|^(?:bearer|secret|api_?key|authorization|password|credential)/i
 
 /**
  * 递归收集**键名**（不看值）。
@@ -76,7 +83,28 @@ describe("AuthSnapshot 的形状", () => {
 
   it("序列化后不含任何凭据字样", () => {
     expect(collectKeys(fullSnapshot).filter((key) => CREDENTIAL_KEY_PATTERN.test(key))).toEqual([])
-  })})
+  })
+
+  it("凭据键名模式盖住「主语在前」的写法，又不误判合法字段", () => {
+    // `sessionToken` / `deviceToken` 这类后缀写法曾经漏网（旧模式是纯前缀锛定）
+    for (const key of [
+      "token",
+      "accessToken",
+      "access_token",
+      "refreshToken",
+      "sessionToken",
+      "device_token",
+      "apiKey",
+      "Authorization"
+    ]) {
+      expect({ key, matched: CREDENTIAL_KEY_PATTERN.test(key) }).toEqual({ key, matched: true })
+    }
+    // 模型能力与额度单位不能被当成凭据
+    for (const key of ["maxOutputTokens", "max_output_tokens", "tokens", "unit"]) {
+      expect({ key, matched: CREDENTIAL_KEY_PATTERN.test(key) }).toEqual({ key, matched: false })
+    }
+  })
+})
 
 describe("消息响应", () => {
   it("AUTH_STATE_REQUEST 的响应键集为 { success, snapshot }，且键名无凭据字样", () => {

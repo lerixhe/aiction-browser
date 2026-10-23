@@ -227,6 +227,7 @@
 | 2026-10-19 | 修复图标选择器溢出安全区 | 动作图标选择器只钳了垂直位置（且是硬编码 280），水平方向完全未处理：详情区靠右时 320px 弹层整块溢出视口右侧无法点击。改为双向视口钳制 + 上下翻转（`computeIconPickerPos`），渲染后按实测尺寸修正，滚动 / resize 跟随锚点、锚点滚出视口即收起；CSS 补 `max-width: calc(100vw - 16px)` 与 `max-height: min(272px, calc(100vh - 16px))`。顺带修 mousedown 点外关闭抢先把 toggle 关掉导致触发按钮点不开也关不掉的冲突（§8 浮层约定） |
 | 2026-10-22 | 新增「账号」分区（登录功能 M1） | `AccountSection.tsx` 三态（骨架 / 未登录 / 已登录）+ 当前套餐 + 本周期用量 + AI 引擎切换；`SECTION_KEYS` 在 `connection` **之前**插入 `account`（图标 `tabler:user-circle`，`#account` 深链直达）；全部是**即时项**，因此无保存条、不参与 ⌘S；登录态/权益通过 `useAuthSnapshot()` + `ENTITLEMENTS_REQUEST` 读取，**loading 不画成未登录**、`/v1/me` 失败时不谎报「无订阅」、`past_due` 给「管理订阅」而非「升级」；7 语言新增 44 个 key；埋点零增删（`quota_banner_shown` 留到 T6） |
 | 2026-10-22 | 账号分区评审修复（M1） | ① 引擎行在 `OFFICIAL_AI_ENABLED === false`（M1）时**只渲染只读的真实引擎**，不渲染分段控件——官方链路未接线时它要么点了弹回（静默失败），要么显示「官方服务」而实际请求仍发自 BYOK；接线后自动恢复为分段控件（未登录时点「官方服务」直接拉起登录）；`resolveActiveProvider` 同步受该常量约束，显示与实际不再拆成两套。② 订阅状态文案改用 `SUBSCRIPTION_STATUS_KEYS` 显式映射（`past_due` → `pastDue`，见 §7 第 8 条）。③ 新增 `options.account.engineComingSoon`（7 语言） |
+| 2026-10-22 | 账号分区 P2 修复（第二轮） | ① 「管理订阅」不再在 `config.ts` 外手拼 `/billing` 字面量，改引 `WEB_ROUTES.billing`；同时补 `try/catch` + `.catch` 双路（`chrome.tabs.create` 在上下文失效后是**同步抛**，只挂 `.catch` 接不住），失败时用 `Hint` 提示而不是「点了没反应」——新增 `options.account.openFailed`（7 语言）。② `useAuthSnapshot()` 改为**先订阅后读**，且订阅后已收到更新则丢弃初始读的旧值（否则登录成功后可能闪回未登录）。**布局、即时/草稿判定、头部 34px 与动作列表 204 均未变，埋点零变动** |
 
 ### 实施偏差（实现时与设计稿的差异，均为有意取舍）
 
