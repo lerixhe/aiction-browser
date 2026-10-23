@@ -36,7 +36,7 @@
     "ai": "^6.0.193",
     "marked": "^18.0.4",
     "pdfjs-dist": "^5.7.284",
-    "posthog-js": "^1.376.3",
+    "posthog-js": "^1.438.20",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "use-debounce": "^10.1.1"

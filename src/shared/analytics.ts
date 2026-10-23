@@ -1,4 +1,8 @@
-import posthog from "posthog-js/dist/module.no-external"
+// 入口用 slim + no-external 而不是默认的 module.js：`no-external` 把 rrweb 等外部依赖排出 bundle，
+// `slim` 再去掉可选扩展（surveys / 录屏 / 异常自动捕获 / 热图等，本项目的 init 全部关了）。
+// 两者相加比 `module.no-external` 少约 190 KB（见 docs/ANALYTICS.md §1.1）。
+// 代价：将来要用这些扩展（如 `captureException`）必须手动注册，否则调用静默无效。
+import posthog from "posthog-js/dist/module.slim.no-external"
 
 import { getAnonymousId } from "@/shared/anonymous-id"
 import { scrubCredentials } from "@/shared/redact"
@@ -181,7 +185,7 @@ export async function initContentScriptAnalytics(): Promise<void> {
 
       const distinctId = await getAnonymousId()
 
-      if (!(posthog as any).__loaded) {
+      if (!posthog.__loaded) {
         posthog.init(POSTHOG_PROJECT_TOKEN, {
           api_host: POSTHOG_HOST,
           persistence: "memory",
@@ -197,7 +201,8 @@ export async function initContentScriptAnalytics(): Promise<void> {
           capture_pageview: false,
           capture_pageleave: false,
           disable_session_recording: true,
-          advanced_disable_decide: true
+          // 新版字段名（旧名 `advanced_disable_decide` 已 deprecated，设了会打 console 警告）
+          advanced_disable_flags: true
         })
       }
       return true

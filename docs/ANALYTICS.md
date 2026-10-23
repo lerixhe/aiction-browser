@@ -6,7 +6,7 @@
 
 | 项目 | 值 |
 |------|-----|
-| 最后更新 | 2026-10-20（对照 `package.json` version `0.6.0`） |
+| 最后更新 | 2026-10-23（对照 `package.json` version `0.6.0`，`posthog-js` 1.438.20） |
 | 数据接收端 | PostHog（`https://us.i.posthog.com`，项目 token 常量见 `src/shared/analytics.ts`） |
 | 埋点唯一入口 | `src/shared/analytics.ts`（所有上报必须经过它，禁止在业务代码里直接 `fetch` PostHog） |
 | 事件定义分散位置 | content / pdf-viewer / popup / options / background（见下方清单） |
@@ -22,7 +22,7 @@
 
 ```
                       ┌──────────────────────────── content script / pdf-viewer / options ────────────┐
-业务代码 ── trackEvent() ──→ posthog-js（module.no-external）──→ /capture/（SDK 内部）
+业务代码 ── trackEvent() ──→ posthog-js（module.slim.no-external）──→ /e/（SDK 内部端点，批量 body）
                       └───────────────────────────────────────────────────────────────────────────────┘
 
                       ┌──────────────────────────── background service worker ────────────────────────┐
@@ -36,12 +36,14 @@
 | HTTP | `trackBackgroundEvent(name, props)` | background service worker（生命周期、API 测试、TTS、PDF 入口） | 直接 POST `/capture/`，逐条即时发送 |
 
 - `startBackgroundBatching()` / `stopBackgroundBatching()` 目前是 **no-op 占位**（未使用 `/batch/` 批量上报），保留接口以便将来改造。
-- SDK 初始化选项：`autocapture: false`、`capture_pageview: false`、`capture_pageleave: false`、`disable_session_recording: true`、`advanced_disable_decide: true`。
+- 两条通道打的是**不同端点**：SDK 走 `/e/`（SDK 内部解析，body 是 `{api_key, batch:[…]}`），background 手写走 `/capture/`（单事件）。两者都是 PostHog 官方可接收格式，不要为了「统一」把 SDK 通道改成手写 HTTP。
+- SDK 入口选 `module.slim.no-external`（不是默认的 `module.js`）：`no-external` 把 rrweb 等外部依赖从 bundle 里排掉（不内联、按需拉 CDN），`slim` 再把可选扩展（surveys / web-vitals / product tours / conversations / exception autocapture / heatmaps / dead-clicks / session recording）从默认扩展表里去掉。我们全部关掉了这些功能，用 slim 比 no-external 少约 190 KB（content script 899 → 707 kB）。代价：将来若要用 surveys / `captureException` / 热图，必须手动向 `posthog.init` 的 `__extensionClasses` 注册对应扩展，否则调用静默无效。
+- SDK 初始化选项：`autocapture: false`、`capture_pageview: false`、`capture_pageleave: false`、`disable_session_recording: true`、`advanced_disable_flags: true`（旧名 `advanced_disable_decide` 在 `posthog-js` 1.43x 起 deprecated，SDK 会打弃用警告，故改用新名）。
   → **PostHog 里不会有自动事件（无 `$pageview` / 无录屏 / 不拉远端配置）**，所有数据都来自本文档列出的显式事件。
 - **身份必须在 init 时用 `bootstrap: { distinctID, isIdentifiedID: true }` 传入，不能用 `loaded` 回调里的 `identify()`**：
   `persistence: "memory"` 不跨页面加载保留 ID，SDK 每次 init 都会先凭空铸一个匿名 ID，`identify()` 再把它 merge 进我们的稳定 person
   → 页面刷新一次 person 上就多挂一个 `distinct_id`，累积到 PostHog 的 person distinct-ID 上限后，该 person 的事件不再出现在 person 详情页与 session 标签里
-  （`posthog-js` ≥1.43 会为此打一条 `[PostHog.js] persistence is set to 'memory' but no bootstrap.distinctID was provided` 的 console 警告）。
+  （`posthog-js` ≥1.434 会为此打一条 `[PostHog.js] persistence is set to 'memory' but no bootstrap.distinctID was provided` 的 console 警告）。
   不改 `localStorage+cookie` 的原因：content script 跑在**宿主页面的 window** 上，会往用户访问的站点写 cookie/localStorage，且跨站不共享。
 - 辅助函数：
   - `trackFirstTimeEvent(onceKey, name, props)`：只在 `onceKey` 首次出现时上报（content 系上下文用）。
@@ -525,3 +527,5 @@
 | 2026-10-22 | 登录功能 M1 地基（`ChatErrorCode` 新增一桶，事件数不变） | `ChatErrorCode` 新增 `quota_exceeded`（HTTP **402**，由结构化 `statusCode` 判定，不做文本推断），为 M2 的额度墙预留归因；M1 不加任何登录相关事件（`auth_*` 随 UI 在 T6 一并入表）。`classifyChatError()` 桶数 10 → 11 |
 | 2026-10-22 | 登录功能 M1 埋点（+5 → 45 个事件） | 新增 §2.9：`auth_sign_in_started` / `auth_sign_in_completed` / `auth_sign_in_failed`（`cancelled` 也记一条，`reason = window_closed`）/ `auth_signed_out`（`user` / `revoked`）/ `quota_banner_shown`（`surface` 三处、挂载去重、失败侧填 `unknown`）；background 由 `session.ts` 上报、UI 侧三个入口上报；新增 `usedRatioBucket()`；§1.2「扩展无账号体系」表述更新为「账号体系存在，但埋点仍只到设备级」 |
 | 2026-10-22 | 评审修复：`auth_sign_in_failed.reason` 增加 `unavailable` | 原实现把「identity 权限缺失 / 登录功能开关关闭」归到 `server_error`，回滚入口那天会分不清是自己关了开关还是后端挂了。事件数与其余属性不变 |
+| 2026-10-23 | `posthog-js` 1.376.3 → 1.438.20（SDK 升级，事件/属性零变更） | 唯一代码改动：init 选项 `advanced_disable_decide` → `advanced_disable_flags`（旧名已 deprecated，设了会打 `Config field 'advanced_disable_decide' is deprecated` 警告；`_shouldDisableFlags()` 本来就优先读新名）；`(posthog as any).__loaded` 去掉 `any`（新版类型已声明该字段）。行为边界复核：新版默认值仍是 `autocapture: true` / `persistence: localStorage+cookie` / `error_tracking: {}`（`capture_exceptions` 未配置且默认 falsy → 不上报 `$exception`），`advanced_disable_flags: true` 继续阻止 `/flags` 请求与远端配置，**零自动事件承诺不变**。代价：`module.no-external` minify 后 205 KB → 369 KB |
+| 2026-10-23 | SDK 入口改为 `module.slim.no-external`（事件/属性零变更，纯体积优化） | `module.no-external` 新版 minify 后 369 KB（旧版 205 KB），换 slim 变体后 163 KB → content script 899 → 707 kB（连旧 SDK 都小 42 kB）、总包 4.93 → 4.35 MB。实测（Playwright + 真实 bundle，请求全拦截）：`__loaded` / `bootstrap.distinctID` / `capture` 行为与 no-external 一致，只发一条 `POST /e/`，`properties.distinct_id` = 稳定匿名 ID，**无 `/flags`、无外部 CDN 请求、无 `$exception`**；`pagehide` 时队列正确 flush（事件送达）。副产品：`[Surveys] PostHog Extensions not found.` 这条 console error 消失（slim 里没有 surveys 扩展） |

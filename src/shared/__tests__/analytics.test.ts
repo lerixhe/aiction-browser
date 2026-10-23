@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 
 // analytics.ts 顶层会 import posthog；分桶函数是纯函数，不需要真实 SDK
-vi.mock("posthog-js/dist/module.no-external", () => ({
+vi.mock("posthog-js/dist/module.slim.no-external", () => ({
   default: { init: () => undefined, capture: () => undefined, identify: () => undefined }
 }))
 
