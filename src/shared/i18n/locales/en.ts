@@ -105,6 +105,7 @@ const messages = {
   "options.account.engineByok": "My API key",
   "options.account.engineOfficialLocked": "Available after signing in",
   "options.account.engineByokMissing": "Add a provider first",
+  "options.account.engineComingSoon": "Available in the next version — chat still uses your own API key.",
   "options.section.connection.desc": "Configure model services and call parameters",
   "options.section.actions.desc": "Toolbar actions and speech settings",
   "options.section.systemPrompt.desc": "Global instructions sent with every request",

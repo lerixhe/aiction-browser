@@ -28,7 +28,12 @@ export const MESSAGE_TYPES = {
    * 任意 → background：开设置页并落到指定锚点。
    * 存在的理由：`chrome.runtime.openOptionsPage()` **不支持 hash**，而面板失败态 CTA 必须落到 `#account`。
    */
-  OPEN_OPTIONS: "AICTION_OPEN_OPTIONS"
+  OPEN_OPTIONS: "AICTION_OPEN_OPTIONS",
+  /**
+   * 任意 → background：打开官网页面（定价 / 账单 / 登录）。
+   * 存在的理由：`chrome.tabs` **不暴露给 content script**，内容页里的外链必须由 background 代开。
+   */
+  OPEN_WEB_PAGE: "AICTION_OPEN_WEB_PAGE"
 } as const
 
 /**
@@ -37,6 +42,15 @@ export const MESSAGE_TYPES = {
  */
 export const OPEN_OPTIONS_ENTRIES = ["chat", "popup", "quota"] as const
 export type OpenOptionsEntry = (typeof OPEN_OPTIONS_ENTRIES)[number]
+
+/**
+ * `OPEN_WEB_PAGE` 允许的目标：**只接受路由名，不接受 URL**。
+ *
+ * 传 URL 会把这个消息变成「任意地址打开器」——内容脚本能触达的消息通道不该有这种能力。
+ * 实际地址由 background 用 `shared/auth/config.ts` 的 `WEB_BASE` 拼，客户端拿不到也不该拿到它。
+ */
+export const OPEN_WEB_PAGE_ROUTES = ["login", "pricing", "billing"] as const
+export type OpenWebPageRoute = (typeof OPEN_WEB_PAGE_ROUTES)[number]
 
 // Stream event types
 export const STREAM_EVENTS = {

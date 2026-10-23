@@ -266,3 +266,6 @@ export interface OpenOptionsResponse {
   success: boolean
   error?: string
 }
+
+/** `OPEN_WEB_PAGE`：只回成功与否，不回实际打开的地址（客户端无需知道完整 URL） */
+export type OpenWebPageResponse = OpenOptionsResponse

@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react"
 
 import { trackEvent, usedRatioBucket } from "@/shared/analytics"
 
-import { manageSubscriptionAction } from "@/shared/auth/actions"
-import { WEB_BASE } from "@/shared/auth/config"
+import { manageSubscriptionAction, subscriptionStatusKey } from "@/shared/auth/actions"
+import { OFFICIAL_AI_ENABLED, WEB_BASE } from "@/shared/auth/config"
 import type {
   AuthSignInResponse,
   AuthSignOutResponse,
@@ -15,6 +15,7 @@ import { MESSAGE_TYPES } from "@/shared/constants"
 import { useI18n } from "@/shared/i18n/context"
 import { parseLocaleTag } from "@/shared/language-tag"
 import { resolveActiveProvider } from "@/shared/provider-resolve"
+import { getActiveProvider } from "@/shared/storage"
 import type { ExtensionSettings } from "@/shared/types"
 import { ConfirmDialog } from "./ConfirmDialog"
 import { Button, FieldGroup, Hint, SectionCard, SegmentedControl, SettingRow, Skeleton } from "./ui"
@@ -206,7 +207,7 @@ export function AccountSection({ settings, saveSettingsNow }: AccountSectionProp
               {entitlements ? (
                 <>
                   <span className="opt-account-plan-status">
-                    {t(`options.account.status.${entitlements.subscription.status}`)}
+                    {t(subscriptionStatusKey(entitlements.subscription.status))}
                   </span>
                   <span className="opt-account-plan-end">
                     {entitlements.subscription.periodEnd
@@ -234,37 +235,59 @@ export function AccountSection({ settings, saveSettingsNow }: AccountSectionProp
     )
   }
 
-  const resolved = resolveActiveProvider(settings, snapshot)
-  const engineValue: EngineChoice = resolved?.kind === "official" ? "official" : "byok"
-  const hasByok = settings.providers.some((provider) => provider.kind !== "official")
+  /**
+   * 引擎行：**只陈述事实，不提供无效开关**。
+   *
+   * M1（`OFFICIAL_AI_ENABLED = false`）官方链路未接线，`streamChat` 仍走 BYOK，
+   * 而 `resolveActiveProvider` 也会因同一常量直接返回 BYOK。这时渲染一个可点的「官方服务」分段只有两种结果：
+   * ① 未登录：写入 `useOfficialService: true` 后立刻被派生回 `byok`（点了没反应 = 静默失败）；
+   * ② 已登录：显示「官方服务」而实际请求仍发自 BYOK（显示与实际不符）。
+   * 所以 M1 只渲染只读的真实引擎，接线后（常量置 true）自动恢复为分段控件。
+   */
+  const activeByok = getActiveProvider(settings)
   const officialReady = signedIn || snapshot.state === "anonymous"
+  const engineValue: EngineChoice =
+    resolveActiveProvider(settings, snapshot)?.kind === "official" ? "official" : "byok"
 
-  const engineDesc = (() => {
-    if (engineValue === "official" && !officialReady) return t("options.account.engineOfficialLocked")
-    if (engineValue === "byok" && !hasByok) return t("options.account.engineByokMissing")
-    return t("options.account.engineDesc")
-  })()
+  const engineRow = OFFICIAL_AI_ENABLED ? (
+    <SettingRow
+      title={t("options.account.engineTitle")}
+      desc={officialReady ? t("options.account.engineDesc") : t("options.account.engineOfficialLocked")}>
+      <SegmentedControl
+        value={engineValue}
+        ariaLabel={t("options.account.engineTitle")}
+        options={[
+          { value: "official" as const, label: t("options.account.engineOfficial") },
+          { value: "byok" as const, label: t("options.account.engineByok") }
+        ]}
+        onValueChange={(value) => {
+          // 未登录时点「官方服务」不是静默回弹，而是直接拉起登录（解锁这个选项的唯一途径）
+          if (value === "official" && !officialReady) {
+            void handleSignIn()
+            return
+          }
+          setActionError(null)
+          saveSettingsNow((current) => ({ ...current, useOfficialService: value === "official" }))
+        }}
+      />
+    </SettingRow>
+  ) : (
+    <SettingRow title={t("options.account.engineTitle")} desc={t("options.account.engineComingSoon")}>
+      <div className="opt-account-inline">
+        <span className="opt-account-plan-name">{t("options.account.engineByok")}</span>
+        <span className="opt-account-plan-status">
+          {activeByok?.name || t("options.account.engineByokMissing")}
+        </span>
+      </div>
+    </SettingRow>
+  )
 
   return (
     <>
       <SectionCard title={t("options.account.cardTitle")} description={t("options.account.cardDesc")}>
         <FieldGroup>
           {renderStatus()}
-
-          <SettingRow title={t("options.account.engineTitle")} desc={engineDesc}>
-            <SegmentedControl
-              value={engineValue}
-              ariaLabel={t("options.account.engineTitle")}
-              options={[
-                { value: "official" as const, label: t("options.account.engineOfficial") },
-                { value: "byok" as const, label: t("options.account.engineByok") }
-              ]}
-              onValueChange={(value) => {
-                setActionError(null)
-                saveSettingsNow((current) => ({ ...current, useOfficialService: value === "official" }))
-              }}
-            />
-          </SettingRow>
+          {engineRow}
         </FieldGroup>
       </SectionCard>
 

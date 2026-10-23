@@ -107,6 +107,7 @@ export default {
   "options.account.engineByok": "我的 API 金鑰",
   "options.account.engineOfficialLocked": "登入後可用",
   "options.account.engineByokMissing": "先在「API 供應商」中新增一個",
+  "options.account.engineComingSoon": "下個版本可用；目前對話仍使用你自己的 API Key。",
   "options.section.connection.desc": "設定模型服務與呼叫參數",
   "options.section.actions.desc": "工具列動作與語音設定",
   "options.section.systemPrompt.desc": "隨每次請求送出的全域指示",

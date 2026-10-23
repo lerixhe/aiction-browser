@@ -107,6 +107,7 @@ export default {
   "options.account.engineByok": "Мой API-ключ",
   "options.account.engineOfficialLocked": "Доступно после входа",
   "options.account.engineByokMissing": "Сначала добавьте провайдера",
+  "options.account.engineComingSoon": "Появится в следующей версии — сейчас используется ваш ключ API.",
   "options.section.connection.desc": "Настройте сервисы моделей и параметры вызовов",
   "options.section.actions.desc": "Действия панели и параметры озвучивания",
   "options.section.systemPrompt.desc": "Общие инструкции, отправляемые с каждым запросом",

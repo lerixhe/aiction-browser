@@ -11,7 +11,7 @@ import type {
   TtsSynthesizeRequest,
   TtsSynthesizeResponse
 } from "@/shared/types"
-import { MESSAGE_TYPES, ERROR_MESSAGES, OPEN_OPTIONS_ENTRIES, OPTIONS_ENTRY_STORAGE_KEY } from "@/shared/constants"
+import { MESSAGE_TYPES, ERROR_MESSAGES, OPEN_OPTIONS_ENTRIES, OPEN_WEB_PAGE_ROUTES, OPTIONS_ENTRY_STORAGE_KEY } from "@/shared/constants"
 import { i18nStore } from "@/shared/i18n/index"
 import { initBackgroundI18n } from "@/shared/i18n/background"
 import {
@@ -31,13 +31,15 @@ import { prepareChatRequest, describeCallWarning, type ChatRequestPlan } from "@
 import { fetchModelsDev } from "@/shared/models-dev"
 import { fetchOpenRouterModels } from "@/shared/openrouter"
 import { getSnapshot, initializeSession, signIn, signOut } from "@/shared/auth/session"
+import { WEB_BASE, WEB_ROUTES } from "@/shared/auth/config"
 import { getEntitlements } from "@/shared/auth/entitlements"
 import type {
   AuthSignInResponse,
   AuthSignOutResponse,
   AuthStateResponse,
   EntitlementsResponse,
-  OpenOptionsResponse
+  OpenOptionsResponse,
+  OpenWebPageResponse
 } from "@/shared/auth/types"
 
 import {
@@ -836,6 +838,41 @@ export default defineBackground(() => {
           sendResponse({ success: true } satisfies OpenOptionsResponse)
         } catch (error: unknown) {
           sendResponse({ success: false, error: getErrorMessage(error) } satisfies OpenOptionsResponse)
+        }
+      })()
+      return true
+    }
+  )
+
+  /**
+   * 打开官网页面（定价 / 账单）。
+   *
+   * 为什么由 background 代开：`chrome.tabs` **不暴露给 content script**，
+   * 面板里的「升级额度」CTA 直接调 `chrome.tabs.create` 会抛 TypeError（被 `void` 吞掉 → 点了没反应）。
+   * 只接受路由名而不是 URL：这个通道对任意页面可达，不能变成任意的 URL 打开器。
+   */
+  chrome.runtime.onMessage.addListener(
+    (request: { type?: string; payload?: { route?: unknown } }, _sender, sendResponse) => {
+      if (request?.type !== MESSAGE_TYPES.OPEN_WEB_PAGE) return false
+
+      const rawRoute = request.payload?.route
+      const route =
+        typeof rawRoute === "string" ? OPEN_WEB_PAGE_ROUTES.find((item) => item === rawRoute) : undefined
+
+      void (async () => {
+        try {
+          if (!route) {
+            // 不在白名单里的目标一律拒，并把收到的值写进错误里（便于排查调用方写错）
+            sendResponse({
+              success: false,
+              error: `unknown route: ${String(rawRoute)}`
+            } satisfies OpenWebPageResponse)
+            return
+          }
+          await chrome.tabs.create({ url: `${WEB_BASE}${WEB_ROUTES[route]}` })
+          sendResponse({ success: true } satisfies OpenWebPageResponse)
+        } catch (error: unknown) {
+          sendResponse({ success: false, error: getErrorMessage(error) } satisfies OpenWebPageResponse)
         }
       })()
       return true

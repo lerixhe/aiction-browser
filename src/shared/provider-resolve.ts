@@ -8,7 +8,7 @@
  * 接线在 M2（`prepareChatRequest` 改造 + `provider-credentials.ts`），
  * 这样 M1 上线不会因为官方链路未就绪而破坏现有用户。
  */
-import { API_BASE, DEFAULT_OFFICIAL_MODEL } from "@/shared/auth/config"
+import { API_BASE, DEFAULT_OFFICIAL_MODEL, OFFICIAL_AI_ENABLED } from "@/shared/auth/config"
 import type { AuthSnapshot } from "@/shared/auth/types"
 import type { ExtensionSettings, ProviderConfig } from "@/shared/types"
 
@@ -36,20 +36,27 @@ export function buildOfficialProvider(input: { snapshot: AuthSnapshot; officialM
 /**
  * 解析当前生效的 provider，规则按顺序（先命中先返回）：
  *
+ * 0. `OFFICIAL_AI_ENABLED === false`（M1）→ **直接走 BYOK**：官方链路尚未接线，
+ *    此时声称「官方服务」会让界面显示的引擎与实际发请求的提供商分成两套；
  * 1. `useOfficialService === false` → 用户显式关闭官方服务 → 走 BYOK；
  * 2. 快照处于 `signed-in` / `anonymous` → 官方服务；
  * 3. 否则 → `providers[]` 里的 `activeProviderId`（找不到则 null）。
  *
  * `useOfficialService === undefined`（老存档 / 新用户默认）等价于「跟随会话状态」：
  * 已登录或已领到匿名 device token 才走官方服务，未登录时行为与现状完全一致。
+ *
+ * `options.officialEnabled` 只给单测用：默认取构建期常量，注入后能双向断言
+ * 「M1 未接线 → 恒 BYOK」与「M2 接线后 → 按会话选官方」两种行为，
+ * 否则一旦常量置 true，M1 的回归断言就没人保护了。
  */
 export function resolveActiveProvider(
   settings: ExtensionSettings,
-  snapshot: AuthSnapshot
+  snapshot: AuthSnapshot,
+  options: { officialEnabled?: boolean } = {}
 ): ProviderConfig | null {
-  const useOfficial = settings.useOfficialService !== false
+  const officialEnabled = options.officialEnabled ?? OFFICIAL_AI_ENABLED
+  const useOfficial = officialEnabled && settings.useOfficialService !== false
   const hasSession = snapshot.state === "signed-in" || snapshot.state === "anonymous"
-
   if (useOfficial && hasSession) {
     return buildOfficialProvider({ snapshot, officialModel: settings.officialModel })
   }

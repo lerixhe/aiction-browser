@@ -69,6 +69,10 @@ AI 调用统一走 Vercel AI SDK：`shared/model-provider.ts` 按 provider 的 `
 - **非流式**（测 API、拉模型列表）：`sendMessage` + `sendResponse`。
 - **Popup → content**：`chrome.tabs.sendMessage` 发 `AICTION_OPEN_CHAT`，content 同步应答（Popup 收到即关自己，把系统焦点还给页面）。
   该路径**不经 background**；页面没有可用 content script 时必须 reject，由 Popup 显式提示而非静默失败。
+- **content → 外链**：`chrome.tabs` **不暴露给 content script**，内容页里任何「打开官网 / 新标签」都必须发
+  `AICTION_OPEN_WEB_PAGE`（**只传路由名，不传 URL**）由 background 用 `WEB_BASE + WEB_ROUTES[route]` 代开。
+  直接调 `chrome.tabs.create` 会抛 `TypeError` 并被 `void` 吞掉——点了没反应，且 `@types/chrome` 是全局声明，
+  `typecheck` 不会报。同理 `chrome.runtime.openOptionsPage()` 不支持 hash：需要落锚点时走 `AICTION_OPEN_OPTIONS`。
 
 共享逻辑 `src/shared/*`：`storage`（含 `normalizeSettings` 合并）、`prompt`、`model-params`、
 `models-dev` / `openrouter`、`chat-stream`、`analytics`、`errors`、`selection`、`messaging`、`i18n`。

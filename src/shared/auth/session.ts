@@ -518,6 +518,15 @@ export async function signOut(): Promise<void> {
  * - 有快照 → 立刻返回（首帧不闪未登录），临近过期时**后台**刷新，不阻塞消息响应；
  * - 只有持久层（浏览器重启后 session 被清空）→ 先给 signed-in，再后台换 access；
  * - 什么都没有 → 领 device token，成功则 anonymous（失败静默，按未配置处理）。
+ *
+ * ⚠️ **M2 待补的两个缺口**（M1 无可见影响，接线官方链路时会同时暴露）：
+ * 1. SPEC §5.1 要求 anonymous 之后「拉一次 `/v1/me`（拿匿名额度）」，当前**没做**。
+ *    而且做了也拿不到：`getEntitlements` → `authFetch(auth: true)` → `getAccessToken()` 只认持久层，
+ *    未登录必抛 `NO_SESSION`。也就是说 **device token 目前没有任何业务消费方**，只有 `device.ts` 自己读写；
+ *    M2 必须让 `request.ts` 在无会话时改用 device token 认证（否则匿名用户的官方请求全部 401）。
+ * 2. `ensureDeviceToken()` 只在「**完全没有快照**」这一支被调到：一旦写过快照（包括首次失败写下的
+ *    signed-out），之后永远不会再领；device token 的 30 天到期也没有续签路径。
+ *    修法：把条件改成读 `readDeviceToken()`（没领过 / 临期才领），而不是「无快照」。
  */
 export async function initializeSession(): Promise<AuthSnapshot> {
   const stored = await readSnapshot()

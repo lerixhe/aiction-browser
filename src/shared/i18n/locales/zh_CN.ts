@@ -107,6 +107,7 @@ export default {
   "options.account.engineByok": "我的 API Key",
   "options.account.engineOfficialLocked": "登录后可用",
   "options.account.engineByokMissing": "先在「API 提供商」里添加一个",
+  "options.account.engineComingSoon": "下个版本可用；当前对话仍使用你自己的 API Key。",
   "options.section.connection.desc": "配置模型服务与调用参数",
   "options.section.actions.desc": "工具栏动作与朗读设置",
   "options.section.systemPrompt.desc": "随每次请求发送的全局指令",

@@ -13,6 +13,7 @@ import { BrandIcon } from "@/shared/ui/icons"
 import { ProviderLogoById } from "@/entrypoints/options/ProviderLogo"
 import { ToggleSwitch } from "@/shared/ui/toggle-switch"
 import { useAuthSnapshot } from "@/shared/auth/use-auth-snapshot"
+import type { AuthSignInResponse } from "@/shared/auth/types"
 import { useI18n } from "@/shared/i18n/context"
 import type { ActionTemplate, ExtensionSettings, ProviderConfig } from "@/shared/types"
 
@@ -320,12 +321,24 @@ export default function Popup() {
     setSigningIn(true)
     setSignInError(false)
     void trackEvent("auth_sign_in_started", { entry: "popup", source: "popup" })
-    try {
-      // 授权窗口会让 popup 失焦关闭；失败（identity 不可用 / 无接收方）则留在原地提示
-      await chrome.runtime.sendMessage({ type: MESSAGE_TYPES.AUTH_SIGN_IN, payload: { entry: "popup" } })
-    } catch {
+
+    const flagError = () => {
       setSignInError(true)
       window.setTimeout(() => setSignInError(false), 3000)
+    }
+
+    try {
+      // 授权窗口会让 popup 失焦关闭；失败（identity 不可用 / 无接收方）则留在原地提示。
+      // ⚠️ 业务失败**不会 reject**（background 用 sendResponse 回 `{success:false}`），
+      // 只看 catch 会把「拿不到权限 / 没有 identity」静默成「按钮闪一下就复位」，所以两个都要判。
+      const response = (await chrome.runtime.sendMessage({
+        type: MESSAGE_TYPES.AUTH_SIGN_IN,
+        payload: { entry: "popup" }
+      })) as AuthSignInResponse | undefined
+      // `cancelled` 是正常路径（用户关窗）：`success` 仍为 true，不弹错
+      if (response && response.success === false) flagError()
+    } catch {
+      flagError()
     } finally {
       setSigningIn(false)
     }

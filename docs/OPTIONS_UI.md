@@ -199,6 +199,11 @@
 5. 更新 types / defaults / `normalizeSettings()` 合并 / i18n（中英同步）。
 6. 涉及埋点 → 同步 `docs/ANALYTICS.md`。
 7. 危险操作 → 进 `DangerZone` + `ConfirmDialog`。
+8. **动态 i18n 键必须先落成显式映射表**：禁止 `t(\`prefix.${value}\`)`。
+   服务端枚举常是下划线（`past_due`）而字典键是驼峰（`pastDue`），拼错时 `i18nStore.t()` 把**键名原文**渲染到界面上，
+   而 `check:i18n` 静态查不到模板字符串 —— 编译、CI、单测全绿，只有用户看得见。
+   映射表用 `Record<联合类型, MessageKey>` 声明，漏值 / 拼错键名都是编译错误（例：`shared/auth/actions.ts` 的
+   `SUBSCRIPTION_STATUS_KEYS`）。
 
 ---
 
@@ -221,6 +226,7 @@
 | 2026-10-19 | 卡片描述去术语化 | 卡片描述不再出现「即时生效 / 无需保存 / 需保存 / 即时执行」（见 §2.2）：外观、快捷动作、备份只写卡片内容；提供商与自定义动作改为用户动作视角的「左侧…；右侧…，改完点「保存」」；危险区删除说明去掉「立即生效」；系统提示词的占位符提示与恢复默认确认去掉「草稿」一词 |
 | 2026-10-19 | 修复图标选择器溢出安全区 | 动作图标选择器只钳了垂直位置（且是硬编码 280），水平方向完全未处理：详情区靠右时 320px 弹层整块溢出视口右侧无法点击。改为双向视口钳制 + 上下翻转（`computeIconPickerPos`），渲染后按实测尺寸修正，滚动 / resize 跟随锚点、锚点滚出视口即收起；CSS 补 `max-width: calc(100vw - 16px)` 与 `max-height: min(272px, calc(100vh - 16px))`。顺带修 mousedown 点外关闭抢先把 toggle 关掉导致触发按钮点不开也关不掉的冲突（§8 浮层约定） |
 | 2026-10-22 | 新增「账号」分区（登录功能 M1） | `AccountSection.tsx` 三态（骨架 / 未登录 / 已登录）+ 当前套餐 + 本周期用量 + AI 引擎切换；`SECTION_KEYS` 在 `connection` **之前**插入 `account`（图标 `tabler:user-circle`，`#account` 深链直达）；全部是**即时项**，因此无保存条、不参与 ⌘S；登录态/权益通过 `useAuthSnapshot()` + `ENTITLEMENTS_REQUEST` 读取，**loading 不画成未登录**、`/v1/me` 失败时不谎报「无订阅」、`past_due` 给「管理订阅」而非「升级」；7 语言新增 44 个 key；埋点零增删（`quota_banner_shown` 留到 T6） |
+| 2026-10-22 | 账号分区评审修复（M1） | ① 引擎行在 `OFFICIAL_AI_ENABLED === false`（M1）时**只渲染只读的真实引擎**，不渲染分段控件——官方链路未接线时它要么点了弹回（静默失败），要么显示「官方服务」而实际请求仍发自 BYOK；接线后自动恢复为分段控件（未登录时点「官方服务」直接拉起登录）；`resolveActiveProvider` 同步受该常量约束，显示与实际不再拆成两套。② 订阅状态文案改用 `SUBSCRIPTION_STATUS_KEYS` 显式映射（`past_due` → `pastDue`，见 §7 第 8 条）。③ 新增 `options.account.engineComingSoon`（7 语言） |
 
 ### 实施偏差（实现时与设计稿的差异，均为有意取舍）
 

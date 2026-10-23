@@ -107,6 +107,7 @@ export default {
   "options.account.engineByok": "自分の API キー",
   "options.account.engineOfficialLocked": "ログイン後に利用できます",
   "options.account.engineByokMissing": "先にプロバイダーを追加してください",
+  "options.account.engineComingSoon": "次期バージョンで利用できます（現在はご自身の API キーを使用）。",
   "options.section.connection.desc": "モデルサービスとリクエストパラメータを設定します",
   "options.section.actions.desc": "ツールバーのアクションと読み上げ設定",
   "options.section.systemPrompt.desc": "すべてのリクエストに含める共通の指示",

@@ -37,24 +37,44 @@ function snapshotOf(state: AuthState, extra: Partial<AuthSnapshot> = {}): AuthSn
 }
 
 describe("resolveActiveProvider", () => {
-  it("已登录 + 未显式关闭官方服务 → 官方 provider", () => {
-    const provider = resolveActiveProvider(settingsWith(), snapshotOf("signed-in", { email: "u***@example.com" }))
+  it("M1（官方链路未接线）→ 即使已登录也走 BYOK：显示与实际不能拆成两套", () => {
+    const settings = settingsWith()
+    const snapshot = snapshotOf("signed-in", { email: "u***@example.com" })
+
+    // 默认取构建期常量（M1 = false）
+    expect(resolveActiveProvider(settings, snapshot)).toMatchObject({ id: "byok-1", kind: "byok" })
+    // 显式注入也一致（防止将来常量置 true 后这条回归没人守）
+    expect(resolveActiveProvider(settings, snapshot, { officialEnabled: false })).toMatchObject({ id: "byok-1" })
+  })
+
+  it("链路接线后：已登录 + 未显式关闭官方服务 → 官方 provider", () => {
+    const provider = resolveActiveProvider(
+      settingsWith(),
+      snapshotOf("signed-in", { email: "u***@example.com" }),
+      { officialEnabled: true }
+    )
 
     expect(provider).toMatchObject({ id: OFFICIAL_PROVIDER_ID, kind: "official", apiKey: "" })
   })
 
-  it("匿名（已领 device token）也走官方服务", () => {
-    expect(resolveActiveProvider(settingsWith(), snapshotOf("anonymous"))).toMatchObject({ kind: "official" })
+  it("链路接线后：匿名（已领 device token）也走官方服务", () => {
+    expect(resolveActiveProvider(settingsWith(), snapshotOf("anonymous"), { officialEnabled: true })).toMatchObject({
+      kind: "official"
+    })
   })
 
-  it("未登录 → 回落 BYOK，行为与现状一致", () => {
+  it("未登录 → 回落 BYOK，行为与现状一致（链路接线后同理）", () => {
     expect(resolveActiveProvider(settingsWith(), snapshotOf("signed-out"))).toMatchObject({ id: "byok-1", kind: "byok" })
+    expect(
+      resolveActiveProvider(settingsWith(), snapshotOf("signed-out"), { officialEnabled: true })
+    ).toMatchObject({ id: "byok-1", kind: "byok" })
   })
 
   it("useOfficialService === false 优先于登录态（显式关闭）", () => {
     const provider = resolveActiveProvider(
       settingsWith({ useOfficialService: false }),
-      snapshotOf("signed-in")
+      snapshotOf("signed-in"),
+      { officialEnabled: true }
     )
     expect(provider).toMatchObject({ id: "byok-1" })
   })

@@ -107,6 +107,7 @@ export default {
   "options.account.engineByok": "내 API 키",
   "options.account.engineOfficialLocked": "로그인 후 사용 가능",
   "options.account.engineByokMissing": "먼저 제공자를 추가하세요",
+  "options.account.engineComingSoon": "다음 버전에서 제공됩니다(현재는 직접 입력한 API 키 사용).",
   "options.section.connection.desc": "모델 서비스와 호출 파라미터를 설정합니다",
   "options.section.actions.desc": "툴바 액션과 음성 설정",
   "options.section.systemPrompt.desc": "모든 요청에 포함되는 전역 지침",

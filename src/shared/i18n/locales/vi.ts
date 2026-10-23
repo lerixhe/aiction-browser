@@ -107,6 +107,7 @@ export default {
   "options.account.engineByok": "API key của tôi",
   "options.account.engineOfficialLocked": "Dùng được sau khi đăng nhập",
   "options.account.engineByokMissing": "Hãy thêm nhà cung cấp trước",
+  "options.account.engineComingSoon": "Có trong phiên bản tiếp theo — hiện vẫn dùng API key của bạn.",
   "options.section.connection.desc": "Cấu hình dịch vụ mô hình và tham số gọi",
   "options.section.actions.desc": "Hành động trên thanh công cụ và cài đặt giọng nói",
   "options.section.systemPrompt.desc": "Chỉ dẫn chung được gửi kèm mọi yêu cầu",

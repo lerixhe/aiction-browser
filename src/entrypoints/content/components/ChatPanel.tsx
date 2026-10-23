@@ -1140,7 +1140,18 @@ export default function ChatPanel({
       })
       return
     }
-    void chrome.tabs.create({ url: failureAction.url })
+    // 外链必须由 background 代开：`chrome.tabs` **不暴露给 content script**，
+    // 直接调 `chrome.tabs.create` 会抛 TypeError 并被 `void` 吞掉（点了没反应）。
+    // 这里只传路由名，不传 URL（见 `shared/auth/actions.ts` 的注释）。
+    void chrome.runtime
+      .sendMessage({ type: MESSAGE_TYPES.OPEN_WEB_PAGE, payload: { route: failureAction.route } })
+      .then((response: unknown) => {
+        // background 会按白名单拒掉未知路由；面板里没有 toast 通道，至少留一条可排唰的日志
+        if (response && (response as { success?: boolean }).success === false) {
+          console.warn("[chat] 打开外链失败", response)
+        }
+      })
+      .catch((error: unknown) => console.warn("[chat] 打开外链失败", error))
   }, [failureAction])
   const hasCapturedText = capturedText.length > 0
   /** 卡片态只呈现 AI 生成的内容（隐藏用户气泡与输入框）；聊天态保持全部消息 */
