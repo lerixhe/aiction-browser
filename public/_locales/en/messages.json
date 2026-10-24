@@ -4,7 +4,7 @@
     "description": "Extension name"
   },
   "extDescription": {
-    "message": "Select text to explain, summarize, translate or chat with actions you define. Bring your own API key and model. Also reads PDFs.",
+    "message": "Select text to explain, summarize, translate or chat with actions you define. Your API key or our official service. Reads PDFs.",
     "description": "Extension description"
   }
 }

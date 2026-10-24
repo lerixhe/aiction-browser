@@ -4,7 +4,7 @@
     "description": "Tên tiện ích"
   },
   "extDescription": {
-    "message": "Bôi đen văn bản để giải thích, tóm tắt, dịch hoặc hỏi đáp với hành động bạn tự định nghĩa. Dùng khóa API của bạn. PDF.",
+    "message": "Bôi đen văn bản để giải thích, tóm tắt, dịch, hỏi. Tự định nghĩa hành động và prompt. API key riêng hoặc dịch vụ chính thức. Có PDF.",
     "description": "Mô tả tiện ích"
   }
 }

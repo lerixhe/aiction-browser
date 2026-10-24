@@ -10,7 +10,7 @@
 | 数据接收端 | PostHog（`https://us.i.posthog.com`，项目 token 常量见 `src/shared/analytics.ts`） |
 | 埋点唯一入口 | `src/shared/analytics.ts`（所有上报必须经过它，禁止在业务代码里直接 `fetch` PostHog） |
 | 事件定义分散位置 | content / pdf-viewer / popup / options / background（见下方清单） |
-| 当前事件数 | 45 |
+| 当前事件数 | 47 |
 | 用户开关 | `settings.telemetryEnabled`（Options → 关于 → 协助改善用户体验，默认 `true`） |
 | 隐私承诺 | `docs/PRIVACY_POLICY.md`「Analytics Provider: PostHog」章节 |
 
@@ -183,7 +183,9 @@
 - `source`：`web` / `pdf`（由 `ChatSession` 的 `source` prop 传入），用于对比网页与 PDF 阅读器的使用深度。
 - `turn_index` / `is_follow_up`：本次是会话里的第几轮（`1` = 触发动作的首轮，`>1` = 追问）——卡片的「追问」入口到底有没有人被用。
 - `ttft_ms`：首个内容块（含思考块）到达耗时——比 `duration_ms` 更能反映「是不是卡住了」。
-- `provider_type`：`models_dev` / `custom` / `none`（依旧不上报 provider 名称）。
+- `provider_type`：`models_dev` / `custom` / `official` / `none`（依旧不上报 provider 名称）。
+  `official` 是官方托管服务（运行时构造的 provider，不在 `providers[]` 里）；不分档就成了「custom」，
+  官方链路的失败会全被归到「用户自定义端点出问题」，那是另一种误导。
 - `error_code`：`ChatErrorCode` 枚举（`classifyChatError()`，`src/shared/errors.ts`）：
   `no_api_key` / `missing_config` / `no_content` / `timeout` / `auth` / `rate_limit` / `quota_exceeded` / `network` / `aborted` / `provider_error` / `unknown`。
   优先用 background 在 `ChatStreamFailedEvent.code` 里给出的结构化归因，缺省时在 content 侧用同一函数兜底（只看 `error.name` / 自造文案常量 / `statusCode`，**不做关键词或正则推断**）。
@@ -279,6 +281,25 @@
   与「匿名额度」一起留到 M4 评估，见 §1.2）。
 - 埋点位置分工：`auth_sign_in_*` / `auth_signed_out` 在 background（`session.ts`，用 `trackBackgroundEvent`），
   `auth_sign_in_started` / `quota_banner_shown` 在 UI（`trackEvent`）。
+
+### 2.10 官方服务链路（M2，background）
+
+| 事件名 | 属性 | 触发位置 | 用途 |
+|--------|------|----------|------|
+| `official_service_used` | `plan`(`anonymous`/`free`/`pro`/`max`), `model`, `is_anonymous`, `length_bucket`（**输出**长度） | `background.streamChat()`，官方链路一次对话**成功**产出内容后 | 官方服务的真实使用量；`is_anonymous` 拆开「未登录也能用」与「登录后用量」两条曲线 |
+| `quota_exceeded` | `plan`, `source`(`web`/`pdf`/`popup`), `model` | 同上，官方链路收到 **402**（`statusCode === 402`）时 | 额度墙的触发量：分母是 `official_service_used`，分子是它 → 转化漏斗的关键一格 |
+
+口径说明：
+- 两个事件**只在官方链路**上报。BYOK 的 402/429 来自用户自己的端点，跟我们的额度无关——混进来会污染
+  「额度墙触发量」（用户在第三方端点余额不足，不是我们要转化的人）。
+- `quota_exceeded` 只由**结构化状态码**判定（`classifyChatError()` 的 `402 → quota_exceeded`），
+  不从响应体文本推。
+- 402 之后会强制回源一次 `/v1/me`（契约 §4.1），所以账号页/额度条立刻是满的——但**不改 plan**
+  （一次 402 不等于降级），`plan` 属性仍是失败发生时的档位。
+- `length_bucket` 取**输出**长度（`0`/`1-20`/`21-60`/`61-200`/`200+`），不上报字符数、更不上报内容。
+- 官方链路的通用请求头（`X-Ext-Id` / `X-Client-Version` / `X-Device-Id` / `X-Platform`）与计费主体
+  `X-AIction-Feature`（`selection_chat` / `page_qa`）不会进埋点：前者是设备指纹类硬标识（`X-Device-Id`
+  已作为 `distinct_id` 的载体存在，不需要额外上报一份），后者由 `official_service_used` 的入口维度覆盖。
 
 ---
 
@@ -528,4 +549,5 @@
 | 2026-10-22 | 登录功能 M1 埋点（+5 → 45 个事件） | 新增 §2.9：`auth_sign_in_started` / `auth_sign_in_completed` / `auth_sign_in_failed`（`cancelled` 也记一条，`reason = window_closed`）/ `auth_signed_out`（`user` / `revoked`）/ `quota_banner_shown`（`surface` 三处、挂载去重、失败侧填 `unknown`）；background 由 `session.ts` 上报、UI 侧三个入口上报；新增 `usedRatioBucket()`；§1.2「扩展无账号体系」表述更新为「账号体系存在，但埋点仍只到设备级」 |
 | 2026-10-22 | 评审修复：`auth_sign_in_failed.reason` 增加 `unavailable` | 原实现把「identity 权限缺失 / 登录功能开关关闭」归到 `server_error`，回滚入口那天会分不清是自己关了开关还是后端挂了。事件数与其余属性不变 |
 | 2026-10-23 | `posthog-js` 1.376.3 → 1.438.20（SDK 升级，事件/属性零变更） | 唯一代码改动：init 选项 `advanced_disable_decide` → `advanced_disable_flags`（旧名已 deprecated，设了会打 `Config field 'advanced_disable_decide' is deprecated` 警告；`_shouldDisableFlags()` 本来就优先读新名）；`(posthog as any).__loaded` 去掉 `any`（新版类型已声明该字段）。行为边界复核：新版默认值仍是 `autocapture: true` / `persistence: localStorage+cookie` / `error_tracking: {}`（`capture_exceptions` 未配置且默认 falsy → 不上报 `$exception`），`advanced_disable_flags: true` 继续阻止 `/flags` 请求与远端配置，**零自动事件承诺不变**。代价：`module.no-external` minify 后 205 KB → 369 KB |
+| 2026-10-24 | 官方服务链路 M2 埋点（+2 → 47 个事件） | 新增 §2.10：`official_service_used`（`plan`/`model`/`is_anonymous`/输出 `length_bucket`）、`quota_exceeded`（`plan`/`source`/`model`，仅 402 且仅官方链路）；`provider_type` 枚举新增 `official`（原先官方 provider 被归进 `custom`）；两者都在 background 的 `streamChat` 上报，**BYOK 的 402/429 不上报**（那是用户端点的额度，不是我们的墙） |
 | 2026-10-23 | SDK 入口改为 `module.slim.no-external`（事件/属性零变更，纯体积优化） | `module.no-external` 新版 minify 后 369 KB（旧版 205 KB），换 slim 变体后 163 KB → content script 899 → 707 kB（连旧 SDK 都小 42 kB）、总包 4.93 → 4.35 MB。实测（Playwright + 真实 bundle，请求全拦截）：`__loaded` / `bootstrap.distinctID` / `capture` 行为与 no-external 一致，只发一条 `POST /e/`，`properties.distinct_id` = 稳定匿名 ID，**无 `/flags`、无外部 CDN 请求、无 `$exception`**；`pagehide` 时队列正确 flush（事件送达）。副产品：`[Surveys] PostHog Extensions not found.` 这条 console error 消失（slim 里没有 surveys 扩展） |

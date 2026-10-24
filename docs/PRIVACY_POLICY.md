@@ -1,6 +1,6 @@
 # Privacy Policy for AIction
 
-**Last Updated:** October 20, 2026
+**Last Updated:** October 24, 2026
 
 ## Introduction
 
@@ -68,11 +68,27 @@ Before leaving your browser, these fields are scrubbed of credentials: API keys 
 
 ### 3. Text Processing
 
-When you select text and use AI features:
+When you select text and use AI features, one of two paths is used — which one depends on the engine you
+selected in the extension:
+
+**Bring your own API key (default, no account needed)**
 - The selected text is sent to your configured AI service provider
 - This processing happens through your own API credentials
-- We do not store or transmit your text to our servers
+- We do not see, store, or transmit your text to our servers
 - Conversations are stored only in memory and are cleared when you close the page
+
+**Official service (optional, requires signing in or running as an anonymous device)**
+- The messages needed for the reply (your selected text plus the conversation so far, and the system
+  prompt) are sent to our gateway at `api.aiction.app`, which forwards them to the underlying model
+  provider and streams the reply back
+- Requests are authenticated with a device token (unsigned-in) or an account token (signed in); the token
+  never leaves the extension's background context and is never sent to PostHog
+- The gateway counts token usage against your quota. Usage records contain the model id, token counts, a
+  status code and a timestamp — **not** the content of your messages
+- Conversation content is not used for analytics and is not written to the analytics provider; the
+  extension still keeps conversations only in memory, so closing the page discards them
+- You can switch back to your own API key at any time in the extension settings; the bring-your-own-key
+  path never touches our servers
 
 ## How We Use Information
 
@@ -93,6 +109,7 @@ We do not sell, trade, or otherwise transfer your information to third parties.
 **Third-Party Services:**
 - **PostHog:** Anonymous analytics data only (can be disabled)
 - **Your AI Provider:** Text you choose to process (controlled by you)
+- **Our gateway and its model providers:** only if you use the optional official service
 
 ## Data Security
 

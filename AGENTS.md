@@ -12,7 +12,8 @@ AI 调用统一走 Vercel AI SDK：`shared/model-provider.ts` 按 provider 的 `
 - `npm test`（vitest）：单测固定 `environment: node`，`chrome.*` 由 `src/shared/auth/__tests__/chrome-stub.ts` 注入，
   不引 jsdom——组件行为走手测清单，别为了几行 DOM 断言引一整套浏览器环境。
 - `npm run check:auth-boundary`：凭据边界检查（已在 `build` 前置里）。
-- `npm run mock:api`：官方 API 本地 mock（`127.0.0.1:8787`，dev 下 `API_BASE` 指向它；`--selftest` 跑端点自检）。
+- `npm run mock:api`：官方 API 本地 mock（`127.0.0.1:8787`，dev 下 `API_BASE` 指向它；`--selftest` 跑端点自检，
+  含 `/v1/chat/completions` 的 SSE 与 402 额度墙）。
   额度 / plan 数值均为占位符，真实值只由服务端下发。
 - 素材 / 设计类：`icons`、`bundle-icons`（build 前置自动跑）、`screenshots`、`screenshots:frame`。
 
@@ -61,7 +62,7 @@ AI 调用统一走 Vercel AI SDK：`shared/model-provider.ts` 按 provider 的 `
 | 上下文 | 职责 |
 |---|---|
 | content script（`entrypoints/content/`） | 选区检测、划词工具栏、悬浮面板；会话为每页内存态 |
-| background（`entrypoints/background.ts`） | **唯一发起 AI 请求的地方**；PDF 右键菜单；models.dev 数据与缓存 |
+| background（`entrypoints/background.ts`） | **唯一发起 AI 请求的地方**；官方链路的凭据注入（`provider-credentials.ts`）；PDF 右键菜单；models.dev 数据与缓存 |
 | options / popup / pdf-viewer | 设置页、Popup（只做：确认引擎、在当前页面提问、动作开关）、PDF 阅读页 |
 
 通信方式：
@@ -69,6 +70,9 @@ AI 调用统一走 Vercel AI SDK：`shared/model-provider.ts` 按 provider 的 `
 - **非流式**（测 API、拉模型列表）：`sendMessage` + `sendResponse`。
 - **Popup → content**：`chrome.tabs.sendMessage` 发 `AICTION_OPEN_CHAT`，content 同步应答（Popup 收到即关自己，把系统焦点还给页面）。
   该路径**不经 background**；页面没有可用 content script 时必须 reject，由 Popup 显式提示而非静默失败。
+- **content → 引擎**：面板头部要显示「实际在用哪个引擎」，走 `AICTION_ENGINE_REQUEST` 由 background 回答
+  （官方 provider 是运行时构造的，内容脚本按本地设置自己算只会得到 BYOK 的模型名）。
+  同理 `AICTION_CHAT_STREAM_START` 的 `started` 事件会回传 provider 身份（kind / name / model）。
 - **content → 外链**：`chrome.tabs` **不暴露给 content script**，内容页里任何「打开官网 / 新标签」都必须发
   `AICTION_OPEN_WEB_PAGE`（**只传路由名，不传 URL**）由 background 用 `WEB_BASE + WEB_ROUTES[route]` 代开。
   直接调 `chrome.tabs.create` 会抛 `TypeError` 并被 `void` 吞掉——点了没反应，且 `@types/chrome` 是全局声明，
@@ -102,6 +106,11 @@ AI 调用统一走 Vercel AI SDK：`shared/model-provider.ts` 按 provider 的 `
    `entrypoints/content/**` 与 `pdf-viewer/**` 只允许 import
    `@/shared/auth/{types,facade,use-auth-snapshot,actions}`，由 `scripts/check-auth-boundary.ts` 在 build 前强制。
    access token 放 `storage.session`（content 技术上读不到），refresh token 放 `storage.local`（只靠纪律）。
+10. **官方链路只有一套解析入口**：`resolveActiveProvider()` 决定「现在用官方还是 BYOK」，
+    `resolveProvider()` 负责按主体注入凭据（登录 → access token，匿名 → device token）。
+   Popup / Options / background 三处**都不得自己再判断一次**，否则界面声称的引擎与真正发请求的提供商就分成两套。
+    计费主体 `X-AIction-Feature`（`selection_chat` / `page_qa`）只能放在**请求头**：body 会与 AI SDK 的
+    `providerOptions` 互扰，路径会扭曲 `baseURL` 语义。BYOK 请求不带这个头，也不带扩展的四个身份头。
 
 ## 配置迁移与默认值
 - 向 `DEFAULT_SETTINGS` / `DEFAULT_QUICK_ACTIONS` **加新项**：`normalizeSettings()` 必须按 id 合并

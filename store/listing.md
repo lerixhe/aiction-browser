@@ -20,8 +20,8 @@
 
 | 语言 | 文案 | 字符 |
 |------|------|------|
-| English | `Select text to explain, summarize, translate or chat with actions you define. Bring your own API key and model. Also reads PDFs.` | 128 |
-| 中文 | `在任意网页划词，一键解释、总结、翻译或追问，动作与提示词完全自定义。无需注册，自带 API Key 直连你自己配置的 AI 服务，选文不经我们的服务器。含 PDF 阅读器。` | 86 |
+| English | `Select text to explain, summarize, translate or chat with actions you define. Your API key or our official service. Reads PDFs.` | 127 |
+| 中文 | `在任意网页划词，一键解释、总结、翻译或追问，动作与提示词完全自定义。免注册即可用官方服务，也可用自己的 API Key。含 PDF 阅读器。` | 70 |
 
 > ⚠️ 2025-02 拒审（Yellow Argon / 关键字垃圾内容）后已移除短描述里的第三方厂商名。
 > 旧版中文短描述列举了四家厂商名（如「直连 A/B/C/D」），**不要回退**，详见 §6。
@@ -36,7 +36,7 @@ Chrome Web Store 的详细描述是**纯文本渲染**，不支持 Markdown / HT
 ```
 Select text on any page and a small toolbar appears. Pick an action, watch the answer stream in, then keep asking in a floating chat panel.
 
-No account. No sign-up. No credits. AIction calls the AI service you already use — your key, your model, your bill.
+No sign-up required. Use the official service right away, or plug in the API key and model you already pay for — your endpoint, your bill.
 
 ▸ HOW IT WORKS
 1. Select text on a page.
@@ -47,8 +47,10 @@ No account. No sign-up. No credits. AIction calls the AI service you already use
 Most text-selection tools give you fixed buttons. In AIction every button is a prompt template: write {selection} wherever the selected text should go, then change the name, icon, template, order or visibility. "Explain this code", "Polish this email", "Pull out the key numbers" — whatever you need.
 Two actions are built in: Explain, and Translate with automatic Chinese ↔ English direction.
 
-▸ BRING YOUR OWN MODEL
-AIction talks to a service you already have. Any endpoint that follows the OpenAI chat completions format works — a mainstream API provider, an aggregator, or a gateway you host yourself. Enter the base URL, key and model name once, then switch between saved providers from the toolbar popup without leaving the page.
+▸ TWO ENGINES
+Official service: works without an account and without any setup. Signing in raises the quota and keeps the same account across devices. Both are one switch apart in the settings, and quota numbers are always shown in the extension, never invented here.
+
+Bring your own model: AIction also talks to a service you already have. Any endpoint that follows the OpenAI chat completions format works — a mainstream API provider, an aggregator, or a gateway you host yourself. Enter the base URL, key and model name once, then switch between saved providers from the toolbar popup without leaving the page.
 
 ▸ BUILT-IN PDF READER
 Open a PDF with AIction and selection, actions and chat work inside the document too — no separate app needed.
@@ -63,7 +65,8 @@ Open a PDF with AIction and selection, actions and chat work inside the document
 • Editable system prompt with {pageTitle}, {pageUrl} and {surround} context placeholders
 
 ▸ PRIVACY
-Your selected text, page content and AI replies travel directly from your browser to the API endpoint you configure. They never reach our servers. There is no account system, and we never see your API key.
+With your own API key, the selected text, page content and AI replies travel directly from your browser to the endpoint you configure — they never reach our servers, and we never see your key.
+With the official service, the same content goes to our gateway (api.aiction.app) and is forwarded to the model provider that answers it. Usage is counted in tokens for your quota; message content is not used for analytics. Switch engines at any time.
 We collect only anonymous usage statistics (feature counts, response latency) to improve the extension. You can turn this off at Settings → About.
 
 ▸ OPEN SOURCE
@@ -77,7 +80,7 @@ Contact: support@aiction.app
 ```
 在任意网页选中一段文字，工具栏会立刻浮现。选一个动作，看 AI 流式作答，然后在浮动面板里继续追问。
 
-不需要注册账号，不需要充值额度。AIction 直接调用你自己配置的 AI 服务 —— 你的 Key、你的模型、你的账单。
+不需要注册账号：直接可用官方服务，也可以填你自己已有的 API Key 与模型 —— 你的端点、你的账单。
 
 ▸ 怎么用
 1. 在网页上选中文字。
@@ -88,8 +91,10 @@ Contact: support@aiction.app
 大多数划词工具只给你固定的「翻译 / 总结」按钮。AIction 把每个按钮都做成提示词模板：用 {selection} 代表选中的文字，名称、图标、模板、排序、启停全部可改。比如「解释这段代码」「润色这封邮件」「提取其中的关键数字」。
 内置两个动作：解释，以及中英互译（按原文主体语言自动判定方向）。
 
-▸ 用你自己的模型
-AIction 调用的是你自己已有的 AI 服务。任何遵循 OpenAI chat completions 格式的端点都能用 —— 你订阅的服务商、聚合 API，或自建网关。填入地址、密钥与模型名即可，之后在工具栏弹窗里随时切换，不必离开当前页面。
+▸ 两种引擎
+官方服务：免注册、零配置即可对话；登录后额度更高，且同一账号可在多台设备复用。两种引擎在设置里一键切换，额度数字始终由服务端下发，不在文案里写死。
+
+用你自己的模型：AIction 也支持调用你自己已有的 AI 服务。任何遵循 OpenAI chat completions 格式的端点都能用 —— 你订阅的服务商、聚合 API，或自建网关。填入地址、密钥与模型名即可，之后在工具栏弹窗里随时切换，不必离开当前页面。
 
 ▸ 内置 PDF 阅读器
 用 AIction 打开 PDF，文档里的选中、动作与对话照样可用，不需要额外装软件。
@@ -104,7 +109,8 @@ AIction 调用的是你自己已有的 AI 服务。任何遵循 OpenAI chat comp
 • 系统提示词可自定义，支持 {pageTitle}、{pageUrl}、{surround} 等页面上下文占位符
 
 ▸ 隐私
-你的选中文字、页面内容与 AI 回复，直接从你的浏览器发往你自己配置的 API 端点，不经过我们的服务器。没有账号体系，我们也永远拿不到你的 API Key。
+使用自己的 API Key 时，选中文字、页面内容与 AI 回复直接从浏览器发往你自己配置的端点，不经过我们的服务器，我们也拿不到你的 Key。
+使用官方服务时，同样的内容会发往我们的网关（api.aiction.app），再由网关转发给作答的模型服务商；用量按 token 计入你的额度，消息内容不用于产品分析。随时可切回自己的 Key。
 我们只收集匿名的使用统计（功能使用次数、响应耗时）来改进产品，可在「设置 → 关于」里随时关闭。
 
 ▸ 开源
@@ -119,7 +125,7 @@ https://github.com/lerixhe/aiction-browser
 
 | 可以写 | 不能写 |
 |--------|--------|
-| 「选文不经过我们的服务器」「直连你自己配置的端点」 | 「不收集任何数据」「零遥测」「完全离线」「本地运行」 |
+| 「用自己的 Key 时，选文不经过我们的服务器」「直连你自己配置的端点」（**必须带上「用自己的 Key 时」这个前提**：官方服务会把内容发往我们的网关） | 「不收集任何数据」「零遥测」「完全离线」「本地运行」「内容永不离开浏览器」 |
 | 「无需注册即可使用」（账号是可选的，不登录也能用现有全部功能） | 「输入永不离开浏览器」（有发往用户自己端点的请求，表述易被误解） |
 | 用协议级表述说明兼容性：「任意 OpenAI chat completions 格式的端点」「你订阅的服务商 / 聚合 API / 自建网关」（协议名与技术格式不属于商标堆砌） | **名称 / 短描述 / 详细描述里罗列第三方厂商名**（OpenAI、Claude、Gemini、DeepSeek、OpenRouter …）——Google 直接判 keyword stuffing，见 §6 |
 | 「同一页面可同时开多个面板」等可验证的功能陈述 | 排名 / 绝对化宣称（"best"、"No.1"、"最强大的"）、"绕过付费墙"类表述 |
@@ -142,23 +148,29 @@ https://github.com/lerixhe/aiction-browser
 > 若商店因 `identity` 追问，优先用上表措辞，并强调「可选」与「无登录仍可用」。
 > 回滚手段：`shared/auth/config.ts` 的 `OFFICIAL_AUTH_ENABLED` 置 false 发一个小版本即可关掉全部登录入口。
 
-### 4.2 M1 登录功能：为什么**不改**商店描述
+### 4.2 商店描述的版本对应关系
 
-M1 只交付账号基础设施（登录 / 登出 / 账号状态 / 额度展示），**官方 AI 链路留到 M2**。
-因此对用户可见的能力与数据流向没有变化：
+**M1（登录基础设施）**：只交付登录 / 登出 / 账号状态 / 额度展示，官方 AI 链路未接线，
+对用户可见的能力与数据流向没有变化，所以当时**刻意没有改**商店描述。
 
-- 聊天仍然直连用户自己配置的端点（选文不经过我们的服务器）；
-- 不登录也能使用全部现有功能；
-- 新增的只有「可选的账号入口」与「账号状态展示」。
+**M2（官方链路，已接线）**：`OFFICIAL_AI_ENABLED` 置 true，官方服务成为可选引擎
+（免注册的匿名额度 + 登录后更高额度），BYOK 链路完全不变。对用户可见的能力与数据流向都变了，
+因此本文件的三处文案已同步改掉（否则构成虚假宣传）：
 
-结论：`messages.json` 的名称 / 短描述与 `listing.md` 的详细描述**保持原样**，
-避免为尚未上线的能力做承诺（也避免无谓触发商店重新审核）。
+| 必须改的表述 | 改法 |
+|---|---|
+| 「无需注册即可使用」 | 仍然成立（匿名也有官方额度），但要写清 BYOK 与官方两条路都在 |
+| 「选文不经过我们的服务器」 | 加前提：「**用自己的 Key 时**」不过我们的服务器；官方服务会把内容发往网关 |
+| 短描述里的「Bring your own API key」 | 不再是唯一形态，改为「Your API key or our official service」 |
 
-**M2 上架官方服务时必须同步修改的三句**（否则构成虚假宣传）：
+同步落点（改一处必须改全部，逐字符一致）：
 
-1. 「无需注册即可使用」→ 说明官方服务需要登录（BYOK 仍然免登录）；
-2. 「选文不经过我们的服务器」→ 用官方服务时选文会发往我们的网关；
-3. 短描述里的「Bring your own API key」不再是唯一形态。
+1. 本文件 §2 短描述与 §3 详细描述；
+2. `public/_locales/*/messages.json` 的 `extDescription`（7 种语言，≤132 字符）；
+3. `docs/PRIVACY_POLICY.md` §3「Text Processing」的分叉说明（官方服务的数据流向）。
+
+回滚手段：`shared/auth/config.ts` 的 `OFFICIAL_AI_ENABLED` 置 false 发一个小版本即可关掉官方引擎，
+界面会自动只显示真实引擎（不会出现「显示官方服务、请求发到 BYOK」的偏差）；此时上面三句要一并改回去。
 
 ## 5. 仍缺的上架素材
 
