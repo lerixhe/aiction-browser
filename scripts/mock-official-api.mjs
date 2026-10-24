@@ -12,9 +12,12 @@
  *
  * ⚠️ 与真实网关的差异（**别拿这个文件当契约**）：
  *   1. 不校验 JWT 签名，只校验字符串；token 就是随机串；
- *   2. 不实现配额预扣 / 回填，`used` 是固定占位值；
+ *   2. 不实现配额**预扣 / 回填**：进流前按 `输入字符数 / 4` 一次性记账（占位口径），
+ *      `used` 会真的增长并与 `/v1/me` 共享同一份计数（客户端不需要第二套口径）；
  *   3. 不做 `ext_id` 与 `X-Ext-Id` 的一致性校验（只校验头是否存在）；
- *   4. `plan` 可任意切换（`?plan=` / `MOCK_PLAN`），没有订阅状态机与结算。
+ *   4. `plan` 可任意切换（`?plan=` / `MOCK_PLAN`），没有订阅状态机与结算；
+ *   5. `/v1/chat/completions` 只做 OpenAI 兼容的**最小子集**（SSE + 非流式 + usage chunk），
+ *      不支持工具调用 / 多模态 / `stream_options`。
  *   契约真源：`.private-docs/OFFICIAL_API_CONTRACT.md`。
  *
  * 额度数值是**占位符**，且默认值刻意选得很小（`MOCK_QUOTA_LIMIT` 可覆盖）：
@@ -27,6 +30,9 @@
  *   refresh_revoked   /auth/refresh 持续 401 refresh_revoked
  *   me_500            /v1/me 持续 500
  *   me_401_expired    /v1/me **下一次** 401 token_expired（验证「刷新一次后重试成功」）
+ *   chat_402          /v1/chat/completions 持续 402 quota_exceeded（额度墙 / 升级 CTA）
+ *   chat_429          /v1/chat/completions 持续 429 rate_limited（带 Retry-After）
+ *   chat_500          /v1/chat/completions 持续 500 internal
  *   slow              每个请求延迟 3s（也可用 `?slow=3000`）
  * 另有运行期辅助端点：`GET /__state`（调用计数）、`POST /__expire`（把 token 标记过期）。
  */
@@ -66,7 +72,10 @@ function createState() {
     refreshTokens: new Map(),
     /** code → { challenge, state, redirectUri, extId, plan, createdAt } */
     pendingCodes: new Map(),
-    counters: { device: 0, authorize: 0, token: 0, refresh: 0, logout: 0, me: 0 }
+    /** principalId → 已用 tokens（占位口径，见 §「与真实网关的差异」） */
+    quota: new Map(),
+    resetAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    counters: { device: 0, authorize: 0, token: 0, refresh: 0, logout: 0, me: 0, chat: 0 }
   }
 }
 
@@ -216,6 +225,35 @@ function revokeDeviceRefresh(deviceId) {
     record.rotatedTo = null
   }
 }
+
+// ── 额度（占位实现，见文件头「与真实网关的差异」第 2 条）──────────────
+
+const quotaLimit = () => Number(process.env.MOCK_QUOTA_LIMIT ?? DEFAULT_QUOTA_LIMIT)
+const quotaUsed = (principalId) => state.quota.get(principalId) ?? 0
+const quotaResetAt = () => state.resetAt
+
+/** 契约 §1.5：每次对话都带额度头，避免额外往返（流式响应同样带，值是**预扣后**的） */
+function quotaHeaderObject(principalId, plan) {
+  return {
+    "X-Quota-Unit": "tokens",
+    "X-Quota-Limit": String(quotaLimit()),
+    "X-Quota-Used": String(quotaUsed(principalId)),
+    "X-Quota-Reset": quotaResetAt(),
+    ...(plan ? { "X-Plan": plan } : {})
+  }
+}
+
+function setQuotaHeaders(res, principalId, plan) {
+  for (const [name, value] of Object.entries(quotaHeaderObject(principalId, plan))) {
+    res.setHeader(name, value)
+  }
+}
+
+/** SSE 分片间隔：够慢到能看见流式，又快到自测不必等 */
+const STREAM_CHUNK_DELAY_MS = Number(process.env.MOCK_STREAM_DELAY_MS ?? 15)
+
+/** 官方模型白名单（占位：真实白名单由 `/v1/models` 下发，见契约 §5.1） */
+const OFFICIAL_MODELS = ["aiction-fast", "aiction-pro"]
 
 // ── 路由 ───────────────────────────────────────────────────────
 
@@ -455,10 +493,10 @@ async function handleRequest(req, res) {
         },
         quota: {
           unit: "tokens",
-          limit: Number(process.env.MOCK_QUOTA_LIMIT ?? DEFAULT_QUOTA_LIMIT),
-          used: 0,
+          limit: quotaLimit(),
+          used: quotaUsed(principal.principalId),
           reserved: 0,
-          reset_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          reset_at: quotaResetAt(),
           window: plan === "anonymous" ? "day" : "subscription"
         },
         features: {
@@ -471,6 +509,138 @@ async function handleRequest(req, res) {
         },
         server_time: nowIso()
       })
+    }
+
+
+    // ── 官方对话（OpenAI 兼容子集，契约 §6）──────────────────
+    if (req.method === "POST" && path === "/v1/chat/completions") {
+      state.counters.chat++
+      if (!requireBaseHeaders(req, res)) return
+
+      // 计费主体是**请求头**（契约 §6.1）。缺了就在 dev 阶段 400，
+      // 而不是等上线靠账单去发现「所有对话都记到同一个池」。
+      const feature = req.headers["x-aiction-feature"]
+      if (!feature) return sendError(res, 400, "invalid_request", "缺少 X-AIction-Feature 请求头")
+
+      const accessToken = bearerOf(req)
+      if (!accessToken) return sendError(res, 401, "token_invalid", "缺少 Authorization")
+      const principal = state.accessTokens.get(accessToken)
+      if (!principal) return sendError(res, 401, "token_invalid", "access token 无效")
+      if (principal.expired) return sendError(res, 401, "token_expired", "access token 已过期")
+
+      if (hasFailure("chat_500")) return sendError(res, 500, "internal", "mock 注入的服务端错误")
+      if (hasFailure("chat_429")) {
+        res.setHeader("Retry-After", "10")
+        return sendError(res, 429, "rate_limited", "mock 注入的分钟级频控")
+      }
+
+      const body = await readJson(req)
+      if (!body || !Array.isArray(body.messages)) {
+        return sendError(res, 400, "invalid_request", "messages 必须是数组")
+      }
+      const model = typeof body.model === "string" ? body.model : ""
+      if (!OFFICIAL_MODELS.includes(model)) {
+        return sendError(res, 403, "model_not_allowed", `模型不在白名单：${model || "(空)"}`)
+      }
+
+      const user = principal.kind === "user" ? state.users.get(principal.principalId) : undefined
+      const plan = user?.plan ?? "anonymous"
+      const limit = quotaLimit()
+      const used = quotaUsed(principal.principalId)
+
+      // 额度耗尽 → **402**（不是 429）：402 对应升级引导，429 只表示「稍后重试」
+      if (hasFailure("chat_402") || used >= limit) {
+        setQuotaHeaders(res, principal.principalId, plan)
+        return sendError(res, 402, "quota_exceeded", "本周期额度耗尽", {
+          limit,
+          used,
+          reset_at: quotaResetAt()
+        })
+      }
+
+      const inputChars = body.messages.reduce(
+        (sum, message) => sum + (typeof message?.content === "string" ? message.content.length : 0),
+        0
+      )
+      // 占位估算（契约 §6.5 的预扣 / 回填真实网关才做，这里只让 used 会动）
+      const charged = Math.max(1, Math.round(inputChars / 4))
+      state.quota.set(principal.principalId, used + charged)
+
+      const lastUser = [...body.messages].reverse().find((message) => message?.role === "user")
+      const echoed = typeof lastUser?.content === "string" ? lastUser.content.slice(0, 80) : ""
+      const reply = `[mock:${feature}] ${model} 收到 ${body.messages.length} 条消息：${echoed}`
+      const id = `chatcmpl_mock_${randomBytes(4).toString("hex")}`
+      const created = Math.floor(Date.now() / 1000)
+
+      if (body.stream === false) {
+        setQuotaHeaders(res, principal.principalId, plan)
+        return sendJson(res, 200, {
+          id,
+          object: "chat.completion",
+          created,
+          model,
+          choices: [{ index: 0, message: { role: "assistant", content: reply }, finish_reason: "stop" }],
+          usage: {
+            prompt_tokens: charged,
+            completion_tokens: reply.length,
+            total_tokens: charged + reply.length
+          }
+        })
+      }
+
+      // SSE：头在流开始前发出，所以 `X-Quota-Used` 是**预扣后**的值（契约 §1.5）
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-store",
+        Connection: "keep-alive",
+        ...quotaHeaderObject(principal.principalId, plan)
+      })
+
+      const sendChunk = (payload) => res.write(`data: ${JSON.stringify(payload)}\n\n`)
+      sendChunk({
+        id,
+        object: "chat.completion.chunk",
+        created,
+        model,
+        choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }]
+      })
+
+      for (const piece of reply.match(/[\s\S]{1,12}/g) ?? []) {
+        // 客户端中途断开（AbortSignal）：Gateway 应立即取消上游，这里直接停写
+        if (res.writableEnded || res.destroyed) return
+        sendChunk({
+          id,
+          object: "chat.completion.chunk",
+          created,
+          model,
+          choices: [{ index: 0, delta: { content: piece }, finish_reason: null }]
+        })
+        await sleep(STREAM_CHUNK_DELAY_MS)
+      }
+
+      sendChunk({
+        id,
+        object: "chat.completion.chunk",
+        created,
+        model,
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }]
+      })
+      // usage chunk 由网关补在 [DONE] 之前（契约 §6.3），AI SDK 会解析它
+      sendChunk({
+        id,
+        object: "chat.completion.chunk",
+        created,
+        model,
+        choices: [],
+        usage: {
+          prompt_tokens: charged,
+          completion_tokens: reply.length,
+          total_tokens: charged + reply.length
+        }
+      })
+      res.write("data: [DONE]\n\n")
+      res.end()
+      return
     }
 
     // ── 调试端点 ──────────────────────────────────────────────
@@ -490,7 +660,8 @@ async function handleRequest(req, res) {
           graceRemainingMs:
             record.revoked && record.rotatedAt !== null ? Math.max(0, GRACE_MS - (Date.now() - record.rotatedAt)) : null
         })),
-        pendingCodes: state.pendingCodes.size
+        pendingCodes: state.pendingCodes.size,
+        quota: Object.fromEntries(state.quota)
       })
     }
 
@@ -581,6 +752,7 @@ td:first-child{white-space:nowrap;font-family:ui-monospace,monospace;color:#2563
 <tr><td>POST /auth/refresh</td><td>轮换 + 宽限窗口（窗口内重放返回同一组新 token）</td></tr>
 <tr><td>POST /auth/logout</td><td>撤销当前设备全部 refresh，204</td></tr>
 <tr><td>GET /v1/me</td><td>权益快照（<code>?plan=pro</code> 可切换档位）</td></tr>
+<tr><td>POST /v1/chat/completions</td><td>官方对话（SSE，带 <code>X-Quota-*</code> 头；额度耗尽 402）</td></tr>
 <tr><td>GET /__state</td><td>调试：调用计数与 refresh 宽限剩余时间</td></tr>
 <tr><td>POST /__expire</td><td>调试：把 access token 标记过期，验证 401 救援</td></tr>
 </table>
@@ -777,7 +949,49 @@ async function runSelftest() {
     const afterLogout = await call("/auth/refresh", { method: "POST", body: { refresh_token: rotated2.json.refresh_token } })
     check("登出后 refresh → 401", afterLogout.status === 401)
 
-    // 13. 调试端点
+    // 13. 官方对话（M2）：SSE + 额度头 + 402
+    const chatBase = {
+      method: "POST",
+      accessToken: device1.json.access_token,
+      body: {
+        model: "aiction-fast",
+        messages: [
+          { role: "system", content: "sys" },
+          { role: "user", content: "hello official" }
+        ],
+        stream: true
+      }
+    }
+    const chat = await call("/v1/chat/completions", {
+      ...chatBase,
+      headers: { "x-aiction-feature": "selection_chat" }
+    })
+    check("POST /v1/chat/completions 返回 SSE 流且带额度头", chat.status === 200 && chat.text.includes("data: "))
+    check("流内含 usage chunk 与 [DONE]", chat.text.includes("\"usage\"") && chat.text.includes("[DONE]"))
+
+    const chatNoFeature = await call("/v1/chat/completions", chatBase)
+    check("缺 X-AIction-Feature → 400（计费主体必须显式）", chatNoFeature.status === 400)
+
+    const chatBadModel = await call("/v1/chat/completions", {
+      ...chatBase,
+      body: { ...chatBase.body, model: "not-a-model" },
+      headers: { "x-aiction-feature": "selection_chat" }
+    })
+    check("模型不在白名单 → 403 model_not_allowed", chatBadModel.status === 403 && chatBadModel.json.error.code === "model_not_allowed")
+
+    // 额度耗尽 → 402（把该主体的 used 顶到上限，验证客户端拿到的额度头也是满的）
+    const devicePrincipalId = device1.json.principal.id
+    const limit = quotaLimit()
+    state.quota.set(devicePrincipalId, limit)
+    const chatQuota = await call("/v1/chat/completions", {
+      ...chatBase,
+      headers: { "x-aiction-feature": "page_qa" }
+    })
+    check("额度耗尽 → 402 quota_exceeded（不是 429）", chatQuota.status === 402 && chatQuota.json.error.code === "quota_exceeded")
+    check("402 也带额度头（UI 可立刻画满）", Number(chatQuota.json.error.details?.limit) === limit)
+    state.quota.set(devicePrincipalId, 0)
+
+    // 14. 调试端点
     const snapshot = await call("/__state")
     check(
       "/__state 统计到各端点调用次数",
