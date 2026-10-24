@@ -1,4 +1,5 @@
 import type {
+  ChatFeature,
   ChatStreamCancelRequest,
   ChatStreamEvent,
   ChatStreamRequest,
@@ -32,6 +33,8 @@ export async function requestOpenChatInActiveTab(): Promise<void> {
 interface StreamChatOptions {
   onEvent: (event: ChatStreamEvent) => void
   signal?: AbortSignal
+  /** 计费主体（契约 §6.1）：只有官方链路用，但**由调用点填**（background 不知道你是划词还是页内提问） */
+  feature?: ChatFeature
 }
 
 function isTerminalEvent(event: ChatStreamEvent): boolean {
@@ -46,7 +49,8 @@ export async function streamChat(messages: ChatMessage[], options: StreamChatOpt
   const request: ChatStreamStartRequest = {
     type: MESSAGE_TYPES.CHAT_STREAM_START,
     payload: {
-      messages
+      messages,
+      ...(options.feature ? { feature: options.feature } : {})
     }
   }
 

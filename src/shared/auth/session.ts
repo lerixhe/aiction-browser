@@ -16,10 +16,11 @@
 import { getAnonymousId } from "@/shared/anonymous-id"
 import { OFFICIAL_AUTH_ENABLED, PENDING_TTL_MS, PLATFORM, REFRESH_BUFFER_MS } from "@/shared/auth/config"
 import { ensureDeviceToken } from "@/shared/auth/device"
-import { clearEntitlementsCache, entitlementsToSnapshot, getEntitlements } from "@/shared/auth/entitlements"
+import { clearEntitlementsCache, entitlementsToSnapshot, getEntitlements, quotaFromHeaders } from "@/shared/auth/entitlements"
 import { AuthError, toAuthError } from "@/shared/auth/errors"
 import { buildAuthorizeUrl, createPkce, parseCallbackUrl, randomToken } from "@/shared/auth/pkce"
 import { authFetch, configureAuthRequest } from "@/shared/auth/request"
+import type { PrincipalCredential } from "@/shared/auth/request"
 import {
   clearPending,
   clearSession,
@@ -272,6 +273,34 @@ export async function getAccessToken(options: { force?: boolean } = {}): Promise
 }
 
 /**
+ * 取**当前请求该用哪张凭据**（官方链路的唯一入口）。
+ *
+ * - 有会话（登录）→ access token（`getAccessToken()` 含单飞刷新 + 代际）；
+ * - 无会话 → 匿名 device token（契约 §3.1）。未登录也有官方额度，这一支是 M2 接入官方链路的关键：
+ *   M1 时 `authFetch` 只认会话，匿名用户拿不到 `/v1/me`（快照永远没有额度）、
+ *   也发不出官方对话（全部 401）。
+ *
+ * `force`：这张凭据被服务端判无效 / 过期时的救援，重领一张后再试一次（见 `request.ts` 的 401 分支）。
+ * 没有可用主体时抛 `NO_SESSION`——**不返回空串**（`Bearer ` 空头会把归因全搞成 401）。
+ */
+export async function getPrincipalToken(options: { force?: boolean } = {}): Promise<PrincipalCredential> {
+  const persisted = await readPersisted()
+  if (persisted) {
+    return { token: await getAccessToken({ force: options.force }), kind: "user" }
+  }
+
+  let deviceToken: string | null
+  try {
+    deviceToken = await ensureDeviceToken({ force: options.force })
+  } catch (error) {
+    // 4xx（请求体写错这类客户端 bug）必须暴露，不要静默当成「没有主体」
+    throw toAuthError(error)
+  }
+  if (!deviceToken) throw new AuthError("NO_SESSION")
+  return { token: deviceToken, kind: "device" }
+}
+
+/**
  * 让会话失效：清两层存储 + 清权益缓存 + 广播 signed-out。
  *
  * `reason` 只用于日志与调用方判断，**不上报**（凭据相关一律不进埋点）。
@@ -311,6 +340,30 @@ export async function getSnapshot(): Promise<AuthSnapshot> {
     ? { state: "signed-in", plan: persisted.plan, updatedAt: Date.now() }
     : buildSignedOutSnapshot()
   return persistSnapshot(inferred)
+}
+
+/**
+ * 用对话响应头**校准**额度（契约 §1.5）。
+ *
+ * 只改 `quota`，不动 `state` / `plan`：响应头里的 `X-Plan` 只用于快速路由，
+ * 它不代表刚付完款的真实档位（那是 `/v1/me` 的职责），拿它改 plan 会出现“刚充完钱仍显示旧档”。
+ *
+ * 只接受「涨」（或重置窗口变了）：`used` 在小并发下可能回报一个更早的值，
+ * 让进度条往回跳一下比“稍旧但只增不减”更难理解。
+ */
+export async function applyQuotaHeaders(
+  headers: Record<string, string | undefined> | undefined
+): Promise<void> {
+  const quota = quotaFromHeaders(headers)
+  if (!quota) return
+
+  const current = await getSnapshot()
+  if (current.state === "signed-out") return
+
+  const previous = current.quota
+  if (previous && previous.resetAt === quota.resetAt && quota.usedRatio <= previous.usedRatio) return
+
+  await persistSnapshot({ ...current, quota, updatedAt: Date.now() })
 }
 
 /**
@@ -531,11 +584,8 @@ export async function signOut(): Promise<void> {
  * - 无快照分支的 `ensureDeviceToken()` 可能抛 4xx（客户bug）：本地 catch 成 null，
  *   否则调用方拿到 reject 就与「匿名失败静默」的约定相违。
  *
- * ⚠️ **M2 待补的缺口**（M1 无可见影响，接线官方链路时才会暴露）：
- * SPEC §5.1 要求 anonymous 之后「拉一次 `/v1/me`（拿匿名额度）」，当前**没做**。
- * 而且做了也拿不到：`getEntitlements` → `authFetch(auth: true)` → `getAccessToken()` 只认持久层，
- * 未登录必抛 `NO_SESSION`。也就是说 **device token 目前没有任何业务消费方**，只有 `device.ts` 自己读写；
- * M2 必须让 `request.ts` 在无会话时改用 device token 认证（否则匿名用户的官方请求全部 401）。
+ * ⚠️ M2 已补：`request.ts` 在无会话时改用 device token 认证（`getPrincipalToken()`），
+ * anonymous 快照也会拉一次 `/v1/me` 拿到匿名额度（见 `promoteToAnonymous()` 与下面的首领分支）。
  */
 export async function initializeSession(): Promise<AuthSnapshot> {
   const stored = await readSnapshot()
@@ -559,10 +609,17 @@ export async function initializeSession(): Promise<AuthSnapshot> {
   }
 
   const deviceToken = await ensureDeviceToken().catch(() => null)
-  const snapshot: AuthSnapshot = deviceToken
-    ? { state: "anonymous", principalKind: "device", plan: "anonymous", updatedAt: Date.now() }
-    : buildSignedOutSnapshot()
-  return persistSnapshot(snapshot)
+  if (deviceToken) {
+    await persistSnapshot({
+      state: "anonymous",
+      principalKind: "device",
+      plan: "anonymous",
+      updatedAt: Date.now()
+    })
+    // 拿到匿名额度再回（失败保持刚写的快照，不把冷启动堵在一个网络请求上）
+    return refreshSnapshotFromServer().catch(() => getSnapshot())
+  }
+  return persistSnapshot(buildSignedOutSnapshot())
 }
 
 /**
@@ -583,7 +640,9 @@ async function promoteToAnonymous(): Promise<void> {
     plan: "anonymous",
     updatedAt: Date.now()
   })
+  // SPEC §5.1：进 anonymous 之后拉一次 `/v1/me` 拿匿名额度（失败只保留刚写的快照，不动状态）
+  await refreshSnapshotFromServer().catch(() => undefined)
 }
 
-// 依赖倒置：把 token 提供者与失效入口交给 request.ts（避免 request ↔ session 循环依赖）
-configureAuthRequest({ getAccessToken, invalidateSession })
+// 依赖倒置：把 token 提供者、主体选择与失效入口交给 request.ts（避免 request ↔ session 循环依赖）
+configureAuthRequest({ getAccessToken, getPrincipalToken, invalidateSession })

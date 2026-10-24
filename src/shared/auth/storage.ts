@@ -266,3 +266,13 @@ export async function writeDeviceToken(value: { token: string; expiresAt: number
   if (!hasStorage()) return
   await writeRaw(chrome.storage.local, AUTH_STORAGE_KEYS.deviceToken, value)
 }
+
+/**
+ * 清掉匿名主体（device token 被判无效时用）。
+ * 清空后 `ensureDeviceToken()` 会重新向 `/auth/device` 领一张——契约 §3.1 是幂等的，
+ * 同 `device_id` + `ext_id` 复用同一主体，所以不会把用户的匿名额度「换个号」。
+ */
+export async function clearDeviceToken(): Promise<void> {
+  if (!hasStorage()) return
+  await removeRaw(chrome.storage.local, AUTH_STORAGE_KEYS.deviceToken)
+}

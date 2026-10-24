@@ -1,4 +1,6 @@
 import type {
+  ChatFeature,
+  ChatMessage,
   ChatStreamCancelRequest,
   ChatStreamEvent,
   ChatStreamRequest,
@@ -6,6 +8,7 @@ import type {
   ApiTestResponse,
   ModelsDevResponse,
   OpenRouterModelsResponse,
+  EngineResponse,
   ProviderConfig,
   SelectionContext,
   TtsSynthesizeRequest,
@@ -21,18 +24,23 @@ import {
   isAbortError,
   classifyChatError,
   describeApiError,
-  sanitizeErrorMessage
+  sanitizeErrorMessage,
+  type ChatErrorCode
 } from "@/shared/errors"
-import { getActiveProvider, getSettings } from "@/shared/storage"
+import { getSettings } from "@/shared/storage"
 import { DEFAULT_TTS_SETTINGS } from "@/shared/defaults"
 import { buildContextSystemMessage, resolveUILanguageLabel } from "@/shared/prompt"
 import { providerIdentityOf, type ProviderIdentityProps } from "@/shared/provider-type"
 import { prepareChatRequest, describeCallWarning, type ChatRequestPlan } from "@/shared/chat-stream"
 import { fetchModelsDev } from "@/shared/models-dev"
 import { fetchOpenRouterModels } from "@/shared/openrouter"
-import { getSnapshot, initializeSession, signIn, signOut } from "@/shared/auth/session"
+import { resolveActiveProvider } from "@/shared/provider-resolve"
+import { resolveProvider, type ResolvedProvider } from "@/shared/provider-credentials"
+import { applyQuotaHeaders, getSnapshot, initializeSession, refreshSnapshotFromServer, signIn, signOut } from "@/shared/auth/session"
+import { toAuthError } from "@/shared/auth/errors"
+import { buildApiBaseHeaders } from "@/shared/auth/request"
 import { WEB_BASE, WEB_ROUTES } from "@/shared/auth/config"
-import { getEntitlements } from "@/shared/auth/entitlements"
+import { clearEntitlementsCache, getEntitlements } from "@/shared/auth/entitlements"
 import type {
   AuthSignInResponse,
   AuthSignOutResponse,
@@ -47,6 +55,7 @@ import {
   startBackgroundBatching,
   stopBackgroundBatching,
   consumeFirstTimeFlag,
+  lengthBucket,
   type AnalyticsSource
 } from "@/shared/analytics"
 
@@ -147,14 +156,53 @@ async function reportProviderConfigured(
 async function currentProviderIdentity(): Promise<ProviderIdentityProps> {
   try {
     const settings = await getSettings()
-    return providerIdentityOf(getActiveProvider(settings))
+    const snapshot = await getSnapshot()
+    return providerIdentityOf(resolveActiveProvider(settings, snapshot))
   } catch {
     return { provider_type: "none", is_custom_endpoint: false, has_api_key: false }
   }
 }
 
+/**
+ * 官方链路的失败归因：`AuthError` → 面板能用的 `ChatErrorCode` + 一句本地化文案。
+ *
+ * 为什么不在 `shared/errors.ts` 里做：那里是「从任意错误里抽事实」的通用层，
+ * 不应当认识认证内核的错误类型；反过来 `AuthError` 是 background 独有的概念。
+ * 原文仍会经 `describeApiError` 完整上报（这里改的只是给用户看的那句话）。
+ */
+function authFailureOf(error: unknown): { error: string; code: ChatErrorCode } {
+  const authError = toAuthError(error)
+  const detail =
+    authError.message && authError.message !== authError.code ? `: ${authError.message}` : ""
+
+  switch (authError.code) {
+    case "NO_SESSION":
+    case "REFRESH_REVOKED":
+    case "STATE_MISMATCH":
+    // 这三种都是「没有可用的官方主体」：登录用户 re-login、匿名用户没有 device token。
+    // 面板给的是「前往设置登录」CTA —— 对匿名用户也是唯一可行的自救动作。
+    case "NOT_AVAILABLE":
+      return { error: ERROR_MESSAGES.OFFICIAL_SIGN_IN_REQUIRED, code: "auth" }
+    case "QUOTA_EXCEEDED":
+      return { error: ERROR_MESSAGES.QUOTA_EXCEEDED, code: "quota_exceeded" }
+    case "RATE_LIMITED":
+      return { error: ERROR_MESSAGES.RATE_LIMITED, code: "rate_limit" }
+    case "NETWORK":
+      return { error: `${ERROR_MESSAGES.REQUEST_FAILED}${detail}`, code: "network" }
+    default:
+      return { error: `${ERROR_MESSAGES.REQUEST_FAILED}${detail}`, code: "provider_error" }
+  }
+}
+
+/** 失败时的本地化文案：额度 / 频控有确定的下一步，直接给结论，其余保留原文 */
+function localizedChatErrorMessage(code: ChatErrorCode, error: unknown): string {
+  if (code === "quota_exceeded") return ERROR_MESSAGES.QUOTA_EXCEEDED
+  if (code === "rate_limit") return ERROR_MESSAGES.RATE_LIMITED
+  return `${ERROR_MESSAGES.REQUEST_FAILED}: ${getErrorMessage(error)}`
+}
+
 async function streamChat(
-  messages: { role: "user" | "assistant" | "system"; content: string }[],
+  request: { messages: ChatMessage[]; feature?: ChatFeature },
   signal: AbortSignal,
   source: AnalyticsSource,
   onEvent: (event: ChatStreamEvent) => void
@@ -162,17 +210,50 @@ async function streamChat(
   const { streamText } = await import("ai")
 
   const settings = await getSettings()
-  const activeService = getActiveProvider(settings)
+  // 引擎真值：与 Popup / Options 同一个解析入口（官方 provider 是运行时构造的，不在 providers[] 里）
+  const snapshot = await getSnapshot()
+  const activeService = resolveActiveProvider(settings, snapshot)
   const identity = providerIdentityOf(activeService)
+  const isOfficial = activeService?.kind === "official"
 
-  if (!activeService?.apiKey.trim()) {
+  if (!activeService) {
     // 关键流失点：装了但没配好 provider 就触发动作（详情见 docs/ANALYTICS.md §5 P0）
     void trackBackgroundEvent("action_triggered_without_provider", { source })
     onEvent({ type: "failed", error: ERROR_MESSAGES.NO_API_KEY, code: "no_api_key", provider: identity })
     return
   }
 
-  onEvent({ type: "started" })
+  /**
+   * 凭据注入：BYOK 用用户填的 Key；official 由 background 运行时取
+   * （登录用户 access token / 匿名 device token，见 `provider-credentials.ts`）。
+   * 这里**不做降级**：官方服务不可用时不会悄悄改用用户的 BYOK Key。
+   */
+  let resolved: ResolvedProvider | null = null
+  if (isOfficial) {
+    try {
+      resolved = await resolveProvider(activeService)
+    } catch (error: unknown) {
+      const failure = authFailureOf(error)
+      onEvent({
+        type: "failed",
+        error: failure.error,
+        code: failure.code,
+        diagnostics: describeApiError(error, failure.code),
+        provider: identity
+      })
+      return
+    }
+  } else if (!activeService.apiKey.trim()) {
+    void trackBackgroundEvent("action_triggered_without_provider", { source })
+    onEvent({ type: "failed", error: ERROR_MESSAGES.NO_API_KEY, code: "no_api_key", provider: identity })
+    return
+  }
+
+  // 把「实际用的 provider」回给 content：面板头部要显示正确的模型名，埋点也要正确的 provider_type
+  onEvent({
+    type: "started",
+    provider: { kind: activeService.kind ?? "byok", name: activeService.name, model: activeService.model }
+  })
 
   if (!activeService.modelsDevId && !activeService.apiBaseUrl?.trim()) {
     onEvent({
@@ -186,19 +267,39 @@ async function streamChat(
 
   const modelsDevData = await fetchModelsDev()
 
+  // token 只在内存里落到请求对象上（`ProviderConfig` 的存档副本里永远没有它）
+  const providerForRequest: ProviderConfig = resolved
+    ? { ...resolved, apiKey: resolved.resolvedApiKey }
+    : activeService
+
   // 请求构造与「测试连接」共用同一处（src/shared/chat-stream.ts），
   // 保证测试覆盖的就是真实链路的参数与流式行为。
   const { streamParams } = prepareChatRequest({
-    provider: activeService,
-    messages,
+    provider: providerForRequest,
+    messages: request.messages,
     modelsDevData,
-    signal
+    signal,
+    feature: request.feature,
+    // 官方网关强制校验契约 §1.3 的四个头；BYOK 端点不需要（也不该收到我们的扩展身份）
+    ...(isOfficial ? { apiHeaders: await buildApiBaseHeaders() } : {})
   })
 
   let hasContent = false
+  let outputChars = 0
 
   const consumeStream = async (): Promise<void> => {
     const result = streamText(streamParams)
+
+    /**
+     * 官方链路：用响应头校准额度（契约 §1.5）。非阻塞、失败不影响对话。
+     * 只有 HTTP 供应商才有 `headers`，BYOK 的端点也会带，但那不是我们的额度，不读。
+     */
+    if (isOfficial) {
+      // `result.response` 是 `PromiseLike`（没有 `.catch`），先归一成 Promise
+      void Promise.resolve(result.response)
+        .then((meta) => applyQuotaHeaders(meta.headers))
+        .catch(() => undefined)
+    }
 
     for await (const part of result.fullStream) {
       if (signal.aborted) {
@@ -208,10 +309,12 @@ async function streamChat(
       switch (part.type) {
         case "text-delta":
           hasContent = true
+          outputChars += part.text.length
           onEvent({ type: "chunk", content: part.text })
           break
         case "reasoning-delta":
           hasContent = true
+          outputChars += part.text.length
           onEvent({ type: "chunk", content: "", reasoning_content: part.text })
           break
         case "error":
@@ -223,7 +326,23 @@ async function streamChat(
   // 不做事后重试：端点拒绝某个参数（如 max_tokens 超过端点上限、不支持关闭思考）时
   // 直接报错，让用户看到真正的原因并去设置里改。静默“去掉参数重试”会滑两个坑：
   // 1) 请求变成两次，用户看到的是“莫名其妙变慢”；2) 错误的配置永远不会被暴露。
-  await consumeStream()
+  try {
+    await consumeStream()
+  } catch (error: unknown) {
+    // 用户主动取消交给外层（那里发 `cancelled`），不要在这里变成一条失败消息
+    if (signal.aborted && isAbortError(error)) throw error
+
+    const code = classifyChatError(error)
+    void reportOfficialFailure({ error, code, isOfficial, plan: snapshot.plan, source, model: activeService.model })
+    onEvent({
+      type: "failed",
+      error: localizedChatErrorMessage(code, error),
+      code,
+      diagnostics: describeApiError(error, code),
+      provider: identity
+    })
+    return
+  }
 
   if (!hasContent) {
     onEvent({
@@ -235,8 +354,42 @@ async function streamChat(
     return
   }
 
-  void reportProviderConfigured(activeService, "chat", settings.providers.length)
+  if (isOfficial) {
+    void trackBackgroundEvent("official_service_used", {
+      plan: snapshot.plan,
+      model: activeService.model,
+      is_anonymous: snapshot.state === "anonymous",
+      length_bucket: lengthBucket(outputChars)
+    })
+  } else {
+    void reportProviderConfigured(activeService, "chat", settings.providers.length)
+  }
   onEvent({ type: "completed" })
+}
+
+/**
+ * 官方链路的失败善后：额度耗尽要**强制回源**一次权益（契约 §4.1 的「收到 402 强制回源」）。
+ *
+ * 为什么只处理官方：BYOK 的 402/429 来自用户自己的端点，跟我们的额度快照无关，
+ * 去刷 `/v1/me` 只会拿回一份没变化的数据。
+ */
+async function reportOfficialFailure(input: {
+  error: unknown
+  code: ChatErrorCode
+  isOfficial: boolean
+  plan: string
+  source: AnalyticsSource
+  model: string
+}): Promise<void> {
+  if (!input.isOfficial || input.code !== "quota_exceeded") return
+
+  void trackBackgroundEvent("quota_exceeded", {
+    plan: input.plan,
+    source: input.source,
+    model: input.model
+  })
+  clearEntitlementsCache()
+  await refreshSnapshotFromServer().catch(() => undefined)
 }
 
 /**
@@ -301,7 +454,7 @@ export default defineBackground(() => {
       const controller = new AbortController()
       abortController = controller
 
-      void streamChat(request.payload.messages, controller.signal, resolvePortSource(port), (event) => {
+      void streamChat(request.payload, controller.signal, resolvePortSource(port), (event) => {
         try {
           port.postMessage(event)
         } catch {
@@ -853,6 +1006,30 @@ export default defineBackground(() => {
       return true
     }
   )
+
+  /**
+   * 当前引擎（content 面板头部读）：只回可展示的元信息，**不含任何凭据**。
+   * 官方 provider 是 background 运行时构造的，内容脚本按本地设置自己算只能得到 BYOK 的模型名。
+   */
+  chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+    if (request?.type !== MESSAGE_TYPES.ENGINE_REQUEST) return false
+
+    void (async () => {
+      try {
+        const [settings, snapshot] = await Promise.all([getSettings(), getSnapshot()])
+        const provider = resolveActiveProvider(settings, snapshot)
+        sendResponse({
+          success: true,
+          engine: provider
+            ? { kind: provider.kind ?? "byok", name: provider.name, model: provider.model }
+            : null
+        } satisfies EngineResponse)
+      } catch (error: unknown) {
+        sendResponse({ success: false, error: getErrorMessage(error) } satisfies EngineResponse)
+      }
+    })()
+    return true
+  })
 
   /**
    * 打开官网页面（定价 / 账单）。

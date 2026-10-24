@@ -106,7 +106,8 @@ export default function App() {
         anchor: takeToolbarAnchor(),
         capturedText: text,
         context,
-        initialPrompt: prompt
+        initialPrompt: prompt,
+        feature: "selection_chat"
       })
 
       const settings = await getSettings()
@@ -183,7 +184,8 @@ export default function App() {
         anchor: takeToolbarAnchor(),
         capturedText: text,
         context,
-        initialPrompt: prompt
+        initialPrompt: prompt,
+        feature: "selection_chat"
       })
 
       void trackEvent("free_input_submitted", { input_length: input.length, source: "web" })
@@ -217,7 +219,9 @@ export default function App() {
       // 空 prompt：不自动发送，等用户输入；同时充当防抖键
       initialPrompt: "",
       // 打开的目的就是让人接着输入：直接聊天态 + 自动聚焦输入框
-      initialMode: "chat"
+      initialMode: "chat",
+      // 计费主体：页内提问与划词动作不是同一个池（契约 §6.1）
+      feature: "page_qa"
     })
   }, [findSessionForPrompt, revealSession, openSession])
 

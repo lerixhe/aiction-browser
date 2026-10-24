@@ -2,13 +2,18 @@ import type { ProviderConfig } from "@/shared/types"
 
 /**
  * Provider 类型枚举（埋点与 UI 共用）。
- * `none` = 没有配置任何 provider。
+ * `none` = 没有配置任何 provider；`official` = 官方托管服务（运行时构造，不在 `providers[]` 里）。
  */
-export type ProviderType = "models_dev" | "custom" | "none"
+export type ProviderType = "models_dev" | "custom" | "official" | "none"
 
 export function providerTypeOf(provider: ProviderConfig | undefined | null): ProviderType {
   if (!provider) {
     return "none"
+  }
+  // 官方 provider 没有 modelsDevId（它不是某个第三方厂商），必须单独一档：
+  // 否则官方链路的失败会全部堆在 `custom` 桶里，看起来像“用户自定义端点出了问题”
+  if (provider.kind === "official") {
+    return "official"
   }
   return provider.modelsDevId ? "models_dev" : "custom"
 }

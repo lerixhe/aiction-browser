@@ -294,7 +294,8 @@ export function PdfViewerPage() {
         anchor: takeToolbarAnchor(),
         capturedText: text,
         context,
-        initialPrompt: prompt
+        initialPrompt: prompt,
+        feature: "selection_chat"
       })
 
       const settings = await getSettings()
@@ -370,7 +371,8 @@ export function PdfViewerPage() {
         anchor: takeToolbarAnchor(),
         capturedText: text,
         context,
-        initialPrompt: prompt
+        initialPrompt: prompt,
+        feature: "selection_chat"
       })
 
       void trackEvent("free_input_submitted", { input_length: input.length, source: "pdf" })

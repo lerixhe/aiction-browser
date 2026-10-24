@@ -37,13 +37,13 @@ function snapshotOf(state: AuthState, extra: Partial<AuthSnapshot> = {}): AuthSn
 }
 
 describe("resolveActiveProvider", () => {
-  it("M1（官方链路未接线）→ 即使已登录也走 BYOK：显示与实际不能拆成两套", () => {
+  it("M2（已接线）→ 已登录走官方服务；注入 false 可回滚到 BYOK", () => {
     const settings = settingsWith()
     const snapshot = snapshotOf("signed-in", { email: "u***@example.com" })
 
-    // 默认取构建期常量（M1 = false）
-    expect(resolveActiveProvider(settings, snapshot)).toMatchObject({ id: "byok-1", kind: "byok" })
-    // 显式注入也一致（防止将来常量置 true 后这条回归没人守）
+    // 默认取构建期常量（M2 = true）
+    expect(resolveActiveProvider(settings, snapshot)).toMatchObject({ id: OFFICIAL_PROVIDER_ID, kind: "official" })
+    // 回滚开关（`OFFICIAL_AI_ENABLED = false` 发版）：显示与实际仍同源，一起退回 BYOK
     expect(resolveActiveProvider(settings, snapshot, { officialEnabled: false })).toMatchObject({ id: "byok-1" })
   })
 

@@ -10,7 +10,8 @@ import {
   clearEntitlementsCache,
   entitlementsToSnapshot,
   getEntitlements,
-  parseEntitlements
+  parseEntitlements,
+  quotaFromHeaders
 } from "@/shared/auth/entitlements"
 import { configureAuthRequest, resetAuthRequest } from "@/shared/auth/request"
 import { installChromeStub, uninstallChromeStub } from "./chrome-stub"
@@ -211,5 +212,39 @@ describe("entitlementsToSnapshot", () => {
     const snapshot = entitlementsToSnapshot(parsed)
     expect(snapshot.principalKind).toBe("device")
     expect(snapshot.email).toBeUndefined()
+  })
+})
+
+describe("quotaFromHeaders（契约 §1.5 的额度校准）", () => {
+  it("取 limit / used / reset 并算成比例", () => {
+    expect(
+      quotaFromHeaders({
+        "X-Quota-Unit": "tokens",
+        "X-Quota-Limit": "3000000",
+        "X-Quota-Used": "1500000",
+        "X-Quota-Reset": "2026-12-01T00:00:00Z",
+        "X-Plan": "pro"
+      })
+    ).toEqual({ usedRatio: 0.5, resetAt: "2026-12-01T00:00:00Z" })
+  })
+
+  it("头名大小写不敏感（AI SDK 给的是普通对象，不是 Headers）", () => {
+    expect(
+      quotaFromHeaders({ "x-quota-limit": "100", "x-quota-used": "10", "x-quota-reset": "2026-12-01T00:00:00Z" })
+    ).toEqual({ usedRatio: 0.1, resetAt: "2026-12-01T00:00:00Z" })
+  })
+
+  it("缺 limit / reset 或数值不合法 → null（未知，不是 0%）", () => {
+    expect(quotaFromHeaders(undefined)).toBeNull()
+    expect(quotaFromHeaders({})).toBeNull()
+    expect(quotaFromHeaders({ "x-quota-limit": "0", "x-quota-used": "1", "x-quota-reset": "r" })).toBeNull()
+    expect(quotaFromHeaders({ "x-quota-limit": "100", "x-quota-used": "NaN", "x-quota-reset": "r" })).toBeNull()
+    expect(quotaFromHeaders({ "x-quota-limit": "100", "x-quota-used": "1" })).toBeNull()
+  })
+
+  it("used 超过 limit 时钳制到 1（同周期最后一次请求允许超额）", () => {
+    expect(
+      quotaFromHeaders({ "x-quota-limit": "100", "x-quota-used": "180", "x-quota-reset": "2026-12-01T00:00:00Z" })
+    ).toEqual({ usedRatio: 1, resetAt: "2026-12-01T00:00:00Z" })
   })
 })

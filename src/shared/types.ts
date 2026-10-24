@@ -115,8 +115,21 @@ export interface ChatStreamStartRequest {
   type: "AICTION_CHAT_STREAM_START"
   payload: {
     messages: ChatMessage[]
+    /**
+     * 计费主体（契约 §6.1）：只有官方 provider 会把它写成请求头 `X-AIction-Feature`。
+     * 由**调用点**填（划词动作 / 面板追问 = `selection_chat`，Popup「在当前页面提问」= `page_qa`），
+     * 不放在 body / 路径里：body 会与 AI SDK 的 providerOptions 互扰，路径会扭曲 baseURL 语义。
+     */
+    feature?: ChatFeature
   }
 }
+
+/**
+ * 官方对话的计费主体枚举（契约 §6.1，服务端白名单校验）。
+ * 自定义动作**不单独开池**：用户建 100 个动作就是 100 个计费主体，额度会碎成一地。
+ */
+export const CHAT_FEATURES = ["selection_chat", "page_qa"] as const
+export type ChatFeature = (typeof CHAT_FEATURES)[number]
 
 export interface ChatStreamCancelRequest {
   type: "AICTION_CHAT_STREAM_CANCEL"
@@ -124,6 +137,15 @@ export interface ChatStreamCancelRequest {
 
 export interface ChatStreamStartedEvent {
   type: "started"
+  /**
+   * 本次请求**实际使用**的 provider 身份（background 是唯一知道真值的地方）。
+   *
+   * 为什么由 background 回传：官方链路下 content 只看本地设置是猜不出真相的
+   *（官方 provider 是运行时构造的，不在 `providers[]` 里）。面板头部要显示正确的模型名，
+   *埋点也要有正确的 `provider_type`；两处各写一套判断就是「显示与实际分成两套」的老问题。
+   * 旧 background 不带此字段时，content 退回读本地设置。
+   */
+  provider?: { kind: ProviderKind; name: string; model: string }
 }
 
 export interface ChatStreamChunkEvent {
@@ -193,6 +215,27 @@ export type ChatRequestState =
 export interface StreamChatOptions {
   onEvent: (event: ChatStreamEvent) => void
   signal?: AbortSignal
+}
+
+/**
+ * 「当前实际使用哪个引擎」（background 回答，content 只读展示）。
+ * **不得包含任何凭据**：它就是给面板头部写一行模型名用的。
+ */
+export interface EngineInfo {
+  kind: ProviderKind
+  name: string
+  model: string
+}
+
+export interface EngineRequest {
+  type: "AICTION_ENGINE_REQUEST"
+}
+
+export interface EngineResponse {
+  success: boolean
+  /** `null` = 没有任何可用引擎（既未登录也没配 BYOK） */
+  engine?: EngineInfo | null
+  error?: string
 }
 
 // API test connection types

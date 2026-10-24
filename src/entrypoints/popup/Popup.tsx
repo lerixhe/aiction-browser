@@ -5,17 +5,18 @@ import { OPTIONS_ENTRY_STORAGE_KEY, MESSAGE_TYPES } from "@/shared/constants"
 import { requestOpenChatInActiveTab } from "@/shared/messaging"
 import { trackEvent, usedRatioBucket } from "@/shared/analytics"
 import { isBuiltinActionId } from "@/shared/defaults"
-import { providerTypeOf } from "@/shared/provider-type"
+import { providerTypeOf, type ProviderType } from "@/shared/provider-type"
 import { useUiThemeName } from "@/shared/ui/theme"
 import { uiMotion, uiRadius, uiShadow, uiSpace, uiThemes, uiTypography } from "@/shared/ui/tokens"
 import { ActionIcon } from "@/shared/ui/iconify"
 import { BrandIcon } from "@/shared/ui/icons"
 import { ProviderLogoById } from "@/entrypoints/options/ProviderLogo"
 import { ToggleSwitch } from "@/shared/ui/toggle-switch"
+import { planLabelKey } from "@/shared/auth/actions"
 import { useAuthSnapshot } from "@/shared/auth/use-auth-snapshot"
 import type { AuthSignInResponse } from "@/shared/auth/types"
 import { useI18n } from "@/shared/i18n/context"
-import type { ActionTemplate, ExtensionSettings, ProviderConfig } from "@/shared/types"
+import type { ActionTemplate, EngineInfo, EngineResponse, ExtensionSettings, ProviderConfig } from "@/shared/types"
 
 /**
  * Popup 宽度：比旧版（336）宽 24px，用来容纳「provider 名 + 模型名」两行
@@ -172,16 +173,59 @@ export default function Popup() {
   )
 
   /**
+   * 当前引擎：`undefined` = 还没问到（画骨架），`null` = 没有任何可用引擎。
+   *
+   * 为什么不在这里用 `resolveActiveProvider` 自己算：官方 provider 是 background 运行时
+   * 构造的，而账号快照要异步读存储。两处各算一遍的结果就是「Popup 显示官方、请求发到 BYOK」。
+   * 这里问一次 background（它内存里就有快照），并把 loading 期画成骨架，避免已登录用户
+   * 每次开 Popup 先闪一帧 BYOK 名字再跳成官方模型。
+   */
+  const [engine, setEngine] = useState<EngineInfo | null | undefined>(undefined)
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const response = (await chrome.runtime.sendMessage({
+          type: MESSAGE_TYPES.ENGINE_REQUEST
+        })) as EngineResponse | undefined
+        if (cancelled) return
+        setEngine(response?.success ? (response.engine ?? null) : null)
+      } catch {
+        // background 不可达：按「没有引擎」处理（下面的空态卡会引导去配置）
+        if (!cancelled) setEngine(null)
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [settings, authSnapshot.updatedAt])
+
+  /**
    * 引擎警告：与 background 的失败判定保持一致（缺 key 一定 no_api_key，缺 model 请求必失败）。
    * 提前在 popup 里暴露，而不是让用户第一次划词才知道。
+   * 官方引擎不看这些：它的凭据是运行时铸的，没有「用户忘填 Key」这种失败。
    */
-  const providerWarnKey = !activeProvider
-    ? null
-    : !activeProvider.apiKey?.trim()
-      ? "popup.missingApiKey"
-      : !activeProvider.model?.trim()
-        ? "popup.missingModel"
-        : null
+  const providerWarnKey =
+    engine?.kind === "official" || !activeProvider
+      ? null
+      : !activeProvider.apiKey?.trim()
+        ? "popup.missingApiKey"
+        : !activeProvider.model?.trim()
+          ? "popup.missingModel"
+          : null
+
+  /**
+   * 额度展示：只在官方引擎下有意义（BYOK 的额度是用户自己买单，我们不知道也不该展示）。
+   * 只给百分比（契约 §6.6-3：不向外暴露 token 数），且没拿到就什么都不画。
+   */
+  const quotaPercent =
+    engine?.kind === "official" && authSnapshot.quota
+      ? Math.round(authSnapshot.quota.usedRatio * 100)
+      : null
+  const quotaLabel =
+    quotaPercent === null ? "" : t("options.account.usagePercent", [String(quotaPercent)])
 
   useEffect(() => {
     void trackEvent("popup_opened", { source: "popup" })
@@ -241,19 +285,50 @@ export default function Popup() {
     }
   }, [])
 
-  const handleProviderChange = async (providerId: string) => {
-    if (!settings || providerId === settings.activeProviderId) {
+  /**
+   * 切换引擎（弹窗顶部那一行）：选项是「官方服务」与 `providers[]` 里的 BYOK。
+   *
+   * 两个方向都要写清楚意图：选官方 → `useOfficialService: true`；
+   * 选 BYOK → 同时把 `useOfficialService` 设为 false（只改 `activeProviderId` 的话，
+   * 官方引擎仍优先生效，表现就是“点了没反应”临静默失败）。
+   */
+  const handleEngineSelect = async (providerId: string) => {
+    if (!settings) return
+    const switchingFromOfficial = engine?.kind === "official"
+    if (!switchingFromOfficial && providerId === settings.activeProviderId) {
+      setProviderMenuOpen(false)
       return
     }
+
     const fromProvider = providers.find((p) => p.id === settings.activeProviderId)
     const toProvider = providers.find((p) => p.id === providerId)
-    const nextSettings = { ...settings, activeProviderId: providerId }
+    const fromType: ProviderType = switchingFromOfficial ? "official" : providerTypeOf(fromProvider)
+    const nextSettings = { ...settings, activeProviderId: providerId, useOfficialService: false }
     setSettings(nextSettings)
     setProviderMenuOpen(false)
     // 上报放在落盘之前：popup 随时关闭，await 之后的事件会丢（与 options 侧同一事件名）
     void trackEvent("provider_switched", {
-      from_provider_type: providerTypeOf(fromProvider),
+      from_provider_type: fromType,
       to_provider_type: providerTypeOf(toProvider),
+      source: "popup"
+    })
+    await saveSettings(nextSettings)
+  }
+
+  /** 切到官方服务（已登录 / 已有匿名主体时才出现这个选项） */
+  const handleSelectOfficial = async () => {
+    if (!settings) return
+    if (engine?.kind === "official") {
+      setProviderMenuOpen(false)
+      return
+    }
+    const fromProvider = providers.find((p) => p.id === settings.activeProviderId)
+    const nextSettings = { ...settings, useOfficialService: true }
+    setSettings(nextSettings)
+    setProviderMenuOpen(false)
+    void trackEvent("provider_switched", {
+      from_provider_type: providerTypeOf(fromProvider),
+      to_provider_type: "official",
       source: "popup"
     })
     await saveSettings(nextSettings)
@@ -508,6 +583,7 @@ export default function Popup() {
   }
 
   const engineTriggerStyle = (open: boolean): CSSProperties => ({
+    position: "relative",
     width: "100%",
     display: "flex",
     alignItems: "center",
@@ -562,6 +638,48 @@ export default function Popup() {
     lineHeight: 1.35,
     color: warnTextColor,
     marginTop: 2
+  }
+
+  // ── 引擎骨架（快照 / 引擎信息未就绪时的占位，尺寸对齐真实触发器）──
+  const engineSkeletonLogoStyle: CSSProperties = {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    flexShrink: 0,
+    background: theme.bg.surfaceMuted
+  }
+
+  const engineSkeletonBarStyle = (width: number): CSSProperties => ({
+    display: "block",
+    width,
+    height: 10,
+    borderRadius: 4,
+    background: theme.bg.surfaceMuted,
+    color: "transparent"
+  })
+
+  /**
+   * 额度进度：绝对定位在触发器底部的 padding 里。
+   * 局部细节：Popup 高度是硬约束（动作列表 204、总高 < 600），不能为了一根 3px 的条多开一行。
+   */
+  const quotaBarTrackStyle: CSSProperties = {
+    position: "absolute",
+    left: uiSpace[10],
+    right: uiSpace[10],
+    bottom: 5,
+    height: 3,
+    borderRadius: 2,
+    background: `${theme.accent.primary}26`,
+    overflow: "hidden",
+    pointerEvents: "none"
+  }
+
+  const quotaBarFillStyle: CSSProperties = {
+    display: "block",
+    height: "100%",
+    borderRadius: 2,
+    background: theme.accent.primary,
+    transition: `width ${uiMotion.durationFast} ${uiMotion.easingStandard}`
   }
 
   const menuStyle: CSSProperties = {
@@ -643,7 +761,7 @@ export default function Popup() {
     marginTop: 2
   }
 
-  const askDisabled = !activeProvider
+  const askDisabled = !engine
   const askButtonStyle: CSSProperties = {
     width: "100%",
     height: 36,
@@ -827,7 +945,7 @@ export default function Popup() {
   }
 
   const renderProviderItem = (provider: ProviderConfig) => {
-    const selected = provider.id === settings?.activeProviderId
+    const selected = provider.id === settings?.activeProviderId && engine?.kind !== "official"
     return (
       <button
         key={provider.id}
@@ -835,7 +953,7 @@ export default function Popup() {
         role="option"
         aria-selected={selected}
         onClick={() => {
-          void handleProviderChange(provider.id)
+          void handleEngineSelect(provider.id)
         }}
         onMouseEnter={(event) => {
           event.currentTarget.style.background = theme.bg.surfaceMuted
@@ -1003,13 +1121,13 @@ export default function Popup() {
             <button
               type="button"
               onClick={() => void openAccountSettings()}
-              title={[authSnapshot.email, t(`options.account.plan.${authSnapshot.plan}`)]
+              title={[authSnapshot.email, t(planLabelKey(authSnapshot.plan))]
                 .filter(Boolean)
                 .join(" · ")}
               aria-label={t("popup.account.open")}
               style={accountChipStyle}>
               <span style={avatarStyle}>{(authSnapshot.email ?? "A").trim().charAt(0)}</span>
-              <span style={planBadgeStyle}>{t(`options.account.plan.${authSnapshot.plan}`)}</span>
+              <span style={planBadgeStyle}>{t(planLabelKey(authSnapshot.plan))}</span>
             </button>
           ) : (
             <button
@@ -1024,9 +1142,18 @@ export default function Popup() {
         </div>
       </div>
 
-      {/* AI 引擎：当前 provider + 模型（可切换） */}
+      {/* AI 引擎：当前引擎 + 模型（可切换） */}
       <div style={labelStyle}>{t("popup.engine")}</div>
-      {activeProvider ? (
+      {engine === undefined ? (
+        // 骨架：与真实触发器同尺寸（28 logo + 上下 padding + 两行文案），不因异步快照跳一下
+        <div style={{ ...engineTriggerStyle(false), cursor: "default" }} aria-hidden="true">
+          <span style={engineSkeletonLogoStyle} />
+          <span style={engineTextStyle}>
+            <span style={{ ...engineNameStyle, ...engineSkeletonBarStyle(58) }}>&nbsp;</span>
+            <span style={{ ...engineModelStyle, ...engineSkeletonBarStyle(104) }}>&nbsp;</span>
+          </span>
+        </div>
+      ) : engine ? (
         <div ref={providerMenuRef} style={{ position: "relative" }}>
           <button
             type="button"
@@ -1034,15 +1161,26 @@ export default function Popup() {
             aria-haspopup="listbox"
             aria-expanded={providerMenuOpen}
             style={engineTriggerStyle(providerMenuOpen)}>
-            <ProviderLogoById
-              providerId={activeProvider.modelsDevId || ""}
-              name={activeProvider.name || "Custom"}
-              size={28}
-              theme={theme}
-            />
+            {engine.kind === "official" ? (
+              <BrandIcon size={28} />
+            ) : (
+              <ProviderLogoById
+                providerId={activeProvider?.modelsDevId || ""}
+                name={activeProvider?.name || "Custom"}
+                size={28}
+                theme={theme}
+              />
+            )}
             <span style={engineTextStyle}>
-              <span style={engineNameStyle}>{activeProvider.name || t("popup.unnamedProvider")}</span>
-              <span style={engineModelStyle}>{activeProvider.model || t("popup.missingModel")}</span>
+              <span style={engineNameStyle}>
+                {engine.kind === "official"
+                  ? t("options.account.engineOfficial")
+                  : engine.name || t("popup.unnamedProvider")}
+              </span>
+              <span style={engineModelStyle}>
+                {engine.model || t("popup.missingModel")}
+                {quotaLabel ? ` · ${quotaLabel}` : ""}
+              </span>
               {providerWarnKey ? (
                 <span style={warnLineStyle}>
                   <AlertIcon color="currentColor" />
@@ -1053,9 +1191,65 @@ export default function Popup() {
             <ChevronIcon color={theme.text.secondary} expanded={providerMenuOpen} />
           </button>
 
+          {/* 额度进度：绝对定位贴在触发器底部 padding 里，**不占纵向空间**（Popup 高度预算是硬约束） */}
+          {quotaPercent !== null ? (
+            <span aria-hidden="true" style={quotaBarTrackStyle}>
+              <span style={{ ...quotaBarFillStyle, width: `${quotaPercent}%` }} />
+            </span>
+          ) : null}
+
           {providerMenuOpen ? (
             <div role="listbox" className="aiction-popup-scroll" style={menuStyle}>
-              {providers.map(renderProviderItem)}
+              {authSnapshot.state !== "signed-out" ? (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={engine.kind === "official"}
+                  onClick={() => void handleSelectOfficial()}
+                  style={menuItemStyle(engine.kind === "official")}>
+                  <BrandIcon size={26} />
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ ...menuItemNameStyle(engine.kind === "official"), display: "block" }}>
+                      {t("options.account.engineOfficial")}
+                    </span>
+                    <span
+                      style={{
+                        display: "block",
+                        fontSize: 10.5,
+                        color: theme.text.secondary,
+                        marginTop: 1,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis"
+                      }}>
+                      {engine.kind === "official" ? engine.model : t(planLabelKey(authSnapshot.plan))}
+                    </span>
+                  </span>
+                  <span style={{ color: theme.accent.primary, display: "flex", justifyContent: "center" }}>
+                    {engine.kind === "official" ? (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path
+                          d="m5 12l5 5L20 7"
+                          stroke={theme.accent.primary}
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    ) : null}
+                  </span>
+                </button>
+              ) : null}
+              {providers.length > 0 ? (
+                <div
+                  style={{
+                    borderTop: `1px solid ${theme.border.hairline}`,
+                    marginTop: uiSpace[4],
+                    paddingTop: uiSpace[4]
+                  }}>
+                  {providers.map(renderProviderItem)}
+                </div>
+              ) : null}
               <div
                 style={{
                   borderTop: `1px solid ${theme.border.hairline}`,

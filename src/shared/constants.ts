@@ -33,7 +33,13 @@ export const MESSAGE_TYPES = {
    * 任意 → background：打开官网页面（定价 / 账单 / 登录）。
    * 存在的理由：`chrome.tabs` **不暴露给 content script**，内容页里的外链必须由 background 代开。
    */
-  OPEN_WEB_PAGE: "AICTION_OPEN_WEB_PAGE"
+  OPEN_WEB_PAGE: "AICTION_OPEN_WEB_PAGE",
+  /**
+   * 任意 → background：读「当前实际使用哪个引擎」（kind / name / model）。
+   * 存在的理由：官方 provider 是 background 运行时构造的，content 只看本地设置拿不到；
+   * 面板头部要显示真实模型名，不能自己再写一套解析（那就是「显示与实际两套」的来源）。
+   */
+  ENGINE_REQUEST: "AICTION_ENGINE_REQUEST"
 } as const
 
 /**
@@ -70,6 +76,9 @@ export const ERROR_MESSAGES = {
   get INVALID_RESPONSE() { return i18nStore.t("errors.invalidResponse") },
   get NO_READABLE_STREAM() { return i18nStore.t("errors.noReadableStream") },
   get NO_VALID_CONTENT() { return i18nStore.t("errors.noValidContent") },
+  get QUOTA_EXCEEDED() { return i18nStore.t("errors.quotaExceeded") },
+  get RATE_LIMITED() { return i18nStore.t("errors.rateLimited") },
+  get OFFICIAL_SIGN_IN_REQUIRED() { return i18nStore.t("errors.officialSignInRequired") },
   get SETTINGS_SAVE_FAILED() { return i18nStore.t("errors.settingsSaveFailed") },
   get API_TEST_MISSING_FIELDS() { return i18nStore.t("errors.apiTestMissingFields") },
   get FETCH_MODELS_FAILED() { return i18nStore.t("errors.fetchModelsFailed") },

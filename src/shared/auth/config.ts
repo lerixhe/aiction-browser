@@ -46,8 +46,8 @@ export const DEVICE_RENEW_BUFFER_MS = 7 * 24 * 60 * 60_000
 export const ENTITLEMENTS_TTL_MS = 5 * 60_000
 
 /**
- * 官方服务默认模型名（M1 只用于展示）。未登录时 Popup 不显示官方服务行。
- * TODO(M2): 改为从 `/v1/meta` 的可用模型列表里取默认项。
+ * 官方服务默认模型名（未登录时 Popup 不显示官方服务行）。
+ * TODO(M3): 改为从 `/v1/meta` 下发的可用模型列表里取默认项（届时还要接模型选择器）。
  */
 export const DEFAULT_OFFICIAL_MODEL = "aiction-fast"
 
@@ -58,16 +58,16 @@ export const DEFAULT_OFFICIAL_MODEL = "aiction-fast"
 export const OFFICIAL_AUTH_ENABLED = true
 
 /**
- * **官方 AI 链路是否已接线**（M1 = false，M2 置 true）。
+ * **官方 AI 链路是否已接线**（M1 = false，M2 = true）。
  *
- * 与 `OFFICIAL_AUTH_ENABLED` 分开：登录（拿会话）与用会话发聊天是两件事，
- * M1 只交付前者（SPEC §6.9：「M1 只做解析与展示，`streamChat` 仍走 BYOK」）。
+ * 与 `OFFICIAL_AUTH_ENABLED` 分开：登录（拿会话）与用会话发聊天是两件事。
+ * 置 true 的条件（M2 已全部满足）：`provider-credentials.ts` 能取到凭据、
+ * `background.streamChat` 走 `resolveActiveProvider` + `resolveProvider`。
  *
- * 为什么需要这个常量：只要链路线还没接，UI 就不能让用户「切到官方服务」——
- * 切了不生效，且会把界面上的引擎名与实际使用的提供商拆成两套（用户无从判断）。
- * 置 true 时同时要做的两件事：`provider-credentials.ts` 接线 + `resolveActiveProvider` 接管 `streamChat`。
+ * 回滚方式：置 false 发一个小版本——`resolveActiveProvider` 会直接返回 BYOK，
+ * 界面也随之只显示真实引擎（不会出现「显示官方服务、请求发到 BYOK」的偏差）。
  */
-export const OFFICIAL_AI_ENABLED = false
+export const OFFICIAL_AI_ENABLED = true
 
 /** 官网路由（`actions.ts` 与 `pkce.ts` 共用） */
 export const WEB_ROUTES = {

@@ -4,7 +4,7 @@ import ChatPanel from "@/entrypoints/content/components/ChatPanel"
 import type { AnchorRect } from "@/entrypoints/content/components/floating"
 import { useChatState } from "@/entrypoints/content/hooks/useChatState"
 import type { AnalyticsSource } from "@/shared/analytics"
-import type { SelectionContext } from "@/shared/types"
+import type { ChatFeature, SelectionContext } from "@/shared/types"
 
 /** 单个对话会话的初始快照（触发动作时刻解析，实例存续期间不再变化） */
 export interface ChatSessionInit {
@@ -29,6 +29,12 @@ export interface ChatSessionInit {
    * 「在当前页面提问」传 "chat" —— 它的目的就是让人接着输入，直接以聊天态开+聚焦输入框
    */
   initialMode?: "card" | "chat"
+  /**
+   * 计费主体（契约 §6.1）：本会话的请求归到哪个官方额度池。
+   * 划词动作 / 面板追问 = `selection_chat`（含全部用户自定义动作）；Popup「在当前页面提问」= `page_qa`。
+   * BYOK 会话也会带上，但只有官方 provider 会把它变成请求头。
+   */
+  feature?: ChatFeature
 }
 
 interface Props {
@@ -53,7 +59,7 @@ interface Props {
  * 互不与其它会话共享（卸载时中断流式并清理节流定时器）。
  */
 export default function ChatSession({ init, source, pinned, revealNonce, onPinnedChange, onClose }: Props) {
-  const chat = useChatState(source)
+  const chat = useChatState(source, init.feature)
 
   /** 挂载即完成一次性初始化，防止意外重放（卸载后再挂载会是新实例，ref 自动归零） */
   const bootstrappedRef = useRef(false)

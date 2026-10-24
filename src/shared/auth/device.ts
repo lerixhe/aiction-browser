@@ -12,7 +12,7 @@ import { getAnonymousId } from "@/shared/anonymous-id"
 import { DEVICE_RENEW_BUFFER_MS, PLATFORM } from "@/shared/auth/config"
 import { toAuthError } from "@/shared/auth/errors"
 import { authFetch } from "@/shared/auth/request"
-import { readDeviceToken, writeDeviceToken } from "@/shared/auth/storage"
+import { readDeviceToken, clearDeviceToken, writeDeviceToken } from "@/shared/auth/storage"
 
 interface DeviceTokenResponse {
   access_token?: string
@@ -34,11 +34,18 @@ function extensionId(): string {
  * 3. 429 / 网络 / 5xx → `null`（静默降级，不弹错、不上报失败埋点）。
  *
  * 幂等：服务端按 `device_id` + `ext_id` 复用同一主体，所以重复调用不会产生新主体。
+ *
+ * `force: true` 越过本地缓存（令牌被判无效时的救援路径）：先清掉旧 token 再领，
+ * 避免「读到的还是那张坏令牌」把自己锁在 401 里。
  */
-export async function ensureDeviceToken(): Promise<string | null> {
-  const cached = await readDeviceToken()
-  if (cached && cached.expiresAt - Date.now() > DEVICE_RENEW_BUFFER_MS) {
-    return cached.token
+export async function ensureDeviceToken(options: { force?: boolean } = {}): Promise<string | null> {
+  if (options.force) {
+    await clearDeviceToken()
+  } else {
+    const cached = await readDeviceToken()
+    if (cached && cached.expiresAt - Date.now() > DEVICE_RENEW_BUFFER_MS) {
+      return cached.token
+    }
   }
 
   const deviceId = await getAnonymousId()

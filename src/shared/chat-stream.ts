@@ -3,7 +3,7 @@ import type { streamText } from "ai"
 import type { ModelsDevData } from "@/shared/models-dev"
 import { buildProviderOptions, truncateMessagesToContext } from "@/shared/model-params"
 import { resolveLanguageModel } from "@/shared/model-provider"
-import type { ChatMessage, ModelParams, ProviderConfig } from "@/shared/types"
+import type { ChatFeature, ChatMessage, ModelParams, ProviderConfig } from "@/shared/types"
 
 /**
  * chat 请求的构造与形态快照 —— **真实对话与「测试连接」共用这一处**。
@@ -55,6 +55,14 @@ export function prepareChatRequest(input: {
   messages: ChatStreamMessage[]
   modelsDevData?: ModelsDevData
   signal: AbortSignal
+  /** 计费主体（契约 §6.1）：**仅官方 provider 使用**，BYOK 不送无意义的头 */
+  feature?: ChatFeature
+  /**
+   * 官方链路的通用请求头（`X-Ext-Id` / `X-Client-Version` / `X-Device-Id` / `X-Platform`，契约 §1.3）。
+   * 由 background 从 `buildApiBaseHeaders()` 取来传入：对话不走 `authFetch`（AI SDK 直连），
+   * 但网关同样强制校验这四个头。
+   */
+  apiHeaders?: Record<string, string>
 }): PreparedChatRequest {
   const { provider, messages, modelsDevData, signal } = input
   const params: ModelParams = provider.modelParams ?? {}
@@ -78,6 +86,22 @@ export function prepareChatRequest(input: {
   const providerOptions = buildProviderOptions(provider, modelsDevData, params)
   if (providerOptions) {
     streamParams.providerOptions = providerOptions
+  }
+
+  /**
+   * 官方链路的计费主体只能放在**请求头**（契约 §6.1）：
+   * - body 会与 AI SDK 的 `providerOptions` 等机制互相干扰；
+   * - 路径前缀会让 `baseURL` 语义变形，且要按 feature 拆 provider 实例（`resolveLanguageModel` 是纯函数，没口子）。
+   * `streamText` 的 `headers` 会透传给 provider，所以 AI SDK 侧零改造。
+   *
+   * 缺省填 `selection_chat`：服务端白名单校验，未知值也按 `selection_chat` 计（宽容 > 拒绝），
+   * 但客户端仍应显式传（调用点知道自己是划词还是页内提问）。
+   */
+  if (provider.kind === "official") {
+    streamParams.headers = {
+      ...(input.apiHeaders ?? {}),
+      "X-AIction-Feature": input.feature ?? "selection_chat"
+    }
   }
 
   const plan: ChatRequestPlan = {

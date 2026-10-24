@@ -143,6 +143,30 @@ export function clearEntitlementsCache(): void {
  * 请求结束就会回填，加进去会让进度条在一次对话前后跳一下。差异量级极小（几十到几百分之一），
  * 而「百分比只增不减」对用户更可信。
  */
+/**
+ * 从对话响应头里取额度（契约 §1.5）。只取需要的三个字段，找不到 / 不合法返回 `null`——
+ * “拿不到”与“算出来是 0%”是两件事，不能混。
+ *
+ * 头部不区分大小写：fetch 的 `Headers` 归一化过，但 AI SDK 给的是普通对象，
+ * 这里统一做一次小写化，避免 `X-Quota-Used` / `x-quota-used` 两种写法都能出现。
+ */
+export function quotaFromHeaders(
+  headers: Record<string, string | undefined> | undefined
+): { usedRatio: number; resetAt: string } | null {
+  if (!headers) return null
+  const lookup: Record<string, string> = {}
+  for (const [name, value] of Object.entries(headers)) {
+    if (typeof value === "string" && value) lookup[name.toLowerCase()] = value
+  }
+
+  const limit = Number(lookup["x-quota-limit"])
+  const used = Number(lookup["x-quota-used"])
+  const resetAt = lookup["x-quota-reset"]
+  if (!(limit > 0) || !Number.isFinite(used) || used < 0 || !resetAt) return null
+
+  return { usedRatio: Math.min(1, Math.max(0, used / limit)), resetAt }
+}
+
 export function entitlementsToSnapshot(
   entitlements: Entitlements
 ): Pick<AuthSnapshot, "plan" | "quota" | "email" | "principalKind"> {

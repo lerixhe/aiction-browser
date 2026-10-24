@@ -30,6 +30,27 @@ function configure(token: string | AuthTokenProvider) {
   })
 }
 
+/**
+ * 按**主体**配置（M2 的匿名路径）：`kind` 决定 401 的救援方式，
+ * `force` 调用次数是断言重点（只允许一次救援）。
+ */
+function configurePrincipal(
+  build: (opts?: { force?: boolean }) => { token: string; kind: "user" | "device" }
+): { calls: Array<{ force?: boolean }> } {
+  invalidations = []
+  const calls: Array<{ force?: boolean }> = []
+  configureAuthRequest({
+    getPrincipalToken: async (opts) => {
+      calls.push({ ...opts })
+      return build(opts)
+    },
+    invalidateSession: async (reason) => {
+      invalidations.push(reason)
+    }
+  })
+  return { calls }
+}
+
 beforeEach(() => {
   installChromeStub({ runtimeId: "ext-under-test" })
   resetAnonymousIdCache()
@@ -207,5 +228,68 @@ describe("apiJson", () => {
     installFetchStub([() => new Response("<html>oops</html>", { status: 200 })])
 
     await expect(apiJson("/v1/me")).rejects.toMatchObject({ code: "SERVER_ERROR" })
+  })
+})
+
+describe("匿名主体（device token）的 401 救援", () => {
+  it("device token 被作废（token_invalid）→ 重领一张并重试一次", async () => {
+    const tokens = ["device-old", "device-new"]
+    const { calls } = configurePrincipal((opts) => ({
+      token: opts?.force ? tokens[1] : tokens[0],
+      kind: "device"
+    }))
+    const fetchCalls = installFetchStub([() => unauthorized("token_invalid"), () => jsonResponse(200, { ok: true })])
+
+    const response = await authFetch("/v1/me")
+    expect(response.status).toBe(200)
+    expect(fetchCalls).toHaveLength(2)
+    // 重领取一次（force），第二次请求带的是新 token
+    expect(calls).toEqual([{}, { force: true }])
+    expect(new Headers(fetchCalls[1].init.headers).get("Authorization")).toBe("Bearer device-new")
+    // 匿名主体没有会话可登出
+    expect(invalidations).toHaveLength(0)
+  })
+
+  it("device token 过期（token_expired）→ 同样重领并重试", async () => {
+    const { calls } = configurePrincipal((opts) => ({
+      token: opts?.force ? "device-new" : "device-old",
+      kind: "device"
+    }))
+    installFetchStub([() => unauthorized("token_expired"), () => jsonResponse(200)])
+
+    await expect(authFetch("/v1/me")).resolves.toMatchObject({ status: 200 })
+    expect(calls).toHaveLength(2)
+  })
+
+  it("重领后仍 401 → 不再重试，报 NO_SESSION 且不冒充「会话被撤销」", async () => {
+    const { calls } = configurePrincipal(() => ({ token: "device-bad", kind: "device" }))
+    const fetchCalls = installFetchStub([() => unauthorized("token_invalid")])
+
+    await expect(authFetch("/v1/me")).rejects.toMatchObject({ code: "NO_SESSION" })
+    expect(fetchCalls).toHaveLength(2) // 原始 + 一次重试，绝不循环
+    expect(calls).toHaveLength(2)
+    expect(invalidations).toHaveLength(0) // 匿名主体不该广播 signed-out
+  })
+
+  it("登录用户的 token_invalid 不救援（只登出）", async () => {
+    const { calls } = configurePrincipal(() => ({ token: "user-token", kind: "user" }))
+    const fetchCalls = installFetchStub([() => unauthorized("token_invalid")])
+
+    await expect(authFetch("/v1/me")).rejects.toMatchObject({ code: "REFRESH_REVOKED" })
+    expect(fetchCalls).toHaveLength(1)
+    expect(calls).toHaveLength(1)
+    expect(invalidations).toEqual(["REFRESH_REVOKED"])
+  })
+
+  it("登录用户的 token_expired 仍然刷新一次后重试", async () => {
+    const { calls } = configurePrincipal((opts) => ({
+      token: opts?.force ? "fresh" : "stale",
+      kind: "user"
+    }))
+    const fetchCalls = installFetchStub([() => unauthorized("token_expired"), () => jsonResponse(200)])
+
+    await expect(authFetch("/v1/me")).resolves.toMatchObject({ status: 200 })
+    expect(fetchCalls).toHaveLength(2)
+    expect(calls).toEqual([{}, { force: true }])
   })
 })

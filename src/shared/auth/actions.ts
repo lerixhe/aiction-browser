@@ -14,6 +14,7 @@
  */
 import type { OpenWebPageRoute } from "@/shared/constants"
 import type { Subscription } from "@/shared/auth/types"
+import type { PlanId } from "@/shared/auth/types"
 import type { MessageKey } from "@/shared/i18n/locales/en"
 
 export interface AuthAction {
@@ -68,4 +69,22 @@ export const SUBSCRIPTION_STATUS_KEYS: Record<Subscription["status"], MessageKey
 
 export function subscriptionStatusKey(status: string): MessageKey {
   return SUBSCRIPTION_STATUS_KEYS[status as Subscription["status"]] ?? SUBSCRIPTION_STATUS_KEYS.none
+}
+
+/**
+ * 套餐档位 → i18n 键（与上面的订阅状态同一个理由）。
+ *
+ * 不要写 `t(`options.account.plan.${plan}`)`：模板字符串进不了 `check:i18n` 的检查，
+ * 服务端新增一个档位时 7 种语言会同时缺键，而编译期 / CI 全绿，
+ * 只有用户能在界面上看到键名原文（P1-1 的真实事故）。
+ */
+export const PLAN_KEYS: Record<PlanId, MessageKey> = {
+  anonymous: "options.account.plan.anonymous",
+  free: "options.account.plan.free",
+  pro: "options.account.plan.pro",
+  max: "options.account.plan.max"
+}
+
+export function planLabelKey(plan: string): MessageKey {
+  return PLAN_KEYS[plan as PlanId] ?? PLAN_KEYS.free
 }

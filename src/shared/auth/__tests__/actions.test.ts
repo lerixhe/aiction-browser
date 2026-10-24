@@ -11,13 +11,15 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  PLAN_KEYS,
   SUBSCRIPTION_STATUS_KEYS,
   logInAction,
   manageSubscriptionAction,
+  planLabelKey,
   subscriptionStatusKey,
   upgradeAction
 } from "@/shared/auth/actions"
-import type { Subscription } from "@/shared/auth/types"
+import type { PlanId, Subscription } from "@/shared/auth/types"
 import { OPEN_WEB_PAGE_ROUTES } from "@/shared/constants"
 import en from "@/shared/i18n/locales/en"
 
@@ -73,5 +75,21 @@ describe("CTA 数据", () => {
     expect(upgradeAction(identityT).route).toBe("pricing")
     expect(manageSubscriptionAction(identityT).kind).toBe("manage")
     expect(upgradeAction(identityT).kind).toBe("upgrade")
+  })
+})
+
+describe("套餐档位 → i18n 键", () => {
+  const ALL_PLANS: PlanId[] = ["anonymous", "free", "pro", "max"]
+
+  it("覆盖全部档位，且每个键在字典里真实存在", () => {
+    for (const plan of ALL_PLANS) {
+      const key = PLAN_KEYS[plan]
+      expect(key, `档位 ${plan} 没有对应的键`).toBeTruthy()
+      expect(en[key as keyof typeof en], `键 ${key} 在 en 字典里不存在`).toBeTruthy()
+    }
+  })
+
+  it("未知档位回退到 free（不把键名拼到界面上）", () => {
+    expect(planLabelKey("enterprise")).toBe(PLAN_KEYS.free)
   })
 })

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 
 import { trackEvent, usedRatioBucket } from "@/shared/analytics"
 
-import { manageSubscriptionAction, subscriptionStatusKey } from "@/shared/auth/actions"
+import { manageSubscriptionAction, planLabelKey, subscriptionStatusKey } from "@/shared/auth/actions"
 import { OFFICIAL_AI_ENABLED, WEB_BASE, WEB_ROUTES } from "@/shared/auth/config"
 import type {
   AuthSignInResponse,
@@ -53,11 +53,17 @@ export function AccountSection({ settings, saveSettingsNow }: AccountSectionProp
   const quotaBannerReportedRef = useRef(false)
 
   const signedIn = snapshot.state === "signed-in"
+  /**
+   * 有主体 = 已登录**或**已领到匿名 device token。
+   * 匿名用户也有官方额度（契约 §3.1），所以「用量」行对他们同样要显示——
+   * 这是 M2 之后新用户零配置就能看到自己额度的唯一地方。
+   */
+  const hasPrincipal = snapshot.state !== "signed-out"
 
   // 权益（订阅到期日 / 客户门户链接）：只在进入本分区或登录态变化时强制回源一次。
   // 依赖用 `state` 而不是 `updatedAt`：后者在登录流程里会变两次，白白多打一次 /v1/me。
   useEffect(() => {
-    if (!signedIn) {
+    if (!hasPrincipal) {
       setEntitlements(null)
       setEntitlementsFailed(false)
       return
@@ -86,7 +92,7 @@ export function AccountSection({ settings, saveSettingsNow }: AccountSectionProp
     return () => {
       alive = false
     }
-  }, [signedIn])
+  }, [hasPrincipal])
 
   const formatDate = (iso: string): string => {
     const date = new Date(iso)
@@ -201,7 +207,7 @@ export function AccountSection({ settings, saveSettingsNow }: AccountSectionProp
             <span className="opt-account-email" title={snapshot.email}>
               {snapshot.email ?? t("options.account.emailUnknown")}
             </span>
-            <span className="opt-badge">{t(`options.account.plan.${snapshot.plan}`)}</span>
+            <span className="opt-badge">{t(planLabelKey(snapshot.plan))}</span>
             <Button variant="secondary" size="sm" onClick={() => setConfirmSignOut(true)}>
               {t("options.account.signOut")}
             </Button>
@@ -211,7 +217,7 @@ export function AccountSection({ settings, saveSettingsNow }: AccountSectionProp
         <SettingRow title={t("options.account.planTitle")} desc={t("options.account.planDesc")}>
           <div className="opt-account-inline">
             <span className="opt-account-plan">
-              <span className="opt-account-plan-name">{t(`options.account.plan.${snapshot.plan}`)}</span>
+              <span className="opt-account-plan-name">{t(planLabelKey(snapshot.plan))}</span>
               {entitlements ? (
                 <>
                   <span className="opt-account-plan-status">
@@ -233,12 +239,6 @@ export function AccountSection({ settings, saveSettingsNow }: AccountSectionProp
             <Hint warning>{t("options.account.pastDueHint")}</Hint>
           ) : null}
         </SettingRow>
-
-        <UsageRow
-          percent={snapshot.quota ? Math.round(snapshot.quota.usedRatio * 100) : null}
-          resetAt={snapshot.quota?.resetAt ? formatDate(snapshot.quota.resetAt) : null}
-          failed={entitlementsFailed}
-        />
       </>
     )
   }
@@ -295,6 +295,13 @@ export function AccountSection({ settings, saveSettingsNow }: AccountSectionProp
       <SectionCard title={t("options.account.cardTitle")} description={t("options.account.cardDesc")}>
         <FieldGroup>
           {renderStatus()}
+          {hasPrincipal ? (
+            <UsageRow
+              percent={snapshot.quota ? Math.round(snapshot.quota.usedRatio * 100) : null}
+              resetAt={snapshot.quota?.resetAt ? formatDate(snapshot.quota.resetAt) : null}
+              failed={entitlementsFailed}
+            />
+          ) : null}
           {engineRow}
         </FieldGroup>
       </SectionCard>

@@ -1,13 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
-import { ERROR_MESSAGES, UI_MESSAGES } from "@/shared/constants"
+import { ERROR_MESSAGES, MESSAGE_TYPES, UI_MESSAGES } from "@/shared/constants"
 import { streamChat } from "@/shared/messaging"
 import { buildContextSystemMessage, resolveUILanguageLabel } from "@/shared/prompt"
 import { trackEvent, type AnalyticsSource } from "@/shared/analytics"
 import { classifyChatError, describeApiError, type ApiErrorDiagnostics, type ChatErrorCode } from "@/shared/errors"
-import { providerTypeOf, providerIdentityOf, type ProviderIdentityProps } from "@/shared/provider-type"
+import { providerTypeOf, providerIdentityOf, type ProviderIdentityProps, type ProviderType } from "@/shared/provider-type"
 import { getSettings, getActiveProvider } from "@/shared/storage"
-import type { ChatMessage, ChatRequestState, ExtensionSettings, SelectionContext } from "@/shared/types"
+import type {
+  ChatFeature,
+  ChatMessage,
+  ChatRequestState,
+  EngineResponse,
+  ExtensionSettings,
+  SelectionContext
+} from "@/shared/types"
 
 /**
  * Generate unique message ID
@@ -52,8 +59,10 @@ function updateMessageContent(
  * Hook for managing chat state and streaming requests.
  * 由 ChatSession（单个对话会话实例）内部调用：每个实例持有独立的
  * messages / 流式 abort / 节流定时器，实例卸载时一并中断与清理。
+ *
+ * `feature`：官方链路的计费主体（契约 §6.1），由调用点按入口传入。
  */
-export function useChatState(source: AnalyticsSource = "web") {
+export function useChatState(source: AnalyticsSource = "web", feature?: ChatFeature) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [requestState, setRequestState] = useState<ChatRequestState>({ status: "idle" })
   const [context, setContext] = useState<SelectionContext | null>(null)
@@ -90,17 +99,21 @@ export function useChatState(source: AnalyticsSource = "web") {
   }, [])
 
   // Fetch model name on mount
+  //
+  // 为什么问 background 而不是读本地设置：官方 provider 是运行时构造的（不在 `providers[]` 里），
+  // 内容脚本按设置自己算会得到 BYOK 的模型名——那就是“界面显示与实际发请求的提供商分成两套”。
   useEffect(() => {
     let cancelled = false
     const fetchModelName = async () => {
       try {
-        const settings = await getSettings()
-        const activeProvider = getActiveProvider(settings)
-        if (!cancelled && activeProvider?.model) {
-          setModelName(activeProvider.model)
+        const response = (await chrome.runtime.sendMessage({
+          type: MESSAGE_TYPES.ENGINE_REQUEST
+        })) as EngineResponse | undefined
+        if (!cancelled && response?.success && response.engine?.model) {
+          setModelName(response.engine.model)
         }
       } catch {
-        // Ignore errors
+        // 扩展上下文失效 / background 未就绪：保持空模型名（面板会省略该槽位），不影响对话
       }
     }
     void fetchModelName()
@@ -150,8 +163,13 @@ export function useChatState(source: AnalyticsSource = "web") {
         // Ignore
       }
       const activeProvider = settings ? getActiveProvider(settings) : undefined
-      const modelName = activeProvider?.model ?? "unknown"
-      const providerType = providerTypeOf(activeProvider)
+      /**
+       * 模型名 / provider 类型在 `started` 事件到达后会被**覆盖**：
+       * 官方链路的真相只有 background 知道（它才是真正发请求的那个上下文），
+       * 这里先按本地设置给一个初值，只用于极早失败（连 `started` 都没发出来）的场景。
+       */
+      let modelName = activeProvider?.model ?? "unknown"
+      let providerType: ProviderType = providerTypeOf(activeProvider)
 
       // 轮次：本次调用是会话里的第几轮（1 = 触发动作的首轮，>1 = 追问）
       const turnIndex = messagesRef.current.filter((message) => message.role === "user").length + 1
@@ -207,12 +225,24 @@ export function useChatState(source: AnalyticsSource = "web") {
 
         await streamChat(apiMessages, {
           signal: abortController.signal,
+          ...(feature ? { feature } : {}),
           onEvent: (event) => {
             if (!isCurrentRequest()) {
               return
             }
 
             if (event.type === "started") {
+              // 以 background 回传的实际 provider 为准（官方链路下它才是真的）
+              if (event.provider) {
+                modelName = event.provider.model
+                // 只把 official 认进来：BYOK 的细分（models_dev / custom）本地已经算对了
+                if (event.provider.kind === "official") providerType = "official"
+                setModelName(event.provider.model)
+                if (activeRequestRef.current?.controller === abortController) {
+                  activeRequestRef.current.model = event.provider.model
+                  activeRequestRef.current.providerType = providerType
+                }
+              }
               setRequestState({ status: "streaming", assistantMessageId: assistantMessage.id })
               return
             }
