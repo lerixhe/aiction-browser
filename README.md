@@ -2,7 +2,7 @@
 
 > Select text → Trigger AI → Continue in chat
 
-A lightweight Chrome extension for getting AI help on selected web content: select text, pick an action from the toolbar, read the streamed answer, then keep asking in a floating panel. Works with any endpoint that follows the OpenAI chat completions format — your key, your model, your bill.
+A lightweight Chrome extension for getting AI help on selected web content: select text, pick an action from the toolbar, read the streamed answer, then keep asking in a floating panel. Two engines to choose from: the optional official service (zero setup, no account needed) or any endpoint that follows the OpenAI chat completions format — your key, your model, your bill.
 
 > 🛒 **Available on the Chrome Web Store:**
 > **[Install AIction from Chrome Web Store](https://chromewebstore.google.com/detail/aiction-custom-ai-actions/heedegdamjmjffdojaihadbndemmocin?utm_source=github)**
@@ -48,6 +48,12 @@ Every toolbar button is a prompt template. Write `{selection}` wherever the sele
 | Explain | Explains the selection: conclusion first, no restating the text, length matched to the complexity of the content |
 | Translate | Auto-directional Chinese ↔ English: mainly-English → Simplified Chinese, mainly-Chinese → English; translation only, original formatting kept |
 
+### Official service (optional)
+
+Works the moment you install it — no account, no key, no provider to configure. Anonymous use gets its own allowance, counted on the server; signing in raises it and keeps the same account across devices. Quota is shown as a percentage with a reset date, always as delivered by the server (the UI never invents numbers), and you can switch engines at any time in Options → Account or in the toolbar popup.
+
+Using it means your selected text goes to our gateway and is forwarded to the model provider answering it — see [Privacy](#privacy) below. If you'd rather keep your content away from our servers, use your own model instead.
+
 ### Bring your own model
 
 Add as many providers as you like — OpenAI, Anthropic, Google, DeepSeek, OpenRouter, or a custom gateway — then switch between them from the toolbar popup without leaving the page. Provider presets come from [models.dev](https://models.dev): leave the endpoint empty and the provider's default is used, fetch the model list with one click, and fill reasoning mode / effort with **Smart Fill Params**.
@@ -64,6 +70,8 @@ Nothing is sent unless you fill it in — an empty field means "endpoint / model
 | Reasoning effort | `low` / `medium` / `high` | Not sent |
 
 Output and context limits differ per provider copy of the same model, so the numbers from the data source are shown as hints only — the endpoint's own limit wins.
+
+These fields apply to your own providers. The official service deliberately takes no model parameters from the client — its limits are clamped server-side per plan, so a mis-set field can never turn into a 400.
 
 ### Read the selection aloud
 
@@ -100,10 +108,14 @@ Then:
 
 ## Quick Start
 
-1. Right-click the extension icon → **Options**
+Select text on any page → pick an action on the toolbar → keep asking in the panel. The official service is already active, so there is nothing to configure.
+
+Want to use your own model instead?
+
+1. Right-click the extension icon → **Options** → **API Providers**
 2. Add a provider (endpoint + key + model — or pick a preset, leave the endpoint empty and let `models.dev` supply the provider default)
 3. Click "Test Connection"
-4. Select text on any page → pick an action on the toolbar → keep asking in the panel
+4. Switch the engine in **Account → AI engine** (or in the toolbar popup's engine menu)
 
 ## Configuration
 
@@ -114,6 +126,15 @@ Then:
 | Endpoint URL | OpenAI-compatible base URL, `/v1` included | `https://api.openai.com/v1` |
 | API Key | Kept in this browser's synced storage only | `sk-...` |
 | Model | Model ID actually sent to the endpoint | `gpt-4o-mini` |
+
+### Account
+
+| Row | What it shows |
+|-----|---------------|
+| Sign-in state | Sign in / sign out. Signing in is optional — it raises the allowance and keeps the same account across devices |
+| Plan | Current plan, subscription status, renewal date, link to the billing portal |
+| Usage this period | Used share of the allowance plus the reset date (also shown for anonymous use) |
+| AI engine | Official service ⇄ my own API key. This is the single switch that decides where requests go |
 
 ### Other settings
 
@@ -128,7 +149,11 @@ Then:
 
 ## Privacy
 
-Selected text, page content and AI replies go straight from your browser to the endpoint you configured — they never reach our servers. Signing in is entirely optional: without an account you get every feature, and we never see your API key. Anonymous usage statistics (feature counts, response latency) can be turned off in Settings → About. See [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md).
+**With your own API key:** selected text, page content and AI replies go straight from your browser to the endpoint you configured — they never reach our servers, and we never see your key.
+
+**With the official service:** the same content goes to our gateway (`api.aiction.app`) and is forwarded to the model provider that answers it. Requests are authenticated with a device token (anonymous) or an account token (signed in); both live only in the extension's background context — never in page scripts, never synced to your Google account, never sent to the analytics provider. Usage records keep the model id, token counts and status, not the content of your messages, and conversations stay in memory in the tab.
+
+Signing in is optional either way, and anonymous usage statistics (feature counts, response latency) can be turned off in Settings → About. See [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md).
 
 ## Architecture
 
@@ -138,13 +163,16 @@ Three runtime contexts, talking only through messages — **AI requests are made
 Content script  (selection detection, toolbar, chat panels)
     │  chrome.runtime.connect — AICTION_STREAM port (streamed events)
     ▼
-Background      (the only place that calls AI endpoints; models.dev cache; PDF context menu)
-    │  chrome.runtime.sendMessage (one-shot: connection test, model lists)
+Background      (the only place that calls AI endpoints; injects official credentials at runtime;
+                 models.dev cache; PDF context menu)
+    │  chrome.runtime.sendMessage (one-shot: connection test, model lists, current engine)
     ▼
 Options / Popup / PDF viewer
 ```
 
 Popup can also ask the content script to open a blank panel in the current tab (`AICTION_OPEN_CHAT`), so the question starts on the page rather than in the popup.
+
+Which engine is in use — the official service or one of your own providers — is decided in exactly one place (`resolveActiveProvider`), so the popup, the settings page and the request path cannot disagree. Official credentials never leave the background: the UI only gets a read-only snapshot (sign-in state, plan, quota percentage) and asks the background which model is actually being used (`AICTION_ENGINE_REQUEST`).
 
 Architecture & dev guide: [AGENTS.md](AGENTS.md) · Docs index: [docs/README.md](docs/README.md)
 
@@ -165,7 +193,10 @@ Architecture & dev guide: [AGENTS.md](AGENTS.md) · Docs index: [docs/README.md]
 | `npm run dev:firefox` | Dev build for Firefox |
 | `npm run build` | Production build |
 | `npm run typecheck` | TypeScript type checking |
+| `npm test` | Unit tests (vitest, `chrome.*` stubbed) |
 | `npm run check:i18n` | Verify every locale dictionary matches the `en` key set |
+| `npm run check:auth-boundary` | Verify no credential module is reachable from content scripts |
+| `npm run mock:api` | Local mock of the official API (accounts, quota, streaming chat); `--selftest` runs its assertions |
 | `npm run zip` | Package the extension bundle |
 | `npm run screenshots` / `screenshots:frame` | Re-shoot / re-frame the store screenshots |
 | `npm run icons` | Regenerate extension icons from `logo_raw.jpg` |
@@ -184,7 +215,7 @@ import { useUiTheme } from "@/shared/ui/theme"
 
 ### After Making Changes
 
-1. Run `npm run typecheck` and `npm run build` (add `npm run check:i18n` if you touched translations)
+1. Run `npm run typecheck`, `npm test` and `npm run build` (add `npm run check:i18n` if you touched translations)
 2. Go to `chrome://extensions`
 3. Click the reload button on your extension
 4. Reload the target web page — stale content scripts from the old build otherwise linger

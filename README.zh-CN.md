@@ -2,7 +2,7 @@
 
 > 选中文本 → 触发 AI → 继续对话
 
-轻量级 Chrome 扩展，为网页上选中的内容提供 AI 辅助：划词后工具栏浮现，选一个动作看答案流式出现，然后在浮动面板里继续追问。支持任意遵循 OpenAI chat completions 格式的端点 —— 你的 Key、你的模型、你的账单。
+轻量级 Chrome 扩展，为网页上选中的内容提供 AI 辅助：划词后工具栏浮现，选一个动作看答案流式出现，然后在浮动面板里继续追问。两种引擎可选：零配置的官方服务（免注册即可用），或接入任意遵循 OpenAI chat completions 格式的端点 —— 你的 Key、你的模型、你的账单。
 
 > 🛒 **已上架 Chrome 网上应用店：**
 > **[从 Chrome 商店安装 AIction](https://chromewebstore.google.com/detail/aiction-custom-ai-actions/heedegdamjmjffdojaihadbndemmocin?utm_source=github)**
@@ -48,6 +48,12 @@
 | 解释 | 先说结论、不复述原文，篇幅随内容复杂度伸缩 |
 | 中英互译 | 自动判定方向：主体为英文 → 简体中文，主体为中文 → 英文；只输出译文并保留原有格式 |
 
+### 官方服务（可选）
+
+装好即可用 —— 不用注册、不用填 Key、不用配服务商。匿名使用有自己的额度，由服务端计数；登录后额度更高，且同一账号可跨设备复用。额度只以「百分比 + 重置日期」呈现，数值始终由服务端下发（界面不编造数字）。引擎随时可在「设置 → 账号」或工具栏弹窗的引擎菜单里切换。
+
+使用它意味着选中的文字会发往我们的网关，再由网关转发给作答的模型服务商 —— 见下方「隐私」。如果你不希望内容离开自己的设备，改用你自己的模型即可。
+
 ### 用你自己的模型
 
 可以添加任意多个服务商 —— OpenAI、Anthropic Claude、Google Gemini、DeepSeek、OpenRouter，或自建网关 —— 之后在工具栏弹窗里随时切换，不必离开当前页面。服务商预设来自 [models.dev](https://models.dev)：端点留空即使用该服务商的默认端点，模型列表可一键拉取，思考模式与力度可用「智能填充参数」补全。
@@ -64,6 +70,8 @@
 | 思考力度 | `low` / `medium` / `high` | 不发送 |
 
 同一模型在不同服务商下的输出与上下文上限并不相同，数据源里的数字仅作为提示展示，以端点实际限制为准。
+
+这些参数只作用于你自己的服务商。官方服务刻意不接受客户端传来的模型参数 —— 其上限由服务端按档位强制收敛，配错一个字段也不会变成 400。
 
 ### 朗读选中文字
 
@@ -100,10 +108,14 @@ npm run dev
 
 ## 快速上手
 
-1. 右键扩展图标 → **选项**
+在任意网页选中文本 → 点击工具栏上的动作 → 在面板里继续追问。官方服务默认已就绪，不需要任何配置。
+
+想用自己的模型？
+
+1. 右键扩展图标 → **选项** → **API 服务商**
 2. 添加服务商（端点 + 密钥 + 模型；也可以先选预设，端点留空即用该服务商的默认端点）
 3. 点击「测试连接」
-4. 在任意网页选中文本 → 点击工具栏上的动作 → 在面板里继续追问
+4. 在 **账号 → AI 引擎**（或工具栏弹窗的引擎菜单）里切到「我的 API Key」
 
 ## 配置
 
@@ -114,6 +126,15 @@ npm run dev
 | 端点地址 | OpenAI 兼容端点，需带 `/v1` | `https://api.openai.com/v1` |
 | API Key | 仅保存在本机浏览器的同步存储里 | `sk-...` |
 | 模型 | 实际发送给端点的模型 ID | `gpt-4o-mini` |
+
+### 账号
+
+| 行 | 内容 |
+|----|------|
+| 登录状态 | 登录 / 登出。登录完全可选 —— 它提高额度上限，并让多台设备复用同一账号 |
+| 当前套餐 | 所在套餐、订阅状态、续费日期、账单门户入口 |
+| 本周期用量 | 已用额度占比与重置日期（匿名使用时同样显示） |
+| AI 引擎 | 官方服务 ⇄ 我的 API Key。决定请求发往哪里的唯一开关 |
 
 ### 其他设置
 
@@ -128,7 +149,11 @@ npm run dev
 
 ## 隐私
 
-选中的文字、页面内容与 AI 回复，直接从你的浏览器发往你自己配置的 API 端点，不经过我们的服务器。账号登录完全可选：不登录也能使用全部现有功能，我们也拿不到你的 API Key。匿名使用统计（功能使用次数、响应耗时）可在「设置 → 关于」里关闭。详见 [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md)。
+**用自己的 API Key 时：** 选中的文字、页面内容与 AI 回复直接从浏览器发往你自己配置的端点，不经过我们的服务器，我们也拿不到你的 Key。
+
+**用官方服务时：** 同样的内容会发往我们的网关（`api.aiction.app`），再由网关转发给作答的模型服务商。请求用 device token（匿名）或账号 token（登录）鉴权，两者都只存在于扩展的后台上下文 —— 不进页面脚本、不同步到 Google 账号、也不进埋点。用量记录只留模型 id、token 数与状态，不留消息内容；会话仍是标签页内的内存态。
+
+无论哪种方式，登录都是可选的；匿名使用统计（功能使用次数、响应耗时）可在「设置 → 关于」里关闭。详见 [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md)。
 
 ## 架构
 
@@ -138,13 +163,15 @@ npm run dev
 内容脚本  （选区检测、工具栏、对话面板）
     │  chrome.runtime.connect — AICTION_STREAM port（流式事件）
     ▼
-后台服务  （唯一发起 AI 请求的地方；models.dev 缓存；PDF 右键菜单）
-    │  chrome.runtime.sendMessage（单次：测试连接、模型列表）
+后台服务  （唯一发起 AI 请求的地方；官方凭据在这里运行时注入；models.dev 缓存；PDF 右键菜单）
+    │  chrome.runtime.sendMessage（单次：测试连接、模型列表、当前引擎）
     ▼
 选项页 / Popup / PDF 阅读页
 ```
 
 Popup 还能让内容脚本在当前页面开一个空白面板（`AICTION_OPEN_CHAT`），把提问留在页面上而不是弹窗里。
+
+「现在用哪个引擎」——官方服务还是你自己的某个服务商 —— 只在一处解析（`resolveActiveProvider`），所以弹窗、设置页与实际发请求的路径不会各说各话。官方凭据从不离开后台：界面只拿到只读快照（登录状态、套餐、额度百分比），模型名则通过 `AICTION_ENGINE_REQUEST` 问后台要。
 
 架构与开发规范：[AGENTS.md](AGENTS.md) · 文档索引：[docs/README.md](docs/README.md)
 
@@ -165,7 +192,10 @@ Popup 还能让内容脚本在当前页面开一个空白面板（`AICTION_OPEN_
 | `npm run dev:firefox` | Firefox 开发构建 |
 | `npm run build` | 生产构建 |
 | `npm run typecheck` | TypeScript 类型检查 |
+| `npm test` | 单元测试（vitest，`chrome.*` 有桩） |
 | `npm run check:i18n` | 校验各语言字典与 `en` 键集一致 |
+| `npm run check:auth-boundary` | 校验内容脚本触达不到任何凭据模块 |
+| `npm run mock:api` | 官方 API 的本地 mock（账号、额度、流式对话）；`--selftest` 跑自检断言 |
 | `npm run zip` | 打包扩展 |
 | `npm run screenshots` / `screenshots:frame` | 重拍 / 重合成商店截图 |
 | `npm run icons` | 从 `logo_raw.jpg` 重新生成图标 |
@@ -184,7 +214,7 @@ import { useUiTheme } from "@/shared/ui/theme"
 
 ### 修改后验证
 
-1. 运行 `npm run typecheck` 和 `npm run build`（动了文案再跑 `npm run check:i18n`）
+1. 运行 `npm run typecheck`、`npm test` 和 `npm run build`（动了文案再跑 `npm run check:i18n`）
 2. 打开 `chrome://extensions`
 3. 点击扩展的刷新按钮
 4. **刷新目标网页** —— 否则旧的内容脚本实例会残留
