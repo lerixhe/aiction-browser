@@ -11,6 +11,8 @@ export default {
   "errors.quotaExceeded": "Bạn đã dùng hết hạn mức. Hãy nâng cấp để tiếp tục.",
   "errors.rateLimited": "Quá nhiều yêu cầu. Vui lòng thử lại sau ít phút.",
   "errors.officialSignInRequired": "Hãy đăng nhập để dùng dịch vụ chính thức, hoặc chuyển sang API key của bạn trong phần cài đặt.",
+  "errors.officialUnavailable": "Dịch vụ chính thức hiện không khả dụng. Hãy thử lại sau hoặc chuyển sang API key của bạn trong phần cài đặt.",
+  "errors.modelUnavailable": "Tài khoản của bạn không dùng được model này. Hãy chọn model khác hoặc dùng API key của bạn.",
   "errors.settingsSaveFailed": "Không lưu được",
   "errors.apiTestMissingFields": "Hãy điền URL cơ sở API, khóa API và mô hình trước khi kiểm tra.",
   "errors.fetchModelsFailed": "Không lấy được danh sách mô hình",

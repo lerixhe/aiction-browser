@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest"
 import { API_BASE, DEFAULT_OFFICIAL_MODEL } from "@/shared/auth/config"
 import type { AuthSnapshot, AuthState } from "@/shared/auth/types"
 import { OFFICIAL_PROVIDER_ID, buildOfficialProvider, resolveActiveProvider } from "@/shared/provider-resolve"
+import { normalizeSettings } from "@/shared/storage"
 import type { ExtensionSettings } from "@/shared/types"
 
 function settingsWith(overrides: Partial<ExtensionSettings> = {}): ExtensionSettings {
@@ -68,6 +69,20 @@ describe("resolveActiveProvider", () => {
     expect(
       resolveActiveProvider(settingsWith(), snapshotOf("signed-out"), { officialEnabled: true })
     ).toMatchObject({ id: "byok-1", kind: "byok" })
+  })
+
+  /**
+   * M2 的迁移口径（见 `normalizeSettings`）：存量用户配了自己的 Key、从没表达过偏好，
+   * 升级后**不能**被静默切到官方网关——那会让「用自己的 Key 时选文不经过我们的服务器」变成假话。
+   * 这条断言把「迁移」与「解析」串起来验，只测其中一半都可能漏。
+   */
+  it("存量 BYOK 存档（无偏好）迁移后仍走 BYOK，即使已有匿名主体", () => {
+    const migrated = normalizeSettings({
+      providers: [{ id: "byok-1", name: "Mine", apiKey: "sk-user", model: "gpt-x", modelParams: {} }],
+      activeProviderId: "byok-1"
+    })
+    expect(resolveActiveProvider(migrated, snapshotOf("anonymous"))).toMatchObject({ id: "byok-1" })
+    expect(resolveActiveProvider(migrated, snapshotOf("signed-in"))).toMatchObject({ id: "byok-1" })
   })
 
   it("useOfficialService === false 优先于登录态（显式关闭）", () => {

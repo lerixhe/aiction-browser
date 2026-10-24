@@ -408,7 +408,9 @@ export function useChatState(source: AnalyticsSource = "web", feature?: ChatFeat
         )
       }
     },
-    [syncMessages, context, source]
+    // `feature` 也进依赖：今天它在单个会话实例内恒定（惰性无害），
+    // 但一旦改成按轮变化，缺依赖会让请求带着旧的计费主体发出去。
+    [syncMessages, context, source, feature]
   )
 
   return {

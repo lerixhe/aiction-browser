@@ -11,6 +11,8 @@ export default {
   "errors.quotaExceeded": "할당량을 모두 사용했습니다. 계속하려면 업그레이드하세요.",
   "errors.rateLimited": "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
   "errors.officialSignInRequired": "공식 서비스를 사용하려면 로그인하세요. 설정에서 본인 API 키로 전환할 수도 있습니다.",
+  "errors.officialUnavailable": "공식 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도하거나 설정에서 본인 API 키로 전환하세요.",
+  "errors.modelUnavailable": "현재 계정에서는 이 모델을 사용할 수 없습니다. 다른 모델을 선택하거나 본인 API 키를 사용하세요.",
   "errors.settingsSaveFailed": "저장하지 못했습니다",
   "errors.apiTestMissingFields": "테스트 전에 API 기본 URL, API 키, 모델을 입력하세요.",
   "errors.fetchModelsFailed": "모델 목록을 가져오지 못했습니다",

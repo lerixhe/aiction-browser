@@ -15,7 +15,7 @@
  */
 import { getAnonymousId } from "@/shared/anonymous-id"
 import { OFFICIAL_AUTH_ENABLED, PENDING_TTL_MS, PLATFORM, REFRESH_BUFFER_MS } from "@/shared/auth/config"
-import { ensureDeviceToken } from "@/shared/auth/device"
+import { ensureDeviceToken, getDeviceTokenFailure } from "@/shared/auth/device"
 import { clearEntitlementsCache, entitlementsToSnapshot, getEntitlements, quotaFromHeaders } from "@/shared/auth/entitlements"
 import { AuthError, toAuthError } from "@/shared/auth/errors"
 import { buildAuthorizeUrl, createPkce, parseCallbackUrl, randomToken } from "@/shared/auth/pkce"
@@ -296,7 +296,15 @@ export async function getPrincipalToken(options: { force?: boolean } = {}): Prom
     // 4xx（请求体写错这类客户端 bug）必须暴露，不要静默当成「没有主体」
     throw toAuthError(error)
   }
-  if (!deviceToken) throw new AuthError("NO_SESSION")
+  if (!deviceToken) {
+    // 领取失败的原因决定归因：429 / 网络 / 5xx 是「暂时不行」（契约 §3.1 要求静默降级，
+    // 不该弹「去登录」），真正没有主体才是 NO_SESSION。
+    const failure = getDeviceTokenFailure()
+    if (failure === "rate_limited") throw new AuthError("RATE_LIMITED")
+    if (failure === "network") throw new AuthError("NETWORK")
+    if (failure === "server") throw new AuthError("SERVER_ERROR")
+    throw new AuthError("NO_SESSION")
+  }
   return { token: deviceToken, kind: "device" }
 }
 
@@ -349,16 +357,22 @@ export async function getSnapshot(): Promise<AuthSnapshot> {
  * 它不代表刚付完款的真实档位（那是 `/v1/me` 的职责），拿它改 plan 会出现“刚充完钱仍显示旧档”。
  *
  * 只接受「涨」（或重置窗口变了）：`used` 在小并发下可能回报一个更早的值，
- * 让进度条往回跳一下比“稍旧但只增不减”更难理解。
+ * 让进度条往回跳一下比「稍旧但只增不减」更难理解。
+ *
+ * `expect.principalKind`：这份额度属于哪个主体。没它的话，A 的对话在飞、用户登出再登入成 B，
+ * A 的响应头会写到 B 的快照上（B 的额度条显示 A 的用量，直到下一次 `/v1/me`）。
+ * 快照自身没有 principalKind（老存档）时放行——下一个 `/v1/me` 就会把它补上。
  */
 export async function applyQuotaHeaders(
-  headers: Record<string, string | undefined> | undefined
+  headers: Record<string, string | undefined> | undefined,
+  expect: { principalKind?: PrincipalKind } = {}
 ): Promise<void> {
   const quota = quotaFromHeaders(headers)
   if (!quota) return
 
   const current = await getSnapshot()
   if (current.state === "signed-out") return
+  if (expect.principalKind && current.principalKind && current.principalKind !== expect.principalKind) return
 
   const previous = current.quota
   if (previous && previous.resetAt === quota.resetAt && quota.usedRatio <= previous.usedRatio) return
@@ -543,6 +557,11 @@ export async function signIn(input: { entry: "popup" | "options" }): Promise<Sig
  *
  * 顺序不能反：网络失败时用户仍必须立刻变成未登录，否则会卡在「登出中」。
  * `/auth/logout` 用 `auth: false` + 手动 Authorization —— 此时本地已清，再走取令牌只会抛 `NO_SESSION`。
+ *
+ * 清完要**回落到匿名主体**（AUTH_AND_SUBSCRIPTION §5.1：`pro → free → (登出) → anonymous`）：
+ * 登出 ≠ 从此不能用，大多数人没有自己的 Key。不回落的实际表现是「点了登出，划词变成
+ * 请先填写 API Key + 登录 CTA」，而 device token 明明还有效 —— 只能等 SW 重启后
+ * `initializeSession()` 的 signed-out 分支才自愈，而用户正在用的那段时间 SW 恰好是活的。
  */
 export async function signOut(): Promise<void> {
   generation++
@@ -565,6 +584,10 @@ export async function signOut(): Promise<void> {
       // 断网 / 服务端不可用都不阻塞登出
     })
   }
+
+  // 回落到匿名（拿不到 device token 就保持 signed-out，失败静默）。
+  // 该函数写前会重读存储，不会把并发登录写下的 signed-in 快照盖掉。
+  await promoteToAnonymous().catch(() => undefined)
 }
 
 // ── 冷启动 ─────────────────────────────────────────────────────
@@ -640,8 +663,10 @@ async function promoteToAnonymous(): Promise<void> {
     plan: "anonymous",
     updatedAt: Date.now()
   })
-  // SPEC §5.1：进 anonymous 之后拉一次 `/v1/me` 拿匿名额度（失败只保留刚写的快照，不动状态）
-  await refreshSnapshotFromServer().catch(() => undefined)
+  // 匿名额度（SPEC §5.1）：后台拉一次 `/v1/me`，失败只保留刚写的快照。
+  // 刻意不 await：登出（本函数也被它调用）不能被一次网络往返拖住，
+  // 额度晚一两秒到没有体感差异，而「点登出没反应」有。
+  void refreshSnapshotFromServer().catch(() => undefined)
 }
 
 // 依赖倒置：把 token 提供者、主体选择与失效入口交给 request.ts（避免 request ↔ session 循环依赖）

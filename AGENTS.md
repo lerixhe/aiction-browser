@@ -105,12 +105,16 @@ AI 调用统一走 Vercel AI SDK：`shared/model-provider.ts` 按 provider 的 `
 9. **凭据只在 background**：token 不进 `storage.sync`、不进消息负载、不进埋点、不进 DOM；
    `entrypoints/content/**` 与 `pdf-viewer/**` 只允许 import
    `@/shared/auth/{types,facade,use-auth-snapshot,actions}`，由 `scripts/check-auth-boundary.ts` 在 build 前强制。
-   access token 放 `storage.session`（content 技术上读不到），refresh token 放 `storage.local`（只靠纪律）。
+   access token 放 `storage.session`（content 技术上读不到），refresh token 与 **device token**（M2 起是官方对话的凭据）
+   放 `storage.local`（只靠纪律）。
 10. **官方链路只有一套解析入口**：`resolveActiveProvider()` 决定「现在用官方还是 BYOK」，
     `resolveProvider()` 负责按主体注入凭据（登录 → access token，匿名 → device token）。
    Popup / Options / background 三处**都不得自己再判断一次**，否则界面声称的引擎与真正发请求的提供商就分成两套。
     计费主体 `X-AIction-Feature`（`selection_chat` / `page_qa`）只能放在**请求头**：body 会与 AI SDK 的
     `providerOptions` 互扰，路径会扭曲 `baseURL` 语义。BYOK 请求不带这个头，也不带扩展的四个身份头。
+11. **官方对话的 401 救援要自己补**：`/v1/chat/completions` 走 AI SDK 直连、不经过 `authFetch`，
+    所以「`token_expired` → 换一张再试一次」这条（契约 §1.6 唯一允许的重试）必须在 `streamChat` 里实现，
+    且只在**尚未产出内容**时重试（产出了再重试就是双倍计费 + 重复文本）。
 
 ## 配置迁移与默认值
 - 向 `DEFAULT_SETTINGS` / `DEFAULT_QUICK_ACTIONS` **加新项**：`normalizeSettings()` 必须按 id 合并

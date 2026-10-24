@@ -80,49 +80,79 @@ function relativeToSrc(file: string, specifier: string): string | null {
   return `/${relative.split(path.sep).join("/")}`
 }
 
-function checkFile(file: string): void {
-  const relative = path.relative(ROOT, file)
-  const content = fs.readFileSync(file, "utf8")
+/**
+ * 给定仓库内路径（如 `/shared/auth/session`），返回禁止原因；允许则返回 `null`。
+ *
+ * 两处都用它：内容脚本的直接导入、以及白名单模块自身的一跳导入。
+ * 后者是「传递泄漏」的口子——`facade` 今天只引 types/constants，但只要它哪天引了
+ * `session`，四个白名单模块立刻变成凭据入口，而内容脚本的检查一点都不会红。
+ */
+function forbiddenReason(withoutAlias: string): string | null {
+  const forbidden = [...FORBIDDEN_SPECIFIERS].find(
+    (target) => withoutAlias === target || withoutAlias.startsWith(`${target}/`)
+  )
+  if (forbidden) return `禁止引入凭据模块 — ${withoutAlias}（见 AGENTS.md 不变量 1）`
 
+  if (!withoutAlias.startsWith(AUTH_PREFIX)) return null
+
+  const rest = withoutAlias.slice(AUTH_PREFIX.length)
+  // 裸 `@/shared/auth` 或 `@/shared/auth/` 一律拒（将来若加 barrel，会把全部导出带进来）
+  if (rest === "" || rest === "/") {
+    return "禁止整体引入 @/shared/auth（会带出凭据模块）— 请只引用白名单子模块"
+  }
+
+  const moduleName = rest.slice(1).split("/")[0]
+  if (!ALLOWED_AUTH_MODULES.has(moduleName)) {
+    return `禁止引入凭据模块 — @/shared/auth/${moduleName}（允许：${[...ALLOWED_AUTH_MODULES].join(" / ")}）`
+  }
+  return null
+}
+
+/** 收集一个文件里的 import 说明符（含相对路径换算） */
+function importsOf(file: string): Array<{ raw: string; withoutAlias: string | null; line: number }> {
+  const content = fs.readFileSync(file, "utf8")
+  const result: Array<{ raw: string; withoutAlias: string | null; line: number }> = []
   IMPORT_PATTERN.lastIndex = 0
   let match: RegExpExecArray | null
   while ((match = IMPORT_PATTERN.exec(content)) !== null) {
     const raw = match[1]
     const specifier = normalize(raw)
-    // 别名（`@/` / `~/`）直接剥前缀；相对路径按文件位置换算成仓库内路径；其余（包名）不管
     const withoutAlias = specifier.startsWith("@")
       ? specifier.slice(1)
       : raw.startsWith(".")
         ? relativeToSrc(file, raw)
         : null
+    result.push({ raw, withoutAlias, line: content.slice(0, match.index).split("\n").length })
+  }
+  return result
+}
+
+/**
+ * 白名单模块的**一跳**导入也必须干净：否则「允许 facade」就等于「间接允许 session」。
+ * 只查一跳，是因为内容脚本能触达的最短泄漏路径就是它；再深的图要么靠打包产物断言，
+ * 要么靠人读——这里把最容易犯的那一步自动化掉。
+ */
+function checkAllowedModule(file: string): void {
+  const relative = path.relative(ROOT, file)
+  for (const { raw, withoutAlias, line } of importsOf(file)) {
     if (!withoutAlias) continue
-
-    const line = content.slice(0, match.index).split("\n").length
-
-    const forbidden = [...FORBIDDEN_SPECIFIERS].find(
-      (target) => withoutAlias === target || withoutAlias.startsWith(`${target}/`)
+    const reason = forbiddenReason(withoutAlias)
+    if (!reason) continue
+    violations.push(
+      `${relative}:${line}  白名单模块把禁区模块带进来了 — ${raw}：${reason}`
+      + "（内容脚本可以合法 import 白名单模块，所以它的一跳导入必须同样干净）"
     )
-    if (forbidden) {
-      violations.push(`${relative}:${line}  禁止在内容脚本引入凭据模块 — ${raw}（见 AGENTS.md 不变量 1）`)
-      continue
-    }
+  }
+}
 
-    if (!withoutAlias.startsWith(AUTH_PREFIX)) continue
+function checkFile(file: string): void {
+  const relative = path.relative(ROOT, file)
 
-    const rest = withoutAlias.slice(AUTH_PREFIX.length)
-    // 裸 `@/shared/auth` 或 `@/shared/auth/` 一律拒（将来若加 barrel，会把全部导出带进来）
-    if (rest === "" || rest === "/") {
-      violations.push(`${relative}:${line}  禁止整体引入 @/shared/auth（会带出凭据模块）— 请只引用白名单子模块`)
-      continue
-    }
-
-    const moduleName = rest.slice(1).split("/")[0]
-    if (!ALLOWED_AUTH_MODULES.has(moduleName)) {
-      violations.push(
-        `${relative}:${line}  禁止在内容脚本引入凭据模块 — @/shared/auth/${moduleName}` +
-          `（允许：${[...ALLOWED_AUTH_MODULES].join(" / ")}）`
-      )
-    }
+  for (const { raw, withoutAlias, line } of importsOf(file)) {
+    if (!withoutAlias) continue
+    const reason = forbiddenReason(withoutAlias)
+    if (!reason) continue
+    violations.push(`${relative}:${line}  ${reason}（原始写法：${raw}）`)
   }
 }
 
@@ -131,6 +161,11 @@ for (const dir of GUARDED_DIRS) {
     checkedFiles++
     checkFile(file)
   }
+}
+
+for (const moduleName of ALLOWED_AUTH_MODULES) {
+  const file = path.resolve(ROOT, "src/shared/auth", `${moduleName}.ts`)
+  if (fs.existsSync(file)) checkAllowedModule(file)
 }
 
 if (checkedFiles === 0) {

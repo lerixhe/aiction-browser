@@ -30,10 +30,30 @@ describe("normalizeSettings：官方服务字段", () => {
     expect(settings.providers[0].kind).toBe("official")
   })
 
-  it("officialModel / useOfficialService 缺省为 undefined（不写默认值）", () => {
-    const settings = normalizeSettings(legacyArchive)
-    expect(settings.officialModel).toBeUndefined()
-    expect(settings.useOfficialService).toBeUndefined()
+  it("officialModel 缺省为 undefined（不写默认值）", () => {
+    expect(normalizeSettings(legacyArchive).officialModel).toBeUndefined()
+  })
+
+  /**
+   * M2 的迁移：存档里**已经有 BYOK provider** 且从未表达过偏好 → 落 `false`（继续用自己的 Key）。
+   *
+   * 为什么必须这样：`undefined` 的语义是「跟随会话」，而 M2 之后每个用户都会拿到匿名主体，
+   * 于是存量用户会在升级后**静默**被切到官方网关——选文开始发往我们的服务器，
+   * 而商店描述与隐私政策承诺的是「用自己的 Key 时内容不经过我们的服务器」。
+   * 这批人当初配 Key 往往就是为了不走第三方。
+   */
+  it("存量 BYOK 存档（无偏好）→ useOfficialService 落 false：升级不改数据流向", () => {
+    expect(normalizeSettings(legacyArchive).useOfficialService).toBe(false)
+  })
+
+  it("新装 / 没有任何 provider → 保持 undefined（跟随会话，零配置直接对话）", () => {
+    expect(normalizeSettings({}).useOfficialService).toBeUndefined()
+    expect(normalizeSettings({ providers: [] }).useOfficialService).toBeUndefined()
+  })
+
+  it("用户显式选择过的偏好必须原样保留（迁移不能把「就是要用官方」写坏）", () => {
+    expect(normalizeSettings({ ...legacyArchive, useOfficialService: true }).useOfficialService).toBe(true)
+    expect(normalizeSettings({ ...legacyArchive, useOfficialService: false }).useOfficialService).toBe(false)
   })
 
   it("officialModel 去掉首尾空白；空白串视为未设置", () => {
@@ -42,10 +62,10 @@ describe("normalizeSettings：官方服务字段", () => {
     expect(normalizeSettings({ ...legacyArchive, officialModel: 42 }).officialModel).toBeUndefined()
   })
 
-  it("useOfficialService 只接受布尔值", () => {
-    expect(normalizeSettings({ ...legacyArchive, useOfficialService: true }).useOfficialService).toBe(true)
-    expect(normalizeSettings({ ...legacyArchive, useOfficialService: false }).useOfficialService).toBe(false)
-    expect(normalizeSettings({ ...legacyArchive, useOfficialService: "yes" }).useOfficialService).toBeUndefined()
+  it("useOfficialService 只接受布尔值（脏值按「没表达过偏好」处理）", () => {
+    // 脏值不是偏好 → 按上面那条迁移规则：有 provider 就落 false
+    expect(normalizeSettings({ ...legacyArchive, useOfficialService: "yes" }).useOfficialService).toBe(false)
+    expect(normalizeSettings({ providers: [], useOfficialService: "yes" }).useOfficialService).toBeUndefined()
   })
 
   it("老字段仍然完好（迁移不动其它字段）", () => {

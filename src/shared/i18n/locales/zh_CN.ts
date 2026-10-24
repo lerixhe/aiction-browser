@@ -11,6 +11,8 @@ export default {
   "errors.quotaExceeded": "额度已用完，升级后可继续。",
   "errors.rateLimited": "请求太频繁，请稍后再试。",
   "errors.officialSignInRequired": "官方服务需要登录，请前往设置登录；也可以改用自己的 API Key。",
+  "errors.officialUnavailable": "官方服务暂时不可用，请稍后重试，或在设置里改用你自己的 API Key。",
+  "errors.modelUnavailable": "当前账号不可用这个模型，请换一个模型，或改用自己的 API Key。",
   "errors.settingsSaveFailed": "保存失败",
   "errors.apiTestMissingFields": "请填写 API Base URL、API Key 和 Model 后再测试。",
   "errors.fetchModelsFailed": "获取模型列表失败",

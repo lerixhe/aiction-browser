@@ -811,7 +811,7 @@ async function runSelftest() {
     } catch {
       json = null
     }
-    return { status: response.status, json, text }
+    return { status: response.status, json, text, headers: Object.fromEntries(response.headers) }
   }
 
   const authorize = async (verifier, plan = "free") => {
@@ -966,8 +966,25 @@ async function runSelftest() {
       ...chatBase,
       headers: { "x-aiction-feature": "selection_chat" }
     })
-    check("POST /v1/chat/completions 返回 SSE 流且带额度头", chat.status === 200 && chat.text.includes("data: "))
+    check("POST /v1/chat/completions 返回 SSE 流", chat.status === 200 && chat.text.includes("data: "))
     check("流内含 usage chunk 与 [DONE]", chat.text.includes("\"usage\"") && chat.text.includes("[DONE]"))
+    // 额度头要真的从 **header** 上验（body 里有 used 不算数，客户端读的是 header）
+    check(
+      "SSE 响应头带契约 §1.5 的额度头",
+      chat.headers["x-quota-unit"] === "tokens" &&
+        Number(chat.headers["x-quota-limit"]) > 0 &&
+        Number(chat.headers["x-quota-used"]) > 0 &&
+        Boolean(chat.headers["x-quota-reset"])
+    )
+    const firstUsed = Number(chat.headers["x-quota-used"])
+    const chat2 = await call("/v1/chat/completions", {
+      ...chatBase,
+      headers: { "x-aiction-feature": "page_qa" }
+    })
+    check(
+      "额度头是**预扣后**的值（第二次请求的 used 严格更大）",
+      Number(chat2.headers["x-quota-used"]) > firstUsed
+    )
 
     const chatNoFeature = await call("/v1/chat/completions", chatBase)
     check("缺 X-AIction-Feature → 400（计费主体必须显式）", chatNoFeature.status === 400)
@@ -988,10 +1005,36 @@ async function runSelftest() {
       headers: { "x-aiction-feature": "page_qa" }
     })
     check("额度耗尽 → 402 quota_exceeded（不是 429）", chatQuota.status === 402 && chatQuota.json.error.code === "quota_exceeded")
-    check("402 也带额度头（UI 可立刻画满）", Number(chatQuota.json.error.details?.limit) === limit)
+    check(
+      "402 的响应**头**也带额度（UI 可立刻画满，而不是去读错误体）",
+      Number(chatQuota.headers["x-quota-used"]) >= Number(chatQuota.headers["x-quota-limit"])
+    )
     state.quota.set(devicePrincipalId, 0)
 
-    // 14. 调试端点
+    // 14. 客户端中途断开（契约 §6.1/§6.4：网关应停止上游，不把半截流当成功）
+    state.quota.set(devicePrincipalId, 0)
+    const abortController = new AbortController()
+    const aborted = await fetch(`${base}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "x-ext-id": "mockextidforlocaldev",
+        "x-client-version": "0.0.0",
+        "x-device-id": "device-selftest",
+        "x-platform": "chrome",
+        "x-aiction-feature": "selection_chat",
+        authorization: `Bearer ${device1.json.access_token}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ model: "aiction-fast", messages: [{ role: "user", content: "abort me" }], stream: true }),
+      signal: abortController.signal
+    })
+    const reader = aborted.body.getReader()
+    await reader.read()
+    abortController.abort()
+    check("客户端中途断开后 mock 不崩（后续请求仍可用）", (await call("/v1/me", { accessToken: device1.json.access_token })).status === 200)
+    state.quota.set(devicePrincipalId, 0)
+
+    // 15. 调试端点
     const snapshot = await call("/__state")
     check(
       "/__state 统计到各端点调用次数",

@@ -79,6 +79,8 @@ export const ERROR_MESSAGES = {
   get QUOTA_EXCEEDED() { return i18nStore.t("errors.quotaExceeded") },
   get RATE_LIMITED() { return i18nStore.t("errors.rateLimited") },
   get OFFICIAL_SIGN_IN_REQUIRED() { return i18nStore.t("errors.officialSignInRequired") },
+  get OFFICIAL_UNAVAILABLE() { return i18nStore.t("errors.officialUnavailable") },
+  get MODEL_UNAVAILABLE() { return i18nStore.t("errors.modelUnavailable") },
   get SETTINGS_SAVE_FAILED() { return i18nStore.t("errors.settingsSaveFailed") },
   get API_TEST_MISSING_FIELDS() { return i18nStore.t("errors.apiTestMissingFields") },
   get FETCH_MODELS_FAILED() { return i18nStore.t("errors.fetchModelsFailed") },

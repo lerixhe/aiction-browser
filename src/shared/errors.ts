@@ -60,6 +60,12 @@ export type ChatErrorCode =
   | "auth"
   | "rate_limit"
   | "quota_exceeded"
+  /**
+   * 官方链路的 `403 model_not_allowed` / `404 no_model`（契约 §1.4：换模型，不是重新登录）。
+   * 由 `background.streamChat` 按 `isOfficial + statusCode` 覆写得出，**不由 `classifyChatError` 产生**：
+   * 通用层只看状态码，而 BYOK 的 403 通常是 Key 权限问题，归 `auth` 才对。
+   */
+  | "model_unavailable"
   | "network"
   | "aborted"
   | "no_api_key"

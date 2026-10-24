@@ -7,7 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { resetAnonymousIdCache } from "@/shared/anonymous-id"
 import { DEVICE_RENEW_BUFFER_MS } from "@/shared/auth/config"
-import { ensureDeviceToken } from "@/shared/auth/device"
+import { ensureDeviceToken, getDeviceTokenFailure } from "@/shared/auth/device"
 import { resetAuthRequest } from "@/shared/auth/request"
 import { AUTH_STORAGE_KEYS } from "@/shared/auth/types"
 import { installChromeStub, uninstallChromeStub, type StorageStub } from "./chrome-stub"
@@ -111,6 +111,29 @@ describe("ensureDeviceToken", () => {
     installFetchStub([() => jsonResponse(400, { error: { code: "invalid_request" } })])
 
     await expect(ensureDeviceToken()).rejects.toMatchObject({ code: "SERVER_ERROR" })
+  })
+
+  /**
+   * 失败原因必须留住：429 在契约 §3.1 里是「静默降级为未配置」，
+   * 而 `getPrincipalToken()` 要据此决定抛 `RATE_LIMITED` 还是 `NO_SESSION`。
+   * 丢了原因，429 会被上层说成「官方服务需要登录」（还会鼓励用户去走登录绕过限流）。
+   */
+  it("失败原因可被上层读到：429 → rate_limited，网络 → network，成功后归零", async () => {
+    installFetchStub([() => jsonResponse(429, { error: { code: "rate_limited" } })])
+    await expect(ensureDeviceToken()).resolves.toBeNull()
+    expect(getDeviceTokenFailure()).toBe("rate_limited")
+
+    installFetchStub([
+      () => {
+        throw new TypeError("Failed to fetch")
+      }
+    ])
+    await expect(ensureDeviceToken()).resolves.toBeNull()
+    expect(getDeviceTokenFailure()).toBe("network")
+
+    installFetchStub([() => jsonResponse(200, { access_token: "at", expires_in: 2592000 })])
+    await expect(ensureDeviceToken()).resolves.toBe("at")
+    expect(getDeviceTokenFailure()).toBeNull()
   })
 
   it("响应缺 access_token → null（不存空 token）", async () => {

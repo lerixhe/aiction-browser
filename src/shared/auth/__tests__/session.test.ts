@@ -35,6 +35,7 @@ import {
   readPending,
   readSnapshot,
   readSession,
+  writeDeviceToken,
   writePending,
   writePersisted,
   writeSession,
@@ -355,6 +356,39 @@ describe("signOut", () => {
   it("无会话时登出也不报错", async () => {
     installFetchStub([() => jsonResponse(204)])
     await expect(signOut()).resolves.toBeUndefined()
+    expect((await readSnapshot())?.state).toBe("signed-out")
+  })
+
+  /**
+   * M2：登出 ≠ 从此不能用（AUTH_AND_SUBSCRIPTION §5.1 的状态机是
+   * `pro → free → (登出) → anonymous`）。
+   * 不回落的实际表现是「点了登出，划词变成『请先填写 API Key』+ 登录 CTA」，
+   * 而 device token 明明还有效——只能等 SW 重启后才自愈。
+   */
+  it("登出后回落到匿名主体（device token 仍有效时不留在 signed-out）", async () => {
+    await seedSession()
+    await writeDeviceToken({ token: "device-1", expiresAt: Date.now() + 30 * 24 * 60 * 60_000 })
+    // 第一个响应给 /auth/logout，之后的 /v1/me 失败（额度拉不到不该影响状态）
+    installFetchStub([() => jsonResponse(204), () => jsonResponse(500)])
+
+    await signOut()
+
+    const snapshot = await readSnapshot()
+    expect(snapshot?.state).toBe("anonymous")
+    expect(snapshot?.principalKind).toBe("device")
+  })
+
+  it("登出且拿不到 device token → 保持 signed-out（失败不骗人）", async () => {
+    await seedSession()
+    installFetchStub([
+      () => jsonResponse(204),
+      () => {
+        throw new TypeError("Failed to fetch")
+      }
+    ])
+
+    await signOut()
+
     expect((await readSnapshot())?.state).toBe("signed-out")
   })
 

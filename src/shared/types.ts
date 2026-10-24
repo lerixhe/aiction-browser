@@ -235,6 +235,12 @@ export interface EngineResponse {
   success: boolean
   /** `null` = 没有任何可用引擎（既未登录也没配 BYOK） */
   engine?: EngineInfo | null
+  /**
+   * 官方引擎是否可用（`OFFICIAL_AI_ENABLED`）。由 background 一处决定，UI 不自己读常量：
+   * 常量置 false 回滚时，Popup 的引擎菜单必须跟着不出现「官方服务」，
+   * 否则点了会静默回弹（M1 评审 P1-3 的原型）。
+   */
+  officialAvailable?: boolean
   error?: string
 }
 

@@ -181,19 +181,42 @@ export default function Popup() {
    * 每次开 Popup 先闪一帧 BYOK 名字再跳成官方模型。
    */
   const [engine, setEngine] = useState<EngineInfo | null | undefined>(undefined)
+  /** 官方引擎是否可用（由 background 一处决定，Popup 不自己读常量，见 `EngineResponse`） */
+  const [officialAvailable, setOfficialAvailable] = useState(false)
 
   useEffect(() => {
     let cancelled = false
-    const load = async () => {
+    /**
+     * 取失败**重试一次**再放弃：`success:false` 与「真的没有引擎」是两件事，
+     * 一次瞬时的后台异常不该让 Popup 谎报「你没有配置任何提供商」（空态卡 + 禁用按钮）。
+     */
+    const load = async (attempt = 0): Promise<void> => {
       try {
         const response = (await chrome.runtime.sendMessage({
           type: MESSAGE_TYPES.ENGINE_REQUEST
         })) as EngineResponse | undefined
         if (cancelled) return
-        setEngine(response?.success ? (response.engine ?? null) : null)
+        if (response?.success) {
+          setEngine(response.engine ?? null)
+          setOfficialAvailable(response.officialAvailable === true)
+          return
+        }
+        if (attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 300))
+          if (!cancelled) await load(1)
+          return
+        }
+        setEngine(null)
       } catch {
-        // background 不可达：按「没有引擎」处理（下面的空态卡会引导去配置）
-        if (!cancelled) setEngine(null)
+        if (attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 300))
+          if (!cancelled) await load(1)
+          return
+        }
+        if (!cancelled) {
+          console.warn("[popup] 取引擎失败（按未配置处理）")
+          setEngine(null)
+        }
       }
     }
     void load()
@@ -303,6 +326,7 @@ export default function Popup() {
     const fromProvider = providers.find((p) => p.id === settings.activeProviderId)
     const toProvider = providers.find((p) => p.id === providerId)
     const fromType: ProviderType = switchingFromOfficial ? "official" : providerTypeOf(fromProvider)
+    const previous = settings
     const nextSettings = { ...settings, activeProviderId: providerId, useOfficialService: false }
     setSettings(nextSettings)
     setProviderMenuOpen(false)
@@ -312,7 +336,13 @@ export default function Popup() {
       to_provider_type: providerTypeOf(toProvider),
       source: "popup"
     })
-    await saveSettings(nextSettings)
+    try {
+      await saveSettings(nextSettings)
+    } catch {
+      // 落盘失败要回滚界面：否则这一帧显示新引擎、存档还是旧的，重开 Popup 会「跳回去」
+      setSettings(previous)
+      console.warn("[popup] 保存引擎切换失败")
+    }
   }
 
   /** 切到官方服务（已登录 / 已有匿名主体时才出现这个选项） */
@@ -322,6 +352,7 @@ export default function Popup() {
       setProviderMenuOpen(false)
       return
     }
+    const previous = settings
     const fromProvider = providers.find((p) => p.id === settings.activeProviderId)
     const nextSettings = { ...settings, useOfficialService: true }
     setSettings(nextSettings)
@@ -331,7 +362,12 @@ export default function Popup() {
       to_provider_type: "official",
       source: "popup"
     })
-    await saveSettings(nextSettings)
+    try {
+      await saveSettings(nextSettings)
+    } catch {
+      setSettings(previous)
+      console.warn("[popup] 保存引擎切换失败")
+    }
   }
 
   const handleActionToggle = useCallback(
@@ -1198,13 +1234,15 @@ export default function Popup() {
             </span>
           ) : null}
 
+          {/* 引擎菜单用 role="menu" 而不是 listbox：这里既有「单选引擎」也有「管理提供商」这类动作项，
+              listbox 只允许选项，键盘导航会读出一堆不合法的组合 */}
           {providerMenuOpen ? (
-            <div role="listbox" className="aiction-popup-scroll" style={menuStyle}>
-              {authSnapshot.state !== "signed-out" ? (
+            <div role="menu" className="aiction-popup-scroll" style={menuStyle}>
+              {officialAvailable && authSnapshot.state !== "signed-out" ? (
                 <button
                   type="button"
-                  role="option"
-                  aria-selected={engine.kind === "official"}
+                  role="menuitemradio"
+                  aria-checked={engine.kind === "official"}
                   onClick={() => void handleSelectOfficial()}
                   style={menuItemStyle(engine.kind === "official")}>
                   <BrandIcon size={26} />
@@ -1258,6 +1296,7 @@ export default function Popup() {
                 }}>
                 <button
                   type="button"
+                  role="menuitem"
                   onClick={openOptionsPage}
                   style={{ ...menuItemStyle(false), color: theme.text.secondary }}>
                   <span

@@ -19,6 +19,23 @@ interface DeviceTokenResponse {
   expires_in?: number
 }
 
+/**
+ * 上一次领取失败的原因（`null` = 没有失败，或已成功）。
+ *
+ * 为什么要把这个「失败原因」留住：`ensureDeviceToken()` 对 429 / 网络 / 5xx 一律返回 `null`，
+ * 而上层要回给用户的话完全不同——契约 §3.1 对 429 的要求是「**静默降级**为未配置」，
+ * 不是「官方服务需要登录，请前往设置登录」（后者还会误导用户去走登录来绕过限流）。
+ * 所以这里只记事实，由 `session.getPrincipalToken()` 翻成 `AuthError`。
+ */
+export type DeviceTokenFailure = "rate_limited" | "network" | "server" | null
+
+let lastFailure: DeviceTokenFailure = null
+
+/** 最近一次领取失败的原因（成功领取 / 命中缓存后归零） */
+export function getDeviceTokenFailure(): DeviceTokenFailure {
+  return lastFailure
+}
+
 function extensionId(): string {
   try {
     return typeof chrome !== "undefined" ? chrome.runtime.id : ""
@@ -44,6 +61,7 @@ export async function ensureDeviceToken(options: { force?: boolean } = {}): Prom
   } else {
     const cached = await readDeviceToken()
     if (cached && cached.expiresAt - Date.now() > DEVICE_RENEW_BUFFER_MS) {
+      lastFailure = null
       return cached.token
     }
   }
@@ -60,7 +78,11 @@ export async function ensureDeviceToken(options: { force?: boolean } = {}): Prom
 
     const data = (await response.json()) as DeviceTokenResponse
     const token = data.access_token
-    if (!token) return null
+    if (!token) {
+      lastFailure = "server"
+      return null
+    }
+    lastFailure = null
 
     // `expires_in` 是契约必填项。缺了就**不写缓存**：按 0 写会落一条「立刻过期」的假缓存，
     // 每次冷启动都重打 /auth/device（幂等，但白花一次往返），而且把服务端字段缺失藏了起来。
@@ -77,10 +99,16 @@ export async function ensureDeviceToken(options: { force?: boolean } = {}): Prom
     // 「暂时不行」的三类 ─ 静默降级为 null，保留会话语义（本来也没有会话），下次再试：
     // 429 频控 / 网络失败 / 5xx 服务端抖动。
     // 4xx（如 400 invalid_request）说明是客户端 bug，**必须抛出来**，否则请求体写错永远发现不了。
-    if (authError.code === "RATE_LIMITED" || authError.code === "NETWORK") {
+    if (authError.code === "RATE_LIMITED") {
+      lastFailure = "rate_limited"
+      return null
+    }
+    if (authError.code === "NETWORK") {
+      lastFailure = "network"
       return null
     }
     if (authError.status !== undefined && authError.status >= 500) {
+      lastFailure = "server"
       return null
     }
     throw authError

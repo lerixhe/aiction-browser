@@ -11,6 +11,8 @@ export default {
   "errors.quotaExceeded": "利用枠を使い切りました。続けるにはアップグレードしてください。",
   "errors.rateLimited": "リクエストが多すぎます。しばらくしてからもう一度お試しください。",
   "errors.officialSignInRequired": "公式サービスを使うにはログインしてください。設定で自分の API キーに切り替えることもできます。",
+  "errors.officialUnavailable": "公式サービスを現在利用できません。しばらくしてから再試行するか、設定で自分の API キーに切り替えてください。",
+  "errors.modelUnavailable": "このアカウントではこのモデルを利用できません。別のモデルを選ぶか、自分の API キーを使用してください。",
   "errors.settingsSaveFailed": "保存に失敗しました",
   "errors.apiTestMissingFields": "テストの前に API ベース URL・API キー・モデルを入力してください。",
   "errors.fetchModelsFailed": "モデル一覧を取得できませんでした",

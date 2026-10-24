@@ -9,6 +9,8 @@ const messages = {
   "errors.quotaExceeded": "You have used up your quota. Upgrade to continue.",
   "errors.rateLimited": "Too many requests right now. Please try again shortly.",
   "errors.officialSignInRequired": "Sign in to use the official service, or switch to your own API key in settings.",
+  "errors.officialUnavailable": "The official service is unavailable right now. Try again shortly, or switch to your own API key in settings.",
+  "errors.modelUnavailable": "This model isn't available for your account. Pick another model, or use your own API key.",
   "errors.settingsSaveFailed": "Save failed",
   "errors.apiTestMissingFields": "Please fill in API Base URL, API Key, and Model before testing.",
   "errors.fetchModelsFailed": "Failed to fetch model list",

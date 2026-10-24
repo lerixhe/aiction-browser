@@ -65,7 +65,14 @@ export function prepareChatRequest(input: {
   apiHeaders?: Record<string, string>
 }): PreparedChatRequest {
   const { provider, messages, modelsDevData, signal } = input
-  const params: ModelParams = provider.modelParams ?? {}
+  /**
+   * 官方链路**一律不吃** `modelParams`：网关按档位强制覆盖 `max_tokens`、忽略
+   * `temperature` / `reasoning` 一类字段（契约 §6.1）。在客户端这一层就掐掉，
+   * 比「发出去让网关丢掉」更不容易出事——用户看不出参数没生效，而参数不合规会变成 400。
+   * 副作用：官方链路也不做客户端上下文裁剪（`contextSize` 属于 `modelParams`），
+   * 超长时由网关返回 `413 context_too_long`，不做静默裁剪（与既有决策一致）。
+   */
+  const params: ModelParams = provider.kind === "official" ? {} : (provider.modelParams ?? {})
 
   // 只发送用户显式填充的参数；未填充 = 忽略（跟随模型默认）
   const finalMessages =
@@ -142,4 +149,24 @@ export function describeCallWarning(warning: unknown): string {
     .filter((part): part is string => typeof part === "string" && part.length > 0)
 
   return parts.length > 0 ? parts.join(": ") : JSON.stringify(warning)
+}
+
+/**
+ * 官方对话的 401 救援判定（契约 §1.6：非幂等接口**只允许**在 401 时刷新凭据后重试一次）。
+ *
+ * 为什么需要单独一个函数：这条规则有三个条件，写散在 `catch` 里最容易漏掉最后一条，
+ * 而漏掉的后果是**双倍计费 + 重复文本**（已经产出内容再重试，用户会看到答案重复一遍）。
+ *
+ * - `isOfficial`：BYOK 的 401 是用户端点的事，刷新我们的 token 没有任何意义；
+ * - `status === 401`：401 意味着请求没被接受，重试不会重复扣费；
+ * - `!retried`：只允许一次，不循环；
+ * - `!hasContent`：已经出过字就不重试。
+ */
+export function shouldRescueOfficial401(input: {
+  isOfficial: boolean
+  retried: boolean
+  status?: number
+  hasContent: boolean
+}): boolean {
+  return input.isOfficial && !input.retried && input.status === 401 && !input.hasContent
 }

@@ -24,6 +24,7 @@ import {
   isAbortError,
   classifyChatError,
   describeApiError,
+  getStatusCode,
   sanitizeErrorMessage,
   type ChatErrorCode
 } from "@/shared/errors"
@@ -31,7 +32,12 @@ import { getSettings } from "@/shared/storage"
 import { DEFAULT_TTS_SETTINGS } from "@/shared/defaults"
 import { buildContextSystemMessage, resolveUILanguageLabel } from "@/shared/prompt"
 import { providerIdentityOf, type ProviderIdentityProps } from "@/shared/provider-type"
-import { prepareChatRequest, describeCallWarning, type ChatRequestPlan } from "@/shared/chat-stream"
+import {
+  prepareChatRequest,
+  describeCallWarning,
+  shouldRescueOfficial401,
+  type ChatRequestPlan
+} from "@/shared/chat-stream"
 import { fetchModelsDev } from "@/shared/models-dev"
 import { fetchOpenRouterModels } from "@/shared/openrouter"
 import { resolveActiveProvider } from "@/shared/provider-resolve"
@@ -39,7 +45,7 @@ import { resolveProvider, type ResolvedProvider } from "@/shared/provider-creden
 import { applyQuotaHeaders, getSnapshot, initializeSession, refreshSnapshotFromServer, signIn, signOut } from "@/shared/auth/session"
 import { toAuthError } from "@/shared/auth/errors"
 import { buildApiBaseHeaders } from "@/shared/auth/request"
-import { WEB_BASE, WEB_ROUTES } from "@/shared/auth/config"
+import { OFFICIAL_AI_ENABLED, WEB_BASE, WEB_ROUTES } from "@/shared/auth/config"
 import { clearEntitlementsCache, getEntitlements } from "@/shared/auth/entitlements"
 import type {
   AuthSignInResponse,
@@ -194,11 +200,59 @@ function authFailureOf(error: unknown): { error: string; code: ChatErrorCode } {
   }
 }
 
-/** 失败时的本地化文案：额度 / 频控有确定的下一步，直接给结论，其余保留原文 */
-function localizedChatErrorMessage(code: ChatErrorCode, error: unknown): string {
+/**
+ * 失败时的本地化文案：有确定下一步的直接给结论，其余保留原文。
+ *
+ * 官方链路的非鉴权类失败额外补一句「可以改用自己的 API Key」：
+ * 官方服务成了单点，网关抖动就是**全员**的失败面，这时最需要的那句话不能没有。
+ * 仍然不给 CTA —— 把所有失败都变成推销是另一种静默失败（见 `ChatPanel` 的映射表）。
+ */
+function localizedChatErrorMessage(code: ChatErrorCode, error: unknown, isOfficial: boolean): string {
   if (code === "quota_exceeded") return ERROR_MESSAGES.QUOTA_EXCEEDED
   if (code === "rate_limit") return ERROR_MESSAGES.RATE_LIMITED
+  if (code === "model_unavailable") return ERROR_MESSAGES.MODEL_UNAVAILABLE
+  if (
+    isOfficial &&
+    (code === "network" || code === "provider_error" || code === "timeout" || code === "unknown")
+  ) {
+    return ERROR_MESSAGES.OFFICIAL_UNAVAILABLE
+  }
   return `${ERROR_MESSAGES.REQUEST_FAILED}: ${getErrorMessage(error)}`
+}
+
+/**
+ * 官方链路的错误码覆写（**只覆写归因，不改 `classifyChatError` 的通用口径**）。
+ *
+ * 契约 §1.4：`403 model_not_allowed` / `404 no_model` 对用户意味着「换个模型」，
+ * 而不是「重新登录」。M2 之后这条路径真的可达（官方模型名目前是硬编码的，
+ * 模型选择器要等 `/v1/models`）。不覆写的话用户会拿到「登录」CTA，
+ * 埋点也会把模型白名单问题记进登录漏斗。
+ *
+ * 只在官方链路上覆写：BYOK 的 403 通常是 Key 权限问题，归 `auth` 是对的。
+ */
+function officialErrorCode(
+  code: ChatErrorCode,
+  input: { isOfficial: boolean; status?: number }
+): ChatErrorCode {
+  if (input.isOfficial && (input.status === 403 || input.status === 404)) return "model_unavailable"
+  return code
+}
+
+/** 官方链路一次「真的花了额度」的对话（成功，或用户中途停止但已产生输出——契约 §6.3 照常计费） */
+function reportOfficialUsed(input: {
+  plan: string
+  model: string
+  state: string
+  outputChars: number
+  aborted: boolean
+}): void {
+  void trackBackgroundEvent("official_service_used", {
+    plan: input.plan,
+    model: input.model,
+    is_anonymous: input.state === "anonymous",
+    length_bucket: lengthBucket(input.outputChars),
+    ...(input.aborted ? { aborted: true } : {})
+  })
 }
 
 async function streamChat(
@@ -219,7 +273,15 @@ async function streamChat(
   if (!activeService) {
     // 关键流失点：装了但没配好 provider 就触发动作（详情见 docs/ANALYTICS.md §5 P0）
     void trackBackgroundEvent("action_triggered_without_provider", { source })
-    onEvent({ type: "failed", error: ERROR_MESSAGES.NO_API_KEY, code: "no_api_key", provider: identity })
+    // 文案分叉：配了 provider 但当前那个是坏的 → 「填 Key」；什么都没配 → 官方服务是唯一的出路，
+    // 说「填 Key」会把一个刚装上扩展的人指向他根本没有的东西。
+    const hasAnyProvider = settings.providers.length > 0
+    onEvent({
+      type: "failed",
+      error: hasAnyProvider ? ERROR_MESSAGES.NO_API_KEY : ERROR_MESSAGES.OFFICIAL_SIGN_IN_REQUIRED,
+      code: "no_api_key",
+      provider: identity
+    })
     return
   }
 
@@ -267,37 +329,40 @@ async function streamChat(
 
   const modelsDevData = await fetchModelsDev()
 
-  // token 只在内存里落到请求对象上（`ProviderConfig` 的存档副本里永远没有它）
-  const providerForRequest: ProviderConfig = resolved
-    ? { ...resolved, apiKey: resolved.resolvedApiKey }
-    : activeService
+  // 官方网关强制校验契约 §1.3 的四个头；BYOK 端点不需要（也不该收到我们的扩展身份）
+  const apiHeaders = isOfficial ? await buildApiBaseHeaders() : undefined
 
-  // 请求构造与「测试连接」共用同一处（src/shared/chat-stream.ts），
-  // 保证测试覆盖的就是真实链路的参数与流式行为。
-  const { streamParams } = prepareChatRequest({
-    provider: providerForRequest,
-    messages: request.messages,
-    modelsDevData,
-    signal,
-    feature: request.feature,
-    // 官方网关强制校验契约 §1.3 的四个头；BYOK 端点不需要（也不该收到我们的扩展身份）
-    ...(isOfficial ? { apiHeaders: await buildApiBaseHeaders() } : {})
-  })
+  /** 请求构造与「测试连接」共用同一处（`chat-stream.ts`），保证测试覆盖的就是真实链路 */
+  const buildStreamParams = (credential: ResolvedProvider | null) => {
+    // token 只在内存里落到请求对象上（`ProviderConfig` 的存档副本里永远没有它）
+    const providerForRequest: ProviderConfig = credential
+      ? { ...credential, apiKey: credential.resolvedApiKey }
+      : activeService
+    return prepareChatRequest({
+      provider: providerForRequest,
+      messages: request.messages,
+      modelsDevData,
+      signal,
+      feature: request.feature,
+      ...(apiHeaders ? { apiHeaders } : {})
+    }).streamParams
+  }
 
   let hasContent = false
   let outputChars = 0
 
-  const consumeStream = async (): Promise<void> => {
+  const consumeStream = async (streamParams: Parameters<typeof streamText>[0]): Promise<void> => {
     const result = streamText(streamParams)
 
     /**
      * 官方链路：用响应头校准额度（契约 §1.5）。非阻塞、失败不影响对话。
      * 只有 HTTP 供应商才有 `headers`，BYOK 的端点也会带，但那不是我们的额度，不读。
+     * 带上主体类型：A 的响应头不能写到 B 的快照上（见 `applyQuotaHeaders`）。
      */
     if (isOfficial) {
       // `result.response` 是 `PromiseLike`（没有 `.catch`），先归一成 Promise
       void Promise.resolve(result.response)
-        .then((meta) => applyQuotaHeaders(meta.headers))
+        .then((meta) => applyQuotaHeaders(meta.headers, { principalKind: resolved?.principalKind }))
         .catch(() => undefined)
     }
 
@@ -323,25 +388,75 @@ async function streamChat(
     }
   }
 
-  // 不做事后重试：端点拒绝某个参数（如 max_tokens 超过端点上限、不支持关闭思考）时
-  // 直接报错，让用户看到真正的原因并去设置里改。静默“去掉参数重试”会滑两个坑：
-  // 1) 请求变成两次，用户看到的是“莫名其妙变慢”；2) 错误的配置永远不会被暴露。
-  try {
-    await consumeStream()
-  } catch (error: unknown) {
-    // 用户主动取消交给外层（那里发 `cancelled`），不要在这里变成一条失败消息
-    if (signal.aborted && isAbortError(error)) throw error
-
-    const code = classifyChatError(error)
-    void reportOfficialFailure({ error, code, isOfficial, plan: snapshot.plan, source, model: activeService.model })
+  const failWith = (error: unknown, code: ChatErrorCode) => {
     onEvent({
       type: "failed",
-      error: localizedChatErrorMessage(code, error),
+      error: localizedChatErrorMessage(code, error, isOfficial),
       code,
       diagnostics: describeApiError(error, code),
       provider: identity
     })
-    return
+  }
+
+  let streamParams = buildStreamParams(resolved)
+  /** 401 救援只允许一次（契约 §1.6：非幂等接口不得自动重试，唯一例外是刷新凭据后重试一次） */
+  let retried = false
+
+  // 不做事后重试：端点拒绝某个参数（如 max_tokens 超过端点上限、不支持关闭思考）时
+  // 直接报错，让用户看到真正的原因并去设置里改。静默“去掉参数重试”会滑两个坑：
+  // 1) 请求变成两次，用户看到的是“莫名其妙变慢”；2) 错误的配置永远不会被暴露。
+  // 唯一的例外是 401：请求没被接受 = 不会双倍计费，换一张凭据再来一次是对的。
+  while (true) {
+    try {
+      await consumeStream(streamParams)
+      break
+    } catch (error: unknown) {
+      if (signal.aborted && isAbortError(error)) {
+        // 用户主动停止：契约 §6.3 网关按已产生输出照常计费，所以这次「确实用掉了额度」，
+        // 不上报会让 official_service_used 系统性偏低（且偏低的那群正是「用过就停」的人）。
+        if (isOfficial && hasContent) {
+          reportOfficialUsed({
+            plan: snapshot.plan,
+            model: activeService.model,
+            state: snapshot.state,
+            outputChars,
+            aborted: true
+          })
+        }
+        throw error
+      }
+
+      const status = getStatusCode(error)
+
+      /**
+       * 401 救援（契约 §1.6 的唯一重试场景）。对话走 AI SDK 直连、不经过 `authFetch`，
+       * 所以必须在这里自己补：否则匿名主体的 device token 被作废后，面板会连续失败并
+       * 把用户推去登录（而「去登录」恰好是这条链路的隐式自愈路径——不该让用户替我们完成）。
+       */
+      if (shouldRescueOfficial401({ isOfficial, retried, status, hasContent })) {
+        retried = true
+        try {
+          resolved = await resolveProvider(activeService, { force: true })
+          streamParams = buildStreamParams(resolved)
+          continue
+        } catch (retryError: unknown) {
+          const failure = authFailureOf(retryError)
+          failWith(retryError, failure.code)
+          return
+        }
+      }
+
+      const code = officialErrorCode(classifyChatError(error), { isOfficial, status })
+      void reportOfficialFailure({
+        plan: snapshot.plan,
+        code,
+        isOfficial,
+        source,
+        model: activeService.model
+      })
+      failWith(error, code)
+      return
+    }
   }
 
   if (!hasContent) {
@@ -355,11 +470,12 @@ async function streamChat(
   }
 
   if (isOfficial) {
-    void trackBackgroundEvent("official_service_used", {
+    reportOfficialUsed({
       plan: snapshot.plan,
       model: activeService.model,
-      is_anonymous: snapshot.state === "anonymous",
-      length_bucket: lengthBucket(outputChars)
+      state: snapshot.state,
+      outputChars,
+      aborted: false
     })
   } else {
     void reportProviderConfigured(activeService, "chat", settings.providers.length)
@@ -374,7 +490,6 @@ async function streamChat(
  * 去刷 `/v1/me` 只会拿回一份没变化的数据。
  */
 async function reportOfficialFailure(input: {
-  error: unknown
   code: ChatErrorCode
   isOfficial: boolean
   plan: string
@@ -1022,7 +1137,8 @@ export default defineBackground(() => {
           success: true,
           engine: provider
             ? { kind: provider.kind ?? "byok", name: provider.name, model: provider.model }
-            : null
+            : null,
+          officialAvailable: OFFICIAL_AI_ENABLED
         } satisfies EngineResponse)
       } catch (error: unknown) {
         sendResponse({ success: false, error: getErrorMessage(error) } satisfies EngineResponse)

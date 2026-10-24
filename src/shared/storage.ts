@@ -297,9 +297,26 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
   // 语言偏好：旧值 "system"（旧版「跟随系统」）由 normalizeLanguagePreference 迁移为 "browser"
   const language = normalizeLanguagePreference(saved.language) ?? DEFAULT_SETTINGS.language
 
-  // 官方服务相关字段：只做校验，**不写回默认值**（undefined 是有意义的「未选择」）
+  // 官方服务相关字段：只做校验，**不写回默认值**（undefined 是有意义的「未选择」）。
   const officialModel = typeof saved.officialModel === "string" && saved.officialModel.trim() ? saved.officialModel.trim() : undefined
-  const useOfficialService = typeof saved.useOfficialService === "boolean" ? saved.useOfficialService : undefined
+  /**
+   * 「未选择」的默认值必须站在**不改现有数据流向**这一侧：
+   *
+   * `useOfficialService === undefined` 的语义是「跟随会话」，而 M2 之后每个用户都会拿到匿名主体，
+   * 于是存量用户（自己配了 BYOK、从没点过引擎开关）会在升级后**静默**被切到官方网关：
+   * 选文开始发往我们的服务器、开始消耗匿名额度，而他当初配 Key 就是为了不走这条路。
+   * 商店描述与隐私政策承诺的「用自己的 Key 时内容不经过我们的服务器」也会因此变成假话。
+   *
+   * 所以：存档里已经有 BYOK provider 且从未表达过偏好 → 显式落 `false`（继续用自己的 Key）；
+   * 没配过任何 provider 的新用户 → 保持 `undefined`（跟随会话，零配置直接能对话）。
+   * 用户在任何时候都能在「账号 → AI 引擎」或 Popup 引擎菜单里切回官方。
+   */
+  const useOfficialService =
+    typeof saved.useOfficialService === "boolean"
+      ? saved.useOfficialService
+      : providers.length > 0
+        ? false
+        : undefined
 
   return {
     providers,
