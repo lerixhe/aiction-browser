@@ -7,8 +7,25 @@ AI 调用统一走 Vercel AI SDK：`shared/model-provider.ts` 按 provider 的 `
 7 语言 i18n；内置 PDF viewer。路径别名 `~/*`、`@/*` → `src/*`。
 
 ## 命令
-- `npm run dev` / `dev:firefox`、`build`、`zip`。
-- **改代码后必须跑 `npm run typecheck` + `npm run build`**；动了 i18n 还要跑 `npm run check:i18n`。
+- `npm run dev` / `dev:firefox`、`build:dev`、`build`、`zip`。
+
+**构建产物按 mode 分流，目录名固定（WXT 的 `modeSuffix`，不要手改）**：
+
+| 命令 | 产物目录 | 连的是谁 |
+|---|---|---|
+| `build:dev` / `dev` / `dev:firefox` | `.output/chrome-mv3-dev`（firefox 同理） | 本地 mock `127.0.0.1:8787` |
+| `build` / `zip` | `.output/chrome-mv3` | 真实网关 `api.aiction.app` |
+
+- **除发布新版本外，一律 `build:dev`**。`build` 只用于出上架包与商店素材（`npm run screenshots` 读的就是 `.output/chrome-mv3`）。
+- 差异是**构建期常量**：`src/shared/auth/config.ts` 的 `API_BASE` / `AUTHORIZE_BASE` / `WEB_BASE`。
+  prod 包点「登录」打开的是线上授权页，本地 mock 一条请求都收不到——这是「点了没反应」的头号原因。
+- dev 包的 manifest `name` 带 `(dev)` 后缀（`wxt.config.ts` 的 `manifest` 函数分支），
+  chrome://extensions 里与正式包**同名同图标无法分辨**的问题以此消除。
+- **汇报构建结果时必须写明产物目录 + 它连的端点**（例：`.output/chrome-mv3-dev` → `127.0.0.1:8787`）。
+  用户自查一条命令即可：
+  `for d in .output/chrome-mv3 .output/chrome-mv3-dev; do [ -d "$d" ] && echo "$d $(rg -o -m1 '127\.0\.0\.1:8787|api\.aiction\.app' $d/background.js)"; done`
+- **改代码后必须跑 `npm run typecheck` + `npm run build:dev`**；动了 i18n 还要跑 `npm run check:i18n`。
+  只有准备发版时才跑 `build`。
 - `npm test`（vitest）：单测固定 `environment: node`，`chrome.*` 由 `src/shared/auth/__tests__/chrome-stub.ts` 注入，
   不引 jsdom——组件行为走手测清单，别为了几行 DOM 断言引一整套浏览器环境。
 - `npm run check:auth-boundary`：凭据边界检查（已在 `build` 前置里）。
@@ -270,7 +287,8 @@ Shadow DOM 下 `document.activeElement` 不可靠，要穿透嵌套 `shadowRoot`
 - 打磨：消息区滚动条颜色 hardcoded 未适配 dark；朗读控件收起与悬停手感待实测微调；对话窗支持拖拽但不支持 resize。
 
 ## 验证
-- build 后加载 `.output/chrome-mv3` 为 unpacked；**重载扩展后必须刷新目标页**，必要时关掉重开标签
+- 日常手测加载 `.output/chrome-mv3-dev`（`build:dev`）；只有验生产行为（真实网关 / 上架包）才加载 `.output/chrome-mv3`。
+  两个目录可以同时装进同一个 profile，名称上 dev 带 `(dev)` 后缀；**重载扩展后必须刷新目标页**，必要时关掉重开标签
   （旧 content script 实例会残留）。background 改动在 service worker inspector 看。
 - content script 不在 `data:` / `chrome://` / 商店页运行，用真实 `http://127.0.0.1:<port>` 页验证，
   并确认注入的 shadow host 存在。

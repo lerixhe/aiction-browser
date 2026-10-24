@@ -14,6 +14,7 @@
     "mock:api": "node scripts/mock-official-api.mjs",
     "mock:api:selftest": "node scripts/mock-official-api.mjs --selftest",
     "build": "npm run bundle-icons && npm run check:auth-boundary && wxt build",
+    "build:dev": "npm run bundle-icons && npm run check:auth-boundary && wxt build --mode development",
     "build:firefox": "npm run bundle-icons && npm run check:auth-boundary && wxt build -b firefox",
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
