@@ -47,13 +47,22 @@ import { toAuthError } from "@/shared/auth/errors"
 import { buildApiBaseHeaders } from "@/shared/auth/request"
 import { OFFICIAL_AI_ENABLED, WEB_BASE, WEB_ROUTES } from "@/shared/auth/config"
 import { clearEntitlementsCache, getEntitlements } from "@/shared/auth/entitlements"
+import { createCheckoutSession, getBillingPortalUrl, isBillingInterval, isPurchasablePlan } from "@/shared/auth/billing"
+import { getServerMeta, isClientOutdated } from "@/shared/auth/meta"
+import { getOfficialModels, modelsForPlan, resolveOfficialModel } from "@/shared/auth/models"
+import { getUsageSeries } from "@/shared/auth/usage"
 import type {
   AuthSignInResponse,
   AuthSignOutResponse,
   AuthStateResponse,
+  BillingPortalResponse,
+  CheckoutResponse,
   EntitlementsResponse,
+  MetaResponse,
+  OfficialModelsResponse,
   OpenOptionsResponse,
-  OpenWebPageResponse
+  OpenWebPageResponse,
+  UsageResponse
 } from "@/shared/auth/types"
 
 import {
@@ -1072,7 +1081,11 @@ export default defineBackground(() => {
         try {
           // 拿不到就返回 null（不是「没有权益」），由 UI 保留旧状态
           const entitlements = await getEntitlements({ force: request.payload?.force === true })
-          sendResponse({ success: true, entitlements } satisfies EntitlementsResponse)
+          // 权益更新必须**同时**更新快照：否则同一页面上「用量条（读快照）」与
+          // 「到期日（读权益）」会来自两个不同时刻，而结算后最刺眼的就是「付了钱额度条没动」。
+          // `force: false` 复用刚刷到的缓存，不多打一次 `/v1/me`。
+          const snapshot = await refreshSnapshotFromServer({ force: false })
+          sendResponse({ success: true, entitlements, snapshot } satisfies EntitlementsResponse)
         } catch (error: unknown) {
           sendResponse({ success: false, error: getErrorMessage(error) } satisfies EntitlementsResponse)
         }
@@ -1181,4 +1194,136 @@ export default defineBackground(() => {
       return true
     }
   )
+
+  // ── 订阅 / 模型白名单 / 用量（M3，契约 §8）─────────────────
+
+  /**
+   * 服务端 meta：套餐表 / 版本门槛 / 维护公告（`/v1/meta` 无需认证）。
+   *
+   * 失败返回 `meta: null` 而不是 `success: false`：调用方（账号页）要区分「服务端没给套餐表」
+   * 与「不是服务端环境」——前者可以静默少画一张卡，后者要提示。
+   */
+  chrome.runtime.onMessage.addListener(
+    (request: { type?: string; payload?: { force?: unknown } }, _sender, sendResponse) => {
+      if (request?.type !== MESSAGE_TYPES.META_REQUEST) return false
+
+      void (async () => {
+        try {
+          const meta = await getServerMeta({ force: request.payload?.force === true })
+          sendResponse({
+            success: true,
+            meta,
+            // 版本门槛由 background 判：UI 侧只消费一个布尔值，不再引一份版本比辄
+            clientOutdated: isClientOutdated(meta, chrome.runtime.getManifest().version)
+          } satisfies MetaResponse)
+        } catch (error: unknown) {
+          sendResponse({ success: false, error: getErrorMessage(error) } satisfies MetaResponse)
+        }
+      })()
+      return true
+    }
+  )
+
+  /**
+   * 官方模型白名单。
+   *
+   * 一并回传「按当前档位解析出的默认模型」：只有 background 能同时看到白名单、当前 plan 与用户偏好，
+   * 让 UI 自己算会多出一份默认值推导逻辑（两份迟早不一致）。
+   */
+  chrome.runtime.onMessage.addListener(
+    (request: { type?: string; payload?: { force?: unknown } }, _sender, sendResponse) => {
+      if (request?.type !== MESSAGE_TYPES.OFFICIAL_MODELS_REQUEST) return false
+
+      void (async () => {
+        try {
+          const [models, settings, snapshot] = await Promise.all([
+            getOfficialModels({ force: request.payload?.force === true }),
+            getSettings(),
+            getSnapshot()
+          ])
+          const officialModel = models
+            ? (resolveOfficialModel(models, snapshot.plan, settings.officialModel) ?? undefined)
+            : undefined
+          // 按当前档位过滤后才下发：让 UI 只看到「现在真能选」的选项，
+          // 避免用户选了一个 min_plan 更高的模型 → 每次对话都 403 `model_not_allowed`。
+          const available = models ? modelsForPlan(models, snapshot.plan) : null
+          sendResponse({ success: true, models: available, officialModel } satisfies OfficialModelsResponse)
+        } catch (error: unknown) {
+          sendResponse({ success: false, error: getErrorMessage(error) } satisfies OfficialModelsResponse)
+        }
+      })()
+      return true
+    }
+  )
+
+  /** 用量曲线（仅账号页展示，不参与任何判断） */
+  chrome.runtime.onMessage.addListener(
+    (request: { type?: string; payload?: { force?: unknown } }, _sender, sendResponse) => {
+      if (request?.type !== MESSAGE_TYPES.USAGE_REQUEST) return false
+
+      void (async () => {
+        try {
+          const usage = await getUsageSeries({ force: request.payload?.force === true })
+          sendResponse({ success: true, usage } satisfies UsageResponse)
+        } catch (error: unknown) {
+          sendResponse({ success: false, error: getErrorMessage(error) } satisfies UsageResponse)
+        }
+      })()
+      return true
+    }
+  )
+
+  /**
+   * 创建结算会话并**由 background 打开**结算页。
+   *
+   * 两个白名单都需要（契约 §7.1）：`plan` 只接受可购买的档位、`interval` 只接受 month / year。
+   * 这个通道对任意页面可达，放任任意 `{plan, interval}` 进去等于把服务端的参数校验交给页面。
+   * 响应里**不带 URL**（见 `CheckoutResponse`）。
+   */
+  chrome.runtime.onMessage.addListener(
+    (
+      request: { type?: string; payload?: { plan?: unknown; interval?: unknown } },
+      _sender,
+      sendResponse
+    ) => {
+      if (request?.type !== MESSAGE_TYPES.CHECKOUT_REQUEST) return false
+
+      const plan = request.payload?.plan
+      const interval = request.payload?.interval
+
+      void (async () => {
+        try {
+          if (!isPurchasablePlan(plan) || !isBillingInterval(interval)) {
+            sendResponse({
+              success: false,
+              error: `unsupported checkout params: ${String(plan)}/${String(interval)}`
+            } satisfies CheckoutResponse)
+            return
+          }
+          const url = await createCheckoutSession({ plan, interval })
+          await chrome.tabs.create({ url })
+          sendResponse({ success: true, opened: true } satisfies CheckoutResponse)
+        } catch (error: unknown) {
+          sendResponse({ success: false, error: getErrorMessage(error) } satisfies CheckoutResponse)
+        }
+      })()
+      return true
+    }
+  )
+
+  /** 客户门户（改卡 / 取消 / 发票）：`manage_url` 优先，否则 `POST /v1/billing/portal` */
+  chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+    if (request?.type !== MESSAGE_TYPES.BILLING_PORTAL_REQUEST) return false
+
+    void (async () => {
+      try {
+        const url = await getBillingPortalUrl()
+        await chrome.tabs.create({ url })
+        sendResponse({ success: true } satisfies BillingPortalResponse)
+      } catch (error: unknown) {
+        sendResponse({ success: false, error: getErrorMessage(error) } satisfies BillingPortalResponse)
+      }
+    })()
+    return true
+  })
 })

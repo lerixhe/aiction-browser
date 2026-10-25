@@ -2,7 +2,12 @@
  * 登录链路的外部地址与时间常量。
  *
  * 所有 `https://api.aiction.app` / `https://aiction.app` 的拼接**只在本文件**出现：
- * SPEC §6 明确「其余模块不得自己拼」。M2 会改成从 `/v1/meta` 下发，届时只动这里。
+ * SPEC §6 明确「其余模块不得自己拼」。
+ *
+ * ⚠️ M3 曾计划「改成从 `/v1/meta` 下发地址」，但契约 §4.3 的 `/v1/meta` 只有
+ * `min_client_version` / `maintenance` / `plans`，**没有 `apiBaseUrl`**。
+ * 因此网关地址仍是构建期常量（dev 与 prod 包各指向自己的端点，这正是产物可区分的基础），
+ * 不为了一个不存在的字段去加一条运行时改地址的路径。
  */
 
 /**
@@ -45,9 +50,36 @@ export const DEVICE_RENEW_BUFFER_MS = 7 * 24 * 60 * 60_000
 /** `/v1/me` 权益缓存 TTL（402 / 登录 / 登出 / 账号页可见时强制回源） */
 export const ENTITLEMENTS_TTL_MS = 5 * 60_000
 
+/** `/v1/meta` 缓存 TTL（价格 / 维护公告这类内容改得不频繁，失败不缓存） */
+export const META_TTL_MS = 60 * 60_000
+
+/** `/v1/models` 缓存 TTL（契约 §8：24h；模型白名单随发版变，不需要更短） */
+export const OFFICIAL_MODELS_TTL_MS = 24 * 60 * 60_000
+
+/** `/v1/me/usage` 缓存 TTL：切分区再回来不重复打（手动刷新 / 重新进入会越过） */
+export const USAGE_TTL_MS = 60_000
+
 /**
- * 官方服务默认模型名（未登录时 Popup 不显示官方服务行）。
- * TODO(M3): 改为从 `/v1/meta` 下发的可用模型列表里取默认项（届时还要接模型选择器）。
+ * 结算后轮询 `/v1/me` 的节奏（契约 §7.1：3s × 100 次 ≈ 5 分钟）。
+ *
+ * 之所以放在 background 而不是 UI：用户点完升级会跳到外部结算页，Options 页此时在后台，
+ * 定时器照跑但**没人看结果**，而「付完钱回来额度还是旧的」正是最刺眼的一类 bug。
+ */
+export const CHECKOUT_POLL_INTERVAL_MS = 3_000
+export const CHECKOUT_POLL_MAX_ATTEMPTS = 100
+
+/**
+ * 结算会话的**本地幂等窗口**（契约 §1.6：同 `Idempotency-Key` 5 分钟内返回同一 URL）。
+ *
+ * 命中窗口内复用上一次的结果，避免「升级按钮点了两下 = 两个结算会话」。
+ */
+export const CHECKOUT_REUSE_WINDOW_MS = 5 * 60_000
+
+/**
+ * 官方服务**兜底**模型名（`/v1/models` 拉不到时才用）。
+ *
+ * M3 起真实可选项来自 `GET /v1/models`（契约 §5.1），选择器写 `settings.officialModel`；
+ * 这个常量只是「白名单没拿到」时的安全默认值——白名单一旦可用，它就不再参与决策。
  */
 export const DEFAULT_OFFICIAL_MODEL = "aiction-fast"
 

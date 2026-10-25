@@ -23,6 +23,29 @@ export function isPlanId(value: unknown): value is PlanId {
   return typeof value === "string" && (PLAN_IDS as readonly string[]).includes(value)
 }
 
+/**
+ * 档位高低序（数字越大越高）。用于「服务端下发的 `min_plan` 是否满足」这类比较。
+ *
+ * 必须显式列出而不是用 `PLAN_IDS.indexOf`：数组顺序是「UI 下拉顺序」，
+ * 与「权益高低」是两个概念，将来插入新档位时容易排错地方。
+ */
+export const PLAN_RANK: Record<PlanId, number> = { anonymous: 0, free: 1, pro: 2, max: 3 }
+
+/** `plan` 是否达到 `minPlan` 的要求（`meetsPlan("pro", "free") === true`） */
+export function meetsPlan(plan: PlanId, minPlan: PlanId): boolean {
+  return PLAN_RANK[plan] >= PLAN_RANK[minPlan]
+}
+
+/** 档位是否发生了**升级**（结算轮询命中后，只有升级值得上报 `subscription_activated`） */
+export function isPlanUpgrade(previous: PlanId, next: PlanId): boolean {
+  return PLAN_RANK[next] > PLAN_RANK[previous]
+}
+
+/** 档位是否变了（任意方向）。结算轮询的停止条件用它——降级同样说明服务端已处理完 */
+export function hasPlanChanged(previous: PlanId, next: PlanId): boolean {
+  return previous !== next
+}
+
 // ── 存储 key（唯一真源，`storage.ts` 与 `facade.ts` 都从这里取）──────────
 //
 // 硬约束（SPEC §4.1）：`chrome.storage.sync` 里**不得出现**任何这些 key。
@@ -87,6 +110,64 @@ export interface Entitlements {
   serverTime: string
   /** 本地写入缓存的时间（epoch ms），非服务端字段 */
   fetchedAt: number
+}
+
+// ── `/v1/meta`（契约 §4.3，无需认证）──────────────────────────
+
+/** 结算周期。`null` = 一次性 / 不适用（免费档） */
+export type BillingInterval = "month" | "year"
+
+/** 服务端驱动的套餐表条目。**价格与额度数值只来自服务端下发**，客户端不硬编码。 */
+export interface PlanOffer {
+  id: PlanId
+  /** 展示用数值（如 29）；货币与小数位由 `currency` 决定 */
+  price: number
+  /** ISO 4217，如 `CNY` / `USD` */
+  currency: string
+  interval: BillingInterval | null
+  /** 该档位的额度（token 数）。只用于展示，**不参与放行** */
+  quotaTokens: number
+}
+
+/** `GET /v1/meta`：版本门槛、维护公告、套餐表 */
+export interface ServerMeta {
+  /** 低于此版本的客户端应提示升级（服务端语义，客户端只比较不推断） */
+  minClientVersion: string
+  maintenance: { active: boolean; message: string | null }
+  plans: PlanOffer[]
+  /** 本地写入缓存的时间（epoch ms），非服务端字段 */
+  fetchedAt: number
+}
+
+// ── `/v1/models`（契约 §5.1）──────────────────────────────────
+
+/** 官方模型白名单条目。`id` 是对外模型名，**不是**上游真实模型名。 */
+export interface OfficialModel {
+  id: string
+  name: string
+  description: string
+  /** 可用该模型的最低档位 */
+  minPlan: PlanId
+  contextChars: number
+  maxOutputTokens: number
+  supportsReasoning: boolean
+  recommended: boolean
+}
+
+// ── `/v1/me/usage`（契约 §4.2）────────────────────────────────
+
+export interface UsagePoint {
+  /** `YYYY-MM-DD` */
+  date: string
+  inTokens: number
+  outTokens: number
+  requests: number
+}
+
+export interface UsageSeries {
+  points: UsagePoint[]
+  /** 服务端实际返回的粒度（当前只支持 `day`） */
+  granularity: "day"
 }
 
 /** 契约 §2.1 的错误码全集。客户端**只认这个枚举**，不解析 message 文本。 */
@@ -273,6 +354,13 @@ export interface EntitlementsResponse {
   success: boolean
   /** `null` = 本次没拿到（调用方应保留旧状态，不要当成「没有权益」） */
   entitlements?: Entitlements | null
+  /**
+   * 顺手带回重建后的快照：权益更新必须同时更新快照，否则同一页面里
+   * 「用量条（读快照）」与「到期日（读权益）」会来自两个不同的时刻。
+   *
+   * 它只是 `AuthSnapshot`，**不含任何凭据字段**（同 `AUTH_STATE_REQUEST`）。
+   */
+  snapshot?: AuthSnapshot
   error?: string
 }
 
@@ -283,3 +371,48 @@ export interface OpenOptionsResponse {
 
 /** `OPEN_WEB_PAGE`：只回成功与否，不回实际打开的地址（客户端无需知道完整 URL） */
 export type OpenWebPageResponse = OpenOptionsResponse
+
+/** `META_REQUEST`：`meta === null` 表示这次没拿到（调用方保留旧值 / 不显示套餐表） */
+export interface MetaResponse {
+  success: boolean
+  meta?: ServerMeta | null
+  /**
+   * 客户端版本低于服务端门槛。
+   *
+   * 由 **background** 判定后下发，而不是让 UI 自己比版本：UI 侧再引一份版本比较，
+   * 就会把 `request.ts`（含取 token 的代码路径）拉进 options bundle，而这件事不需要在 UI 算。
+   */
+  clientOutdated?: boolean
+  error?: string
+}
+
+/** `OFFICIAL_MODELS_REQUEST`：模型白名单 + 当前默认模型名 */
+export interface OfficialModelsResponse {
+  success: boolean
+  /** `null` = 这次没拿到（不要当成「没有可用模型」） */
+  models?: OfficialModel[] | null
+  /** 服务端推荐 / 当前生效的模型 id（客户端写入 `settings.officialModel` 时用它兜底） */
+  officialModel?: string
+  error?: string
+}
+
+/** `USAGE_REQUEST`：`usage === null` 表示这次没拿到 */
+export interface UsageResponse {
+  success: boolean
+  usage?: UsageSeries | null
+  error?: string
+}
+
+/**
+ * `CHECKOUT_REQUEST`：结算页由 **background** 打开（`chrome.tabs` 不暴露给 content），
+ * 所以响应里**不带 URL** —— 少一条「消息通道变成任意 URL 打开器」的路径。
+ */
+export interface CheckoutResponse {
+  success: boolean
+  /** 结算页已打开（成功路径）；失败时看 `error` */
+  opened?: boolean
+  error?: string
+}
+
+/** `BILLING_PORTAL_REQUEST`：客户门户（改卡 / 取消 / 发票）同样由 background 打开 */
+export type BillingPortalResponse = OpenOptionsResponse

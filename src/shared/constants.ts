@@ -39,7 +39,21 @@ export const MESSAGE_TYPES = {
    * 存在的理由：官方 provider 是 background 运行时构造的，content 只看本地设置拿不到；
    * 面板头部要显示真实模型名，不能自己再写一套解析（那就是「显示与实际两套」的来源）。
    */
-  ENGINE_REQUEST: "AICTION_ENGINE_REQUEST"
+  ENGINE_REQUEST: "AICTION_ENGINE_REQUEST",
+  // ── 订阅 / 模型白名单 / 用量（M3，契约 §8）────────────────
+  /** 任意 → background：服务端 meta（版本门槛 / 维护公告 / 套餐表；无需认证） */
+  META_REQUEST: "AICTION_META_REQUEST",
+  /** 任意 → background：官方模型白名单（`GET /v1/models`，TTL 24h） */
+  OFFICIAL_MODELS_REQUEST: "AICTION_OFFICIAL_MODELS_REQUEST",
+  /** 任意 → background：用量曲线（`GET /v1/me/usage`，仅账号页展示） */
+  USAGE_REQUEST: "AICTION_USAGE_REQUEST",
+  /**
+   * 任意 → background：创建结算会话并**由 background 打开**结算页。
+   * 返回里不带 URL（见 `CheckoutResponse`）：这个通道对任意页面可达，不能变成 URL 打开器。
+   */
+  CHECKOUT_REQUEST: "AICTION_CHECKOUT_REQUEST",
+  /** 任意 → background：打开客户门户（改卡 / 取消 / 发票） */
+  BILLING_PORTAL_REQUEST: "AICTION_BILLING_PORTAL_REQUEST"
 } as const
 
 /**

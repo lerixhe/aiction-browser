@@ -384,13 +384,17 @@ export async function applyQuotaHeaders(
  * 从服务端刷新权益并重建快照。
  *
  * `/v1/me` 失败 → **返回当前快照**（状态不变、plan 不变）：一次 500 不能把 pro 用户显示成 free。
- * 强制回源的时机由调用方决定（登录 / 登出 / 402 / 账号页可见）。
+ * 强制回源的时机由调用方决定（登录 / 登出 / 402 / 账号页可见 / 结算轮询）。
+ *
+ * `force: false` 复用权益缓存（结算轮询里刚 force 过，同一个值没必要再打一次请求）。
  */
-export async function refreshSnapshotFromServer(): Promise<AuthSnapshot> {
+export async function refreshSnapshotFromServer(
+  options: { force?: boolean } = {}
+): Promise<AuthSnapshot> {
   const current = await getSnapshot()
   if (current.state === "signed-out") return current
 
-  const entitlements = await getEntitlements({ force: true })
+  const entitlements = await getEntitlements({ force: options.force !== false })
   if (!entitlements) return current
 
   const snapshot: AuthSnapshot = {
