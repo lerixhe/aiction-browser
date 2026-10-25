@@ -82,8 +82,14 @@ export function SubscriptionCard({
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [watch, setWatch] = useState<UpgradeWatch | null>(null)
-  /** 只在挂载时拉一次 meta（价格变化不需要秒级同步；TTL 1h 在 background 侧） */
-  const requestedRef = useRef(false)
+  /**
+   * 拉取失败时允许重试（递增即重跑 effect）。
+   *
+   * 为什么必须有：`META_REQUEST` 在两种常见情形下拿不到东西——扩展刚更新但 background 还是旧代码
+   * （`sendMessage` 返回 `undefined`）、本地 mock / 网关没起来。没有重试的话用户只能靠切分区或
+   * 重开页面自愈，而界面上一句「暂时无法获取」不会告诉任何人该做什么。
+   */
+  const [attempt, setAttempt] = useState(0)
   /**
    * `onUpgraded` 放 ref：轮询 effect 不能把它放依赖数组。
    * 父组件每次重渲染都会传一个新函数，放进依赖就是「每次渲染都重新开始轮询」——
@@ -95,10 +101,9 @@ export function SubscriptionCard({
   const localeTag = parseLocaleTag(locale)?.toString() ?? "en"
 
   useEffect(() => {
-    if (requestedRef.current) return
-    requestedRef.current = true
-
     let alive = true
+    setMetaLoaded(false)
+
     void (async () => {
       try {
         const response = (await chrome.runtime.sendMessage({
@@ -108,7 +113,10 @@ export function SubscriptionCard({
         setMeta(response?.meta ?? null)
         setOutdated(response?.clientOutdated === true)
       } catch {
-        if (alive) setMeta(null)
+        if (alive) {
+          setMeta(null)
+          setOutdated(false)
+        }
       } finally {
         if (alive) setMetaLoaded(true)
       }
@@ -117,7 +125,7 @@ export function SubscriptionCard({
     return () => {
       alive = false
     }
-  }, [])
+  }, [attempt])
 
   const offers = meta?.plans ?? []
   const hasMonthly = offers.some((offer) => offer.interval === "month")
@@ -283,7 +291,12 @@ export function SubscriptionCard({
         <Skeleton style={{ width: "100%", height: 96 }} />
       ) : visibleOffers.length === 0 ? (
         // 服务端没给套餐表：少画一张卡，不画一个空框（也不要显示「免费」把用户骗进来）
-        <div className="opt-usage-meta">{t("options.account.plansUnavailable")}</div>
+        <div className="opt-plans-empty">
+          <span>{t("options.account.plansUnavailable")}</span>
+          <Button variant="secondary" size="sm" onClick={() => setAttempt((value) => value + 1)}>
+            {t("options.account.retry")}
+          </Button>
+        </div>
       ) : (
         <>
           {hasMonthly && hasYearly ? (

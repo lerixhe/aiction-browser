@@ -10,7 +10,7 @@ import { useEffect, useState } from "react"
 import type { UsagePoint, UsageResponse, UsageSeries } from "@/shared/auth/types"
 import { MESSAGE_TYPES } from "@/shared/constants"
 import { useI18n } from "@/shared/i18n/context"
-import { SectionCard, Skeleton } from "./ui"
+import { Button, SectionCard, Skeleton } from "./ui"
 
 const MSG = MESSAGE_TYPES
 
@@ -53,6 +53,8 @@ export function UsageTrendCard({ enabled }: { enabled: boolean }) {
   const { t } = useI18n()
   const [series, setSeries] = useState<UsageSeries | null>(null)
   const [loaded, setLoaded] = useState(false)
+  /** 拉取失败时允许重试（与套餐卡同一个理由：后台未就绪时不能只能靠重开页面自愈） */
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     if (!enabled) {
@@ -62,6 +64,7 @@ export function UsageTrendCard({ enabled }: { enabled: boolean }) {
     }
 
     let alive = true
+    setLoaded(false)
     void (async () => {
       try {
         const response = (await chrome.runtime.sendMessage({
@@ -79,7 +82,7 @@ export function UsageTrendCard({ enabled }: { enabled: boolean }) {
     return () => {
       alive = false
     }
-  }, [enabled])
+  }, [enabled, attempt])
 
   // 未登录且没有匿名主体：没有用量可看，整张卡不出现（不是画一张空表）
   if (!enabled) return null
@@ -94,7 +97,12 @@ export function UsageTrendCard({ enabled }: { enabled: boolean }) {
       {!loaded ? (
         <Skeleton style={{ width: "100%", height: 120 }} />
       ) : !series ? (
-        <div className="opt-usage-meta">{t("options.account.usageTrendUnavailable")}</div>
+        <div className="opt-plans-empty">
+          <span>{t("options.account.usageTrendUnavailable")}</span>
+          <Button variant="secondary" size="sm" onClick={() => setAttempt((value) => value + 1)}>
+            {t("options.account.retry")}
+          </Button>
+        </div>
       ) : points.length === 0 ? (
         <div className="opt-usage-meta">{t("options.account.usageTrendEmpty")}</div>
       ) : (

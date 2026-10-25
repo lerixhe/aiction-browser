@@ -117,6 +117,7 @@ export default {
   "options.account.plansTitle": "요금제",
   "options.account.plansDesc": "결제는 웹사이트에서 진행됩니다. 확장 프로그램은 페이지만 엽니다.",
   "options.account.plansUnavailable": "요금제 정보를 불러올 수 없습니다",
+  "options.account.retry": "다시 시도",
   "options.account.planCurrent": "현재 요금제",
   "options.account.planChoose": "선택",
   "options.account.planSignInToChoose": "로그인 후 선택",

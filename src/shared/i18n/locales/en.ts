@@ -115,6 +115,7 @@ const messages = {
   "options.account.plansTitle": "Plans",
   "options.account.plansDesc": "Billing is handled on the website — the extension only opens that page.",
   "options.account.plansUnavailable": "Plan information is temporarily unavailable.",
+  "options.account.retry": "Retry",
   "options.account.planCurrent": "Current plan",
   "options.account.planChoose": "Choose",
   "options.account.planSignInToChoose": "Sign in to choose",

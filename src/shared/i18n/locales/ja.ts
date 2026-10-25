@@ -117,6 +117,7 @@ export default {
   "options.account.plansTitle": "プラン",
   "options.account.plansDesc": "お支払いは Web サイトで行います（拡張機能はページを開くだけです）。",
   "options.account.plansUnavailable": "プラン情報を取得できません",
+  "options.account.retry": "再試行",
   "options.account.planCurrent": "現在のプラン",
   "options.account.planChoose": "選択",
   "options.account.planSignInToChoose": "サインインして選択",

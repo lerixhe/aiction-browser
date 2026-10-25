@@ -117,6 +117,7 @@ export default {
   "options.account.plansTitle": "套餐方案",
   "options.account.plansDesc": "结算在官网完成，扩展只负责打开页面。",
   "options.account.plansUnavailable": "暂时无法获取套餐信息",
+  "options.account.retry": "重试",
   "options.account.planCurrent": "当前套餐",
   "options.account.planChoose": "选择",
   "options.account.planSignInToChoose": "登录后选择",

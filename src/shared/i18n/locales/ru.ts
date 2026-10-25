@@ -117,6 +117,7 @@ export default {
   "options.account.plansTitle": "Тарифы",
   "options.account.plansDesc": "Оплата проходит на сайте — расширение только открывает эту страницу.",
   "options.account.plansUnavailable": "Информация о тарифах временно недоступна.",
+  "options.account.retry": "Повторить",
   "options.account.planCurrent": "Текущий тариф",
   "options.account.planChoose": "Выбрать",
   "options.account.planSignInToChoose": "Войдите, чтобы выбрать",

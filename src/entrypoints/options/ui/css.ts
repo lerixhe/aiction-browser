@@ -1268,6 +1268,18 @@ export function createOptionsCss(theme: UiTheme): string {
     margin: 2px 0 12px;
   }
 
+  /* 失败态：文案 + 重试（不要让用户只能靠切分区 / 重开页面自愈） */
+  .opt-plans-empty {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 10px 0;
+    font-size: ${optSize.rowDescSize}px;
+    color: ${theme.text.secondary};
+  }
+
   .opt-plans {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));

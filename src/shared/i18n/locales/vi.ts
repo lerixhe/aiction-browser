@@ -117,6 +117,7 @@ export default {
   "options.account.plansTitle": "Gói dịch vụ",
   "options.account.plansDesc": "Thanh toán được thực hiện trên trang web — tiện ích chỉ mở trang đó.",
   "options.account.plansUnavailable": "Tạm thời không lấy được thông tin gói dịch vụ.",
+  "options.account.retry": "Thử lại",
   "options.account.planCurrent": "Gói hiện tại",
   "options.account.planChoose": "Chọn",
   "options.account.planSignInToChoose": "Đăng nhập để chọn",

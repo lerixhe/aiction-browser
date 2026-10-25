@@ -117,6 +117,7 @@ export default {
   "options.account.plansTitle": "方案",
   "options.account.plansDesc": "結算在官網完成，擴充功能只負責開啟頁面。",
   "options.account.plansUnavailable": "暫時無法取得方案資訊",
+  "options.account.retry": "重試",
   "options.account.planCurrent": "目前方案",
   "options.account.planChoose": "選擇",
   "options.account.planSignInToChoose": "登入後選擇",
