@@ -88,7 +88,7 @@
 
 ---
 
-## 2. 现存事件清单（共 45 个）
+## 2. 现存事件清单（共 49 个）
 
 > 表格中的「触发位置」写函数/组件名而非行号，避免代码变动后失效。
 
@@ -219,7 +219,7 @@
 `request` 请求未建立流 / `stream` 流中途断 / `empty` 200 但零内容）都上报，属性包含 `stage`、
 请求形态快照（`max_tokens` 等——参数填错时这是唯一能定位的线索）、provider 元信息与错误诊断原文。
 「点了测试但字段没填全」也上报（`stage: validate`），否则这类配错在数据里完全不可见。
-| `model_selected` | `provider_type`, `source_list`(`models_dev`/`fetched`/`manual`), `from_search`, `model`(仅列表选择), `source` | `options/ModelPicker.tsx`（三条选择路径：devModels 列表点选 / 接口拉取的下拉 / 手输框 blur 且值真的变了） | 最常用模型排行；`from_search` 说明用户是靠搜索还是浏览；手输路径**不上报模型名** |
+| `model_selected` | `provider_type`, `source_list`(`models_dev`/`fetched`/`manual`), `from_search`, `model`(仅列表选择), `source` | `options/ModelPicker.tsx`（三条选择路径：devModels 列表点选 / 接口拉取的下拉 / 手输框 blur 且值真的变了）；M3 起还有 `options/AccountSection.tsx` 的**官方模型选择器**（`provider_type: official`、`source_list: fetched`、`source: options`） | 最常用模型排行；`from_search` 说明用户是靠搜索还是浏览；手输路径**不上报模型名** |
 
 缺口：模型参数（`ModelParamsEditor.tsx`）**完全没有埋点**。
 
@@ -300,6 +300,23 @@
 - 官方链路的通用请求头（`X-Ext-Id` / `X-Client-Version` / `X-Device-Id` / `X-Platform`）与计费主体
   `X-AIction-Feature`（`selection_chat` / `page_qa`）不会进埋点：前者是设备指纹类硬标识（`X-Device-Id`
   已作为 `distinct_id` 的载体存在，不需要额外上报一份），后者由 `official_service_used` 的入口维度覆盖。
+
+### 2.11 订阅与结算（M3，options）
+
+| 事件名 | 属性 | 触发位置 | 用途 |
+|--------|------|----------|------|
+| `checkout_started` | `plan`(`pro`/`max`), `period`(`month`/`year`), `source`(`options`) | `options/SubscriptionCard.tsx`：`CHECKOUT_REQUEST` 成功（结算页真的被打开）之后 | 升级漏斗的「进入结算」一格；分母是 `quota_banner_shown` / `quota_exceeded` |
+| `subscription_activated` | `plan`, `period`, `is_first`, `elapsed_bucket`(`<30s`/`30-120s`/`>120s`), `source` | 同上：结算后 3s 轮询 `/v1/me` 发现**档位升高**时 | 付费转化率与「点按钮 → 生效」的体感耗时；`is_first` 区分新订阅与升档 |
+
+口径说明：
+- 两个事件都在 **UI（Options 账号页）** 上报，不在 background：轮询本身就在 UI（MV3 的 SW 空闲 30s 会被回收，
+  定时器放那里会丢），「是不是刚才那一次点击带来的升级」也只有 UI 知道。
+- `subscription_activated` **只在升级时报**：轮询发现降级（用户在客户门户取消订阅）同样会停止轮询，但不进转化漏斗。
+- `checkout_started` 在**结算页打开成功后**才报，不是点击时：创建会话失败（网络 / 服务端）不属于漏斗流失，属于质量事件。
+- `period` 取用户实际选择的那一档（月付 / 年付），不从 `subscription` 反推（服务端不下发周期）。
+- **禁止上报**价格、货币值、`session_id`、`Idempotency-Key`：价格属服务端策略（公开仓库与埋点都不进）。
+- `/v1/meta` 的失败、`/v1/models` 的失败、用量曲线拉取失败**均无埋点**：它们是展示层降级，
+  不是用户动作，混进漏斗只会人为抬高分母。
 
 ---
 
@@ -554,4 +571,5 @@
 | 2026-10-23 | `posthog-js` 1.376.3 → 1.438.20（SDK 升级，事件/属性零变更） | 唯一代码改动：init 选项 `advanced_disable_decide` → `advanced_disable_flags`（旧名已 deprecated，设了会打 `Config field 'advanced_disable_decide' is deprecated` 警告；`_shouldDisableFlags()` 本来就优先读新名）；`(posthog as any).__loaded` 去掉 `any`（新版类型已声明该字段）。行为边界复核：新版默认值仍是 `autocapture: true` / `persistence: localStorage+cookie` / `error_tracking: {}`（`capture_exceptions` 未配置且默认 falsy → 不上报 `$exception`），`advanced_disable_flags: true` 继续阻止 `/flags` 请求与远端配置，**零自动事件承诺不变**。代价：`module.no-external` minify 后 205 KB → 369 KB |
 | 2026-10-24 | M2 评审修复（属性与桶数变更，事件数不变） | `error_code` 桶 11 → 12（新增 `model_unavailable`：官方链路的 403/404 是「换模型」不是「重新登录」，由 background 覆写，`classifyChatError` 口径不变）；`official_service_used` 新增 `aborted`（用户中途停止但已产生输出时也记一条——契约按已产生输出计费，不记会让分母偏低）；`quota_exceeded.source` 删掉 `popup`（这条链路的 `source` 只可能来自 chat port，即 `web`/`pdf`） |
 | 2026-10-24 | 官方服务链路 M2 埋点（+2 → 47 个事件） | 新增 §2.10：`official_service_used`（`plan`/`model`/`is_anonymous`/输出 `length_bucket`）、`quota_exceeded`（`plan`/`source`/`model`，仅 402 且仅官方链路）；`provider_type` 枚举新增 `official`（原先官方 provider 被归进 `custom`）；两者都在 background 的 `streamChat` 上报，**BYOK 的 402/429 不上报**（那是用户端点的额度，不是我们的墙） |
+| 2026-10-24 | 订阅与结算 M3 埋点（+2 → 49 个事件） | 新增 §2.11：`checkout_started`（`plan`/`period`/`source`，结算页真的打开后才报）、`subscription_activated`（`plan`/`period`/`is_first`/`elapsed_bucket`/`source`，轮询发现**升级**时报）；两者都在 UI（`AccountSection.tsx` 的账号页）上报 —— 轮询必须放 UI（MV3 的 SW 空闲 30s 被回收，`setTimeout` 会丢）。`model_selected` 新增第四处调用点（官方模型选择器，`provider_type: official`），属性零增删。价格 / 货币值 / `session_id` / `Idempotency-Key` 一律不上报 |
 | 2026-10-23 | SDK 入口改为 `module.slim.no-external`（事件/属性零变更，纯体积优化） | `module.no-external` 新版 minify 后 369 KB（旧版 205 KB），换 slim 变体后 163 KB → content script 899 → 707 kB（连旧 SDK 都小 42 kB）、总包 4.93 → 4.35 MB。实测（Playwright + 真实 bundle，请求全拦截）：`__loaded` / `bootstrap.distinctID` / `capture` 行为与 no-external 一致，只发一条 `POST /e/`，`properties.distinct_id` = 稳定匿名 ID，**无 `/flags`、无外部 CDN 请求、无 `$exception`**；`pagehide` 时队列正确 flush（事件送达）。副产品：`[Surveys] PostHog Extensions not found.` 这条 console error 消失（slim 里没有 surveys 扩展） |

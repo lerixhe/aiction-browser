@@ -44,6 +44,7 @@ AI 调用统一走 Vercel AI SDK：`shared/model-provider.ts` 按 provider 的 `
 | 素材工具 | `docs/TOOLING.md`（§1 工具矩阵、§3 已知未修问题、§6 变更记录） |
 | 界面语言 | 见下文「i18n」三处改动 |
 | 账号 / 登录（`src/shared/auth/**`、`ProviderConfig.kind`） | 先读 `.private-docs/LOGIN_IMPL_SPEC.md`；动了 auth 模块导出面要同步 `scripts/check-auth-boundary.ts` 的白名单 |
+| 订阅 / 套餐 / 官方模型（`shared/auth/{meta,models,usage,billing}.ts`） | 同上，见 SPEC §19；**价目与额度数值只来自服务端下发，仓库里不写定价**；模型 id 只认 `/v1/models` |
 
 素材纪律：`scripts/` 下已有一整套生成上架素材与设计预览的工具，**不要重复造轮子**；
 改 UI / 图标 / 文案后先查 `docs/TOOLING.md` §4「什么情况下要跑哪个工具」；
@@ -132,6 +133,9 @@ AI 调用统一走 Vercel AI SDK：`shared/model-provider.ts` 按 provider 的 `
 11. **官方对话的 401 救援要自己补**：`/v1/chat/completions` 走 AI SDK 直连、不经过 `authFetch`，
     所以「`token_expired` → 换一张再试一次」这条（契约 §1.6 唯一允许的重试）必须在 `streamChat` 里实现，
     且只在**尚未产出内容**时重试（产出了再重试就是双倍计费 + 重复文本）。
+12. **价目、额度数值、模型白名单都是服务端的**：`/v1/meta.plans` 与 `/v1/models` 是唯一数据源。
+    客户端不硬编码价目/额度；解析时未知档位、0 价档、缺币种一律丢弃（不要「猜着画」）。
+    结算页与客户门户只由 background 打开（`CHECKOUT_REQUEST` 的响应里**不回 URL**），模型白名单的档位过滤也在 background 做。
 
 ## 配置迁移与默认值
 - 向 `DEFAULT_SETTINGS` / `DEFAULT_QUICK_ACTIONS` **加新项**：`normalizeSettings()` 必须按 id 合并

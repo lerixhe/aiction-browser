@@ -26,6 +26,10 @@
  *
  * 失败注入（环境变量，逗号分隔；`MOCK_FAIL=refresh_500,me_500`）：
  *   device_429        /auth/device 持续 429
+ *   meta_500          /v1/meta 持续 500（验证「meta 拿不到时账号页只是少一张卡」）
+ *   models_500        /v1/models 持续 500
+ *   usage_500         /v1/me/usage 持续 500
+ *   checkout_500      /v1/billing/checkout 持续 500
  *   refresh_500       /auth/refresh 持续 500
  *   refresh_revoked   /auth/refresh 持续 401 refresh_revoked
  *   me_500            /v1/me 持续 500
@@ -74,8 +78,12 @@ function createState() {
     pendingCodes: new Map(),
     /** principalId → 已用 tokens（占位口径，见 §「与真实网关的差异」） */
     quota: new Map(),
+    /** Idempotency-Key → { url, sessionId, plan, interval, userId, createdAt }（契约 §1.6 / §7.1） */
+    checkouts: new Map(),
+    /** sessionId → { userId, plan, interval, createdAt }（等待「支付完成」） */
+    sessions: new Map(),
     resetAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-    counters: { device: 0, authorize: 0, token: 0, refresh: 0, logout: 0, me: 0, chat: 0 }
+    counters: { device: 0, authorize: 0, token: 0, refresh: 0, logout: 0, me: 0, meta: 0, models: 0, usage: 0, checkout: 0, portal: 0, chat: 0 }
   }
 }
 
@@ -113,7 +121,7 @@ function setCommonHeaders(res) {
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Authorization, Content-Type, X-Ext-Id, X-Client-Version, X-Device-Id, X-Platform, X-AIction-Feature, X-Request-Id"
+    "Authorization, Content-Type, X-Ext-Id, X-Client-Version, X-Device-Id, X-Platform, X-AIction-Feature, X-Request-Id, Idempotency-Key"
   )
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 }
@@ -169,6 +177,28 @@ function bearerOf(req) {
   if (typeof header !== "string") return null
   const match = /^Bearer\s+(.+)$/i.exec(header.trim())
   return match ? match[1] : null
+}
+
+/**
+ * Bearer → principal 的小工具。
+ * 失败时已自己发过错误响应，调用方只需 `if (!principal) return`。
+ */
+function authenticate(req, res) {
+  const accessToken = bearerOf(req)
+  if (!accessToken) {
+    sendError(res, 401, "token_invalid", "缺少 Authorization")
+    return null
+  }
+  const principal = state.accessTokens.get(accessToken)
+  if (!principal) {
+    sendError(res, 401, "token_invalid", "access token 无效")
+    return null
+  }
+  if (principal.expired) {
+    sendError(res, 401, "token_expired", "access token 已过期")
+    return null
+  }
+  return principal
 }
 
 /** 四个必需头都要在；缺失即 400（客户端漏头时立刻暴露，别等到线上） */
@@ -254,6 +284,68 @@ const STREAM_CHUNK_DELAY_MS = Number(process.env.MOCK_STREAM_DELAY_MS ?? 15)
 
 /** 官方模型白名单（占位：真实白名单由 `/v1/models` 下发，见契约 §5.1） */
 const OFFICIAL_MODELS = ["aiction-fast", "aiction-pro"]
+
+/**
+ * `/v1/models` 的目录（契约 §5.1）。
+ *
+ * `min_plan` 不全是 `anonymous`：`aiction-pro` 要 `pro`，正好用来验证
+ * 「客户端按档位过滤 / 选了一个买不起的模型会 403」两端行为。
+ */
+const MODEL_CATALOG = [
+  {
+    id: "aiction-fast",
+    name: "AIction Fast",
+    description: "Balanced speed and quality.",
+    min_plan: "anonymous",
+    context_chars: 100_000,
+    max_output_tokens: 4096,
+    supports_reasoning: false,
+    recommended: true
+  },
+  {
+    id: "aiction-pro",
+    name: "AIction Pro",
+    description: "Deeper reasoning for harder tasks.",
+    min_plan: "pro",
+    context_chars: 200_000,
+    max_output_tokens: 8192,
+    supports_reasoning: false,
+    recommended: false
+  }
+]
+
+/**
+ * `/v1/meta` 的套餐表（契约 §4.3）。
+ *
+ * 价格与额度全是**占位数字**（`MOCK_PRICE_PRO` / `MOCK_QUOTA_PRO` 可覆盖），
+ * 刻意不用任何「像真的」的价目：定价属于服务端，公开仓库里不该出现。
+ */
+const PLAN_CATALOG = [
+  { id: "free", price: 0, currency: "CNY", interval: null, quota_tokens: 1_000 },
+  {
+    id: "pro",
+    price: Number(process.env.MOCK_PRICE_PRO ?? 10),
+    currency: "CNY",
+    interval: "month",
+    quota_tokens: Number(process.env.MOCK_QUOTA_PRO ?? 2_000)
+  },
+  {
+    id: "max",
+    price: Number(process.env.MOCK_PRICE_MAX ?? 20),
+    currency: "CNY",
+    interval: "month",
+    quota_tokens: Number(process.env.MOCK_QUOTA_MAX ?? 4_000)
+  },
+  {
+    id: "pro",
+    price: Number(process.env.MOCK_PRICE_PRO_YEAR ?? 100),
+    currency: "CNY",
+    interval: "year",
+    quota_tokens: Number(process.env.MOCK_QUOTA_PRO ?? 2_000)
+  }
+]
+
+const CHECKOUT_REUSE_MS = 5 * 60_000
 
 // ── 路由 ───────────────────────────────────────────────────────
 
@@ -489,7 +581,8 @@ async function handleRequest(req, res) {
           provider: "none",
           period_end: null,
           cancel_at_period_end: false,
-          manage_url: null
+          // 有值时客户端会跳过 `POST /v1/billing/portal`（契约 §7.2），用来验两条分支
+          manage_url: process.env.MOCK_MANAGE_URL ?? null
         },
         quota: {
           unit: "tokens",
@@ -511,6 +604,147 @@ async function handleRequest(req, res) {
       })
     }
 
+
+    // ── 服务端 meta（无需认证，契约 §4.3）────────────────────
+    if (req.method === "GET" && path === "/v1/meta") {
+      state.counters.meta++
+      if (hasFailure("meta_500")) return sendError(res, 500, "internal", "mock 注入的 meta 失败")
+      return sendJson(res, 200, {
+        // 占位版本：默认识于任何已发布版本之下（不会误报「需要升级」）
+        min_client_version: process.env.MOCK_MIN_VERSION ?? "0.0.1",
+        maintenance: {
+          active: process.env.MOCK_MAINTENANCE === "1",
+          message: process.env.MOCK_MAINTENANCE_MESSAGE ?? null
+        },
+        plans: PLAN_CATALOG
+      })
+    }
+
+    // ── 官方模型白名单（契约 §5.1）───────────────────────────
+    if (req.method === "GET" && path === "/v1/models") {
+      state.counters.models++
+      if (!requireBaseHeaders(req, res)) return
+      if (hasFailure("models_500")) return sendError(res, 500, "internal", "mock 注入的模型列表失败")
+      if (!authenticate(req, res)) return
+      // 返回**全量**目录（带 min_plan）：过滤是客户端的职责，与契约「客户端映射成选择列表」一致
+      return sendJson(res, 200, { data: MODEL_CATALOG })
+    }
+
+    // ── 用量曲线（契约 §4.2）───────────────────────────────
+    if (req.method === "GET" && path === "/v1/me/usage") {
+      state.counters.usage++
+      if (!requireBaseHeaders(req, res)) return
+      if (hasFailure("usage_500")) return sendError(res, 500, "internal", "mock 注入的用量失败")
+      const principal = authenticate(req, res)
+      if (!principal) return
+
+      const days = Math.max(1, Math.min(90, Number(url.searchParams.get("days") ?? process.env.MOCK_USAGE_DAYS ?? 7)))
+      const points = []
+      for (let offset = days - 1; offset >= 0; offset--) {
+        const date = new Date(Date.now() - offset * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+        // 确定性占位数据：同一主体 + 同一天总是同一组数字（图表不会每次刷新都跳一下）
+        const seed = quotaUsed(principal.principalId) + offset * 7 + 3
+        points.push({ date, in_tokens: seed * 12, out_tokens: seed * 4, requests: (seed % 9) + 1 })
+      }
+      return sendJson(res, 200, { points })
+    }
+
+    // ── 结算会话（契约 §7.1）────────────────────────────────
+    if (req.method === "POST" && path === "/v1/billing/checkout") {
+      state.counters.checkout++
+      if (!requireBaseHeaders(req, res)) return
+      if (hasFailure("checkout_500")) return sendError(res, 500, "internal", "mock 注入的结算失败")
+      const principal = authenticate(req, res)
+      if (!principal) return
+      if (principal.kind !== "user") {
+        return sendError(res, 403, "subscription_required", "匿名设备不能创建结算会话，请先登录")
+      }
+
+      const idempotencyKey = req.headers["idempotency-key"]
+      if (typeof idempotencyKey !== "string" || !idempotencyKey) {
+        return sendError(res, 400, "invalid_request", "缺少 Idempotency-Key 请求头")
+      }
+
+      const body = await readJson(req)
+      if (body === null) return sendError(res, 400, "invalid_request", "请求体不是合法 JSON")
+      if (body.plan !== "pro" && body.plan !== "max") {
+        return sendError(res, 400, "invalid_request", "plan 只能是 pro / max")
+      }
+      if (body.interval !== "month" && body.interval !== "year") {
+        return sendError(res, 400, "invalid_request", "interval 只能是 month / year")
+      }
+
+      const existing = state.checkouts.get(idempotencyKey)
+      if (existing && Date.now() - existing.createdAt <= CHECKOUT_REUSE_MS) {
+        return sendJson(res, 200, {
+          url: existing.url,
+          session_id: existing.sessionId,
+          expires_at: new Date(existing.createdAt + CHECKOUT_REUSE_MS).toISOString()
+        })
+      }
+
+      const sessionId = `cs_${randomBytes(8).toString("hex")}`
+      const origin = `http://${req.headers.host ?? `127.0.0.1:${PORT}`}`
+      const record = {
+        sessionId,
+        url: `${origin}/billing/checkout?session=${sessionId}`,
+        plan: body.plan,
+        interval: body.interval,
+        userId: principal.principalId,
+        createdAt: Date.now()
+      }
+      state.checkouts.set(idempotencyKey, record)
+      state.sessions.set(sessionId, record)
+      return sendJson(res, 200, {
+        url: record.url,
+        session_id: sessionId,
+        expires_at: new Date(Date.now() + CHECKOUT_REUSE_MS).toISOString()
+      })
+    }
+
+    // ── 客户门户（契约 §7.2）───────────────────────────────
+    if (req.method === "POST" && path === "/v1/billing/portal") {
+      state.counters.portal++
+      if (!requireBaseHeaders(req, res)) return
+      if (!authenticate(req, res)) return
+      const origin = `http://${req.headers.host ?? `127.0.0.1:${PORT}`}`
+      return sendJson(res, 200, { url: `${origin}/billing/portal` })
+    }
+
+    // ── 假结算页（浏览器导航）─────────────────────────────
+    if (req.method === "GET" && path === "/billing/checkout") {
+      const sessionId = url.searchParams.get("session") ?? ""
+      const record = state.sessions.get(sessionId)
+      if (!record) return sendHtml(res, 404, errorPage("结算会话不存在或已过期"))
+      return sendHtml(res, 200, checkoutPage(record))
+    }
+
+    if (req.method === "GET" && path === "/billing/portal") {
+      return sendHtml(res, 200, portalPage())
+    }
+
+    /**
+     * 假「服务端收到支付成功 webhook」：把该用户的 plan 换掉。
+     * 真实网关由 `/webhooks/billing` → 落库 → `/v1/me` 反映新档位（契约 §7.3）。
+     */
+    if (req.method === "GET" && path === "/__pay") {
+      const sessionId = url.searchParams.get("session") ?? ""
+      const record = state.sessions.get(sessionId)
+      if (!record) return sendHtml(res, 404, errorPage("结算会话不存在或已过期"))
+      const user = state.users.get(record.userId)
+      if (!user) return sendHtml(res, 404, errorPage("用户不存在"))
+      user.plan = record.plan
+      state.sessions.delete(sessionId)
+      res.statusCode = 302
+      res.setHeader("Location", `/billing/success?plan=${record.plan}&interval=${record.interval}`)
+      return res.end()
+    }
+
+    if (req.method === "GET" && path === "/billing/success") {
+      const plan = url.searchParams.get("plan") ?? ""
+      const interval = url.searchParams.get("interval") ?? ""
+      return sendHtml(res, 200, successPage(plan, interval))
+    }
 
     // ── 官方对话（OpenAI 兼容子集，契约 §6）──────────────────
     if (req.method === "POST" && path === "/v1/chat/completions") {
@@ -661,6 +895,8 @@ async function handleRequest(req, res) {
             record.revoked && record.rotatedAt !== null ? Math.max(0, GRACE_MS - (Date.now() - record.rotatedAt)) : null
         })),
         pendingCodes: state.pendingCodes.size,
+        checkouts: state.checkouts.size,
+        sessions: state.sessions.size,
         quota: Object.fromEntries(state.quota)
       })
     }
@@ -752,11 +988,64 @@ td:first-child{white-space:nowrap;font-family:ui-monospace,monospace;color:#2563
 <tr><td>POST /auth/refresh</td><td>轮换 + 宽限窗口（窗口内重放返回同一组新 token）</td></tr>
 <tr><td>POST /auth/logout</td><td>撤销当前设备全部 refresh，204</td></tr>
 <tr><td>GET /v1/me</td><td>权益快照（<code>?plan=pro</code> 可切换档位）</td></tr>
+<tr><td>GET /v1/meta</td><td>版本门槛 / 维护公告 / 套餐表（无需认证）</td></tr>
+<tr><td>GET /v1/models</td><td>官方模型白名单（带 <code>min_plan</code>）</td></tr>
+<tr><td>GET /v1/me/usage</td><td>用量曲线（近 7 天占位数据）</td></tr>
+<tr><td>POST /v1/billing/checkout</td><td>结算会话（<code>Idempotency-Key</code> 必填，5 分钟内同 key 同 URL）</td></tr>
+<tr><td>POST /v1/billing/portal</td><td>客户门户地址</td></tr>
+<tr><td>GET /billing/checkout</td><td>假结算页：点「模拟支付完成」即升档（给轮询用）</td></tr>
 <tr><td>POST /v1/chat/completions</td><td>官方对话（SSE，带 <code>X-Quota-*</code> 头；额度耗尽 402）</td></tr>
 <tr><td>GET /__state</td><td>调试：调用计数与 refresh 宽限剩余时间</td></tr>
 <tr><td>POST /__expire</td><td>调试：把 access token 标记过期，验证 401 救援</td></tr>
 </table>
-<p>失败注入：<code>MOCK_FAIL=refresh_500,me_500,device_429,me_401_expired,slow</code></p>
+<p>失败注入：<code>MOCK_FAIL=refresh_500,me_500,device_429,me_401_expired,meta_500,models_500,usage_500,checkout_500,slow</code></p>
+</main></body></html>`
+}
+
+/** 假结算页（契约 §7.1）：真实环境这里会跳到 Paddle / Stripe，本地只需要一个能「完成支付」的按钮 */
+function checkoutPage(record) {
+  return `<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>AIction · 本地结算（mock）</title>
+<style>body{font:14px/1.7 system-ui,sans-serif;margin:0;display:grid;place-items:center;min-height:100vh;background:#f6f7f9;color:#1c1c1e}
+main{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:28px 32px;max-width:520px;box-shadow:0 8px 24px rgba(0,0,0,.06)}
+h1{font-size:17px;margin:0 0 12px}p{color:#4b5563;margin:8px 0}
+.row{display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid #f1f2f4}
+.btn{display:inline-block;margin-top:20px;padding:10px 18px;border-radius:8px;background:#3b82f6;color:#fff;text-decoration:none;font-weight:600}
+code{background:#f3f4f6;padding:1px 5px;border-radius:4px}</style>
+</head><body><main>
+<h1>本地结算（mock）</h1>
+<p>这个页面只存在于 dev mock。真实环境这里会是支付服务商的页面，卡号永远不会经过扩展。</p>
+<div class="row"><span>会话</span><code>${escapeHtml(record.sessionId)}</code></div>
+<div class="row"><span>套餐</span><b>${escapeHtml(record.plan)}</b></div>
+<div class="row"><span>周期</span><b>${escapeHtml(record.interval)}</b></div>
+<a class="btn" href="/__pay?session=${encodeURIComponent(record.sessionId)}">模拟支付完成</a>
+<p style="margin-top:18px;font-size:12px;color:#6b7280">点下去之后：网关该用户的 plan 会真的变；扩展里的账号页靠 3s 轮询发现它。</p>
+</main></body></html>`
+}
+
+function successPage(plan, interval) {
+  return `<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>AIction · 支付完成（mock）</title>
+<style>body{font:14px/1.7 system-ui,sans-serif;margin:0;display:grid;place-items:center;min-height:100vh;background:#f6f7f9;color:#1c1c1e}
+main{background:#fff;border:1px solid #d1fae5;border-radius:12px;padding:28px 32px;max-width:520px}
+h1{font-size:17px;margin:0 0 10px;color:#047857}p{color:#4b5563}</style>
+</head><body><main>
+<h1>支付完成（mock）</h1>
+<p>plan = <b>${escapeHtml(plan || "-")}</b>${interval ? ` / ${escapeHtml(interval)}` : ""}</p>
+<p>回到扩展的设置页，额度与套餐应该会在几秒内自动刷新。</p>
+</main></body></html>`
+}
+
+function portalPage() {
+  return `<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>AIction · 客户门户（mock）</title>
+<style>body{font:14px/1.7 system-ui,sans-serif;margin:0;display:grid;place-items:center;min-height:100vh;background:#f6f7f9;color:#1c1c1e}
+main{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:28px 32px;max-width:520px}
+h1{font-size:17px;margin:0 0 10px}p{color:#4b5563}</style>
+</head><body><main>
+<h1>客户门户（mock）</h1>
+<p>改卡 / 取消订阅 / 发票都在这里（真实环境由支付服务商提供）。</p>
+<p>用 <code>MOCK_MANAGE_URL</code> 可以让 <code>/v1/me.subscription.manage_url</code> 有值，验证「有值就不调 portal 接口」这条分支。</p>
 </main></body></html>`
 }
 
@@ -1034,11 +1323,84 @@ async function runSelftest() {
     check("客户端中途断开后 mock 不崩（后续请求仍可用）", (await call("/v1/me", { accessToken: device1.json.access_token })).status === 200)
     state.quota.set(devicePrincipalId, 0)
 
-    // 15. 调试端点
+    // 15. M3：meta / models / usage / 结算
+    const meta = await call("/v1/meta")
+    check(
+      "/v1/meta 返回套餐表（免费档 0 价 + 有价档只出现在 pro/max）",
+      meta.status === 200 &&
+        meta.json.plans.some((plan) => plan.price === 0) &&
+        meta.json.plans.filter((plan) => plan.price > 0).every((plan) => plan.id === "pro" || plan.id === "max")
+    )
+
+    const models = await call("/v1/models", { accessToken: access2 })
+    check(
+      "/v1/models 返回带 min_plan 的白名单",
+      models.status === 200 &&
+        models.json.data.length >= 2 &&
+        models.json.data.every((model) => typeof model.min_plan === "string")
+    )
+    check(
+      "白名单里确实存在需要付费档的模型（否则「按档位过滤」验不到）",
+      models.json.data.some((model) => model.min_plan !== "anonymous" && model.min_plan !== "free")
+    )
+
+    const usage = await call("/v1/me/usage?days=7", { accessToken: access2 })
+    check(
+      "/v1/me/usage 返回 7 个点且日期升序",
+      usage.status === 200 &&
+        usage.json.points.length === 7 &&
+        usage.json.points[0].date < usage.json.points[6].date
+    )
+
+    const noKey = await call("/v1/billing/checkout", {
+      method: "POST",
+      accessToken: access2,
+      body: { plan: "pro", interval: "month" }
+    })
+    check("checkout 缺 Idempotency-Key → 400", noKey.status === 400 && noKey.json.error.code === "invalid_request")
+
+    const checkout = await call("/v1/billing/checkout", {
+      method: "POST",
+      accessToken: access2,
+      headers: { "idempotency-key": "idem-selftest" },
+      body: { plan: "pro", interval: "month" }
+    })
+    check(
+      "checkout 返回可打开的 url 与 session_id",
+      checkout.status === 200 &&
+        typeof checkout.json.url === "string" &&
+        checkout.json.url.startsWith("http") &&
+        typeof checkout.json.session_id === "string"
+    )
+
+    const replayCheckout = await call("/v1/billing/checkout", {
+      method: "POST",
+      accessToken: access2,
+      headers: { "idempotency-key": "idem-selftest" },
+      body: { plan: "pro", interval: "month" }
+    })
+    check("同 Idempotency-Key 5 分钟内返回同一 URL", replayCheckout.json.url === checkout.json.url)
+
+    const meBeforePay = await call("/v1/me", { accessToken: access2 })
+    check("只创建结算会话时 plan 不变（等支付完成才变）", meBeforePay.json.plan === "free")
+
+    const pay = await fetch(`${base}/__pay?session=${checkout.json.session_id}`, { redirect: "manual" })
+    check("__pay 302 到成功页", pay.status === 302)
+    const meAfterPay = await call("/v1/me", { accessToken: access2 })
+    check("支付完成后 /v1/me 反映新档位（pro）", meAfterPay.json.plan === "pro")
+
+    const portal = await call("/v1/billing/portal", { method: "POST", accessToken: access2 })
+    check("portal 返回客户门户地址", portal.status === 200 && typeof portal.json.url === "string")
+
+    // 16. 调试端点
     const snapshot = await call("/__state")
     check(
       "/__state 统计到各端点调用次数",
-      snapshot.json.counters.device >= 2 && snapshot.json.counters.refresh >= 3 && snapshot.json.counters.me >= 3
+      snapshot.json.counters.device >= 2 &&
+        snapshot.json.counters.refresh >= 3 &&
+        snapshot.json.counters.me >= 3 &&
+        snapshot.json.counters.meta >= 1 &&
+        snapshot.json.counters.checkout >= 2
     )
 
     console.log(`\n✔ mock 网关自测通过（${passed} 项断言）`)

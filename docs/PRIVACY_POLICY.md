@@ -66,6 +66,11 @@ Before leaving your browser, these fields are scrubbed of credentials: API keys 
 
 **Sign-in (separate from analytics):** Signing in is optional and is the only flow that talks to our own API. It exchanges a randomly generated device id, this extension's id, and — only after you approve the sign-in page — a session token. The token stays in the extension's background context (never in page scripts, never synced to your Google account), and signing out removes it from this device. Credentials are never sent to PostHog. Without signing in, every feature works exactly as before.
 
+**Subscriptions (separate from analytics):** Upgrading is handled on our website. The extension asks our API
+for a checkout link, opens it in a new tab, and then polls your own account endpoint so the new plan shows up
+when you come back. Payment details are entered on the payment provider's page and never pass through the
+extension. The same applies to the customer portal (changing a card, cancelling, invoices).
+
 ### 3. Text Processing
 
 When you select text and use AI features, one of two paths is used — which one depends on the engine you
