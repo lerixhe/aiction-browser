@@ -1258,6 +1258,148 @@ export function createOptionsCss(theme: UiTheme): string {
     color: ${theme.text.secondary};
   }
 
+  /* ── 套餐表（M3，契约 §4.3）────────────────
+     每张卡只陈述服务端下发的事实：名称 / 价格 / 额度 / 周期。
+     价格数值不写在 CSS 里也不太可能出现——它们只来自 /v1/meta。 */
+
+  .opt-plans-switch {
+    display: flex;
+    justify-content: flex-end;
+    margin: 2px 0 12px;
+  }
+
+  .opt-plans {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .opt-plan {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 14px 16px;
+    border: 1px solid ${theme.border.hairline};
+    border-radius: ${optSize.cardRadius}px;
+    background: ${theme.bg.surfaceAlt};
+  }
+
+  .opt-plan--current {
+    border-color: ${accent}66;
+    background: ${accent}0f;
+  }
+
+  .opt-plan-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 22px;
+  }
+
+  .opt-plan-name {
+    font-size: ${optSize.rowTitleSize}px;
+    font-weight: ${uiTypography.fontWeight.semibold};
+    color: ${theme.text.primary};
+  }
+
+  .opt-plan-price {
+    font-size: 20px;
+    font-weight: ${uiTypography.fontWeight.semibold};
+    letter-spacing: ${uiTypography.letterSpacing.tight};
+    color: ${theme.text.primary};
+  }
+
+  .opt-plan-meta {
+    font-size: ${optSize.rowDescSize}px;
+    color: ${theme.text.secondary};
+    margin-bottom: 6px;
+  }
+
+  .opt-plan .opt-btn {
+    align-self: flex-start;
+  }
+
+  /* ── 用量趋势（M3，契约 §4.2）────────────── */
+
+  .opt-trend {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .opt-trend-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    font-size: ${optSize.rowDescSize}px;
+    color: ${theme.text.secondary};
+  }
+
+  .opt-trend-key {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .opt-trend-key b {
+    color: ${theme.text.primary};
+    font-weight: ${uiTypography.fontWeight.semibold};
+  }
+
+  .opt-trend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+  }
+
+  .opt-trend-dot--in {
+    background: ${accent};
+  }
+
+  .opt-trend-dot--out {
+    background: ${theme.border.strong};
+  }
+
+  .opt-trend-range {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .opt-trend-chart {
+    display: block;
+    width: 100%;
+    height: 120px;
+  }
+
+  .opt-trend-axis {
+    stroke: ${theme.border.hairline};
+    stroke-width: 1;
+  }
+
+  .opt-trend-line {
+    fill: none;
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    /* 保留矢量效果：viewBox 被拉伸时线宽不会跟着变粗（preserveAspectRatio="none"） */
+  }
+
+  .opt-trend-line--in {
+    stroke: ${accent};
+  }
+
+  .opt-trend-line--out {
+    stroke: ${theme.border.strong};
+    stroke-dasharray: 3 3;
+  }
+
   @keyframes opt-fade-in {
     from { opacity: 0; }
     to { opacity: 1; }

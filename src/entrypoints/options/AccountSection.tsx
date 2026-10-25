@@ -1,14 +1,18 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { trackEvent, usedRatioBucket } from "@/shared/analytics"
 
 import { manageSubscriptionAction, planLabelKey, subscriptionStatusKey } from "@/shared/auth/actions"
-import { OFFICIAL_AI_ENABLED, WEB_BASE, WEB_ROUTES } from "@/shared/auth/config"
+import { OFFICIAL_AI_ENABLED, DEFAULT_OFFICIAL_MODEL } from "@/shared/auth/config"
 import type {
   AuthSignInResponse,
   AuthSignOutResponse,
+  BillingPortalResponse,
   Entitlements,
-  EntitlementsResponse
+  EntitlementsResponse,
+  OfficialModel,
+  OfficialModelsResponse,
+  PlanId
 } from "@/shared/auth/types"
 import { useAuthSnapshot } from "@/shared/auth/use-auth-snapshot"
 import { MESSAGE_TYPES } from "@/shared/constants"
@@ -18,7 +22,9 @@ import { resolveActiveProvider } from "@/shared/provider-resolve"
 import { getActiveProvider } from "@/shared/storage"
 import type { ExtensionSettings } from "@/shared/types"
 import { ConfirmDialog } from "./ConfirmDialog"
-import { Button, FieldGroup, Hint, SectionCard, SegmentedControl, SettingRow, Skeleton } from "./ui"
+import { Button, FieldGroup, Hint, SectionCard, SegmentedControl, SelectField, SettingRow, Skeleton } from "./ui"
+import { SubscriptionCard } from "./SubscriptionCard"
+import { UsageTrendCard } from "./UsageTrendCard"
 
 interface AccountSectionProps {
   settings: ExtensionSettings
@@ -62,37 +68,62 @@ export function AccountSection({ settings, saveSettingsNow }: AccountSectionProp
 
   // 权益（订阅到期日 / 客户门户链接）：只在进入本分区或登录态变化时强制回源一次。
   // 依赖用 `state` 而不是 `updatedAt`：后者在登录流程里会变两次，白白多打一次 /v1/me。
+  const mountedRef = useRef(true)
+  /** 最近一次拉权益的时间：`visibilitychange` 回源靠它节流（切回来十几次不该发十几次请求） */
+  const lastFetchRef = useRef(0)
+
+  const refreshEntitlements = useCallback(async (force: boolean) => {
+    lastFetchRef.current = Date.now()
+    try {
+      const response = (await chrome.runtime.sendMessage({
+        type: MSG.ENTITLEMENTS_REQUEST,
+        payload: { force }
+      })) as EntitlementsResponse | undefined
+      if (!mountedRef.current) return
+      if (response?.success && response.entitlements) {
+        setEntitlements(response.entitlements)
+        setEntitlementsFailed(false)
+      } else {
+        // 失败**不改 plan**：一次 500 不能把 pro 用户显示成 free
+        setEntitlementsFailed(true)
+      }
+    } catch {
+      if (mountedRef.current) setEntitlementsFailed(true)
+    }
+  }, [])
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
   useEffect(() => {
     if (!hasPrincipal) {
       setEntitlements(null)
       setEntitlementsFailed(false)
       return
     }
+    void refreshEntitlements(true)
+  }, [hasPrincipal, refreshEntitlements])
 
-    let alive = true
-    void (async () => {
-      try {
-        const response = (await chrome.runtime.sendMessage({
-          type: MSG.ENTITLEMENTS_REQUEST,
-          payload: { force: true }
-        })) as EntitlementsResponse | undefined
-        if (!alive) return
-        if (response?.success && response.entitlements) {
-          setEntitlements(response.entitlements)
-          setEntitlementsFailed(false)
-        } else {
-          // 失败**不改 plan**：一次 500 不能把 pro 用户显示成 free
-          setEntitlementsFailed(true)
-        }
-      } catch {
-        if (alive) setEntitlementsFailed(true)
-      }
-    })()
-
-    return () => {
-      alive = false
+  /**
+   * 从外部结算页切回来时强制回源一次（契约 §4.1「结算页关闭后回来」）。
+   *
+   * 这是轮询之外的第二道保险：用户可能在 Options 页被关掉 / 刷新后直接去付款，
+   * 那种情况下没人轮询，只有「页面重新可见」这个时机能发现档位已经变了。
+   */
+  useEffect(() => {
+    if (!hasPrincipal) return
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return
+      if (Date.now() - lastFetchRef.current < 15_000) return
+      void refreshEntitlements(true)
     }
-  }, [hasPrincipal])
+    document.addEventListener("visibilitychange", onVisibilityChange)
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange)
+  }, [hasPrincipal, refreshEntitlements])
 
   const formatDate = (iso: string): string => {
     const date = new Date(iso)
@@ -161,18 +192,27 @@ export function AccountSection({ settings, saveSettingsNow }: AccountSectionProp
     }
   }
 
+  /**
+   * 客户门户（改卡 / 取消 / 发票）。
+   *
+   * M3 起走 `BILLING_PORTAL_REQUEST` 而不是在 UI 里直接 `chrome.tabs.create`：
+   * `manage_url` 优先、拿不到才 `POST /v1/billing/portal`，这层决策（含凭据）只能在 background。
+   */
   const handleManageSubscription = () => {
-    // `manageUrl` 由服务端下发；拿不到时退到账单页。
-    // 路由字面量只在 `config.ts` 的 `WEB_ROUTES` 里拼，别处一律引常量（否则统一改域 / 改路径时必漏）。
-    const url = entitlements?.subscription.manageUrl || `${WEB_BASE}${WEB_ROUTES.billing}`
     const fail = () => setActionError(t("options.account.openFailed"))
-    // `chrome.tabs.create` 在扩展上下文失效（重载后遗留的页面）后会**同步抛** TypeError，
-    // 不会变成 rejection：只挂 `.catch` 接不住，两路都兜住，否则就是最典型的「点了没反应」。
-    try {
-      void chrome.tabs.create({ url }).catch(fail)
-    } catch {
-      fail()
-    }
+    setActionError(null)
+    void (async () => {
+      try {
+        const response = (await chrome.runtime.sendMessage({
+          type: MSG.BILLING_PORTAL_REQUEST
+        })) as BillingPortalResponse | undefined
+        if (!response?.success) fail()
+      } catch {
+        // 扩展上下文失效（重载后遗留的页面）时 sendMessage 也会 reject —— 两路都兜住，
+        // 否则就是最典型的「点了没反应」
+        fail()
+      }
+    })()
   }
 
   // ── 渲染 ────────────────────────────────────────────────
@@ -290,6 +330,32 @@ export function AccountSection({ settings, saveSettingsNow }: AccountSectionProp
     </SettingRow>
   )
 
+  /** 结算确认到新档位后的回调：重拉一次权益（到期日 / 订阅状态） */
+  const handleUpgraded = useCallback(() => {
+    void refreshEntitlements(true)
+  }, [refreshEntitlements])
+
+  /**
+   * 官方模型选择（M3，契约 §5.1）：白名单由 background 下发，**已按当前档位过滤**——
+   * 客户端不写死模型名，也不自己算「哪个档能用哪个模型」（那份推导只能出现在一处）。
+   */
+  const modelRow =
+    OFFICIAL_AI_ENABLED && hasPrincipal ? (
+      <OfficialModelRow
+        value={settings.officialModel}
+        plan={snapshot.plan}
+        onSelect={(model) => {
+          saveSettingsNow((current) => ({ ...current, officialModel: model }))
+          void trackEvent("model_selected", {
+            provider_type: "official",
+            source_list: "fetched",
+            model,
+            source: "options"
+          })
+        }}
+      />
+    ) : null
+
   return (
     <>
       <SectionCard title={t("options.account.cardTitle")} description={t("options.account.cardDesc")}>
@@ -303,8 +369,21 @@ export function AccountSection({ settings, saveSettingsNow }: AccountSectionProp
             />
           ) : null}
           {engineRow}
+          {modelRow}
         </FieldGroup>
       </SectionCard>
+
+      {hasPrincipal ? (
+        <SubscriptionCard
+          plan={snapshot.plan}
+          signedIn={signedIn}
+          onRequireSignIn={() => void handleSignIn()}
+          onManage={handleManageSubscription}
+          onUpgraded={handleUpgraded}
+        />
+      ) : null}
+
+      <UsageTrendCard enabled={hasPrincipal} />
 
       {confirmSignOut ? (
         <ConfirmDialog
@@ -317,6 +396,80 @@ export function AccountSection({ settings, saveSettingsNow }: AccountSectionProp
         />
       ) : null}
     </>
+  )
+}
+
+interface OfficialModelRowProps {
+  /** 用户已选的模型（可能为空 = 跟随服务端默认） */
+  value?: string
+  plan: PlanId
+  onSelect: (model: string) => void
+}
+
+/**
+ * 官方模型选择行。
+ *
+ * 两个口径：
+ * - **模型列表拿不到 ≠ 没有模型**：拉失败就不画下拉（引导用户去填 API Key 是错的）；
+ * - 当前值不在列表里（降档后原模型不可用）时显示 **background 解析出的实际生效模型**，
+ *   而不是把下拉停在空选项上——用户看到的必须是真正在发请求的那个模型。
+ */
+function OfficialModelRow({ value, plan, onSelect }: OfficialModelRowProps) {
+  const { t } = useI18n()
+  const [models, setModels] = useState<OfficialModel[] | null>(null)
+  const [resolved, setResolved] = useState("")
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    // 档位变了要重拉：白名单的过滤在 background 侧做（按当前 plan）
+    setLoaded(false)
+    void (async () => {
+      try {
+        const response = (await chrome.runtime.sendMessage({
+          type: MSG.OFFICIAL_MODELS_REQUEST
+        })) as OfficialModelsResponse | undefined
+        if (!alive) return
+        setModels(response?.models ?? null)
+        setResolved(response?.officialModel ?? "")
+      } catch {
+        if (alive) {
+          setModels(null)
+          setResolved("")
+        }
+      } finally {
+        if (alive) setLoaded(true)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [plan])
+
+  const options = (models ?? []).map((model) => ({ value: model.id, label: model.name }))
+  const known = value && options.some((option) => option.value === value)
+  const current = known ? (value as string) : resolved || options[0]?.value || ""
+
+  if (!loaded) {
+    return (
+      <SettingRow title={t("options.account.modelTitle")} desc={t("options.account.modelDesc")}>
+        <Skeleton style={{ width: 180, height: 32 }} />
+      </SettingRow>
+    )
+  }
+
+  if (options.length === 0) {
+    return (
+      <SettingRow title={t("options.account.modelTitle")} desc={t("options.account.modelUnavailable")}>
+        <span className="opt-account-plan-name">{DEFAULT_OFFICIAL_MODEL}</span>
+      </SettingRow>
+    )
+  }
+
+  return (
+    <SettingRow title={t("options.account.modelTitle")} desc={t("options.account.modelDesc")}>
+      <SelectField value={current} options={options} ariaLabel={t("options.account.modelTitle")} onValueChange={onSelect} />
+    </SettingRow>
   )
 }
 
