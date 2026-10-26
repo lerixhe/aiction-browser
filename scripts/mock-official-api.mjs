@@ -638,6 +638,13 @@ async function handleRequest(req, res) {
       const principal = authenticate(req, res)
       if (!principal) return
 
+      // 客户端的真实请求是 `?granularity=day`（见 shared/auth/usage.ts）。
+      // 不校验的话，客户端把参数名拼错在本地永远绿 —— 线上才会发现拿不到数据。
+      const granularity = url.searchParams.get("granularity") ?? "day"
+      if (granularity !== "day") {
+        return sendError(res, 400, "invalid_request", `不支持的粒度：${granularity}`)
+      }
+
       const days = Math.max(1, Math.min(90, Number(url.searchParams.get("days") ?? process.env.MOCK_USAGE_DAYS ?? 7)))
       const points = []
       for (let offset = days - 1; offset >= 0; offset--) {
@@ -657,7 +664,8 @@ async function handleRequest(req, res) {
       const principal = authenticate(req, res)
       if (!principal) return
       if (principal.kind !== "user") {
-        return sendError(res, 403, "subscription_required", "匿名设备不能创建结算会话，请先登录")
+        // 契约 §1.4：subscription_required 属 **402**（「钱/额度」通道），不是 403
+        return sendError(res, 402, "subscription_required", "匿名设备不能创建结算会话，请先登录")
       }
 
       const idempotencyKey = req.headers["idempotency-key"]
@@ -1344,13 +1352,16 @@ async function runSelftest() {
       models.json.data.some((model) => model.min_plan !== "anonymous" && model.min_plan !== "free")
     )
 
-    const usage = await call("/v1/me/usage?days=7", { accessToken: access2 })
+    const usage = await call("/v1/me/usage?granularity=day&days=7", { accessToken: access2 })
     check(
       "/v1/me/usage 返回 7 个点且日期升序",
       usage.status === 200 &&
         usage.json.points.length === 7 &&
         usage.json.points[0].date < usage.json.points[6].date
     )
+
+    const badGranularity = await call("/v1/me/usage?granularity=hour", { accessToken: access2 })
+    check("usage 粒度不是 day → 400（客户端参数写错要能被本地抓到）", badGranularity.status === 400)
 
     const noKey = await call("/v1/billing/checkout", {
       method: "POST",

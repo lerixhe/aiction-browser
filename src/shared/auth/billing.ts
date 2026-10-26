@@ -69,12 +69,17 @@ function newIdempotencyKey(): string {
  * 结算 URL 的安全校验。
  *
  * 只放 http(s)：`javascript:` / `data:` 一旦落到 `chrome.tabs.create` 就是「点一下执行代码」。
- * dev 环境（`API_BASE` 指向本机 mock）允许 `http:`，生产只认 `https:`。
+ * **生产只认 `https:`**：本机 mock 的假结算页是 `http://127.0.0.1:8787`，所以 dev 构建放行 http，
+ * 线上包一律不许。这条分支写死在这里而不是交给调用方，免得哪天有人为了本地方便把它整个放开。
+ *
+ * `allowHttp` 只给单测/显式调用用；默认按构建期 DEV 常量判定。
  */
-export function isSafeCheckoutUrl(raw: string): boolean {
+export function isSafeCheckoutUrl(raw: string, options: { allowHttp?: boolean } = {}): boolean {
   try {
     const url = new URL(raw)
-    return url.protocol === "https:" || url.protocol === "http:"
+    if (url.protocol === "https:") return true
+    const allowHttp = options.allowHttp ?? import.meta.env?.DEV === true
+    return allowHttp && url.protocol === "http:"
   } catch {
     return false
   }

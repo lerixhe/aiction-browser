@@ -62,8 +62,9 @@ export const USAGE_TTL_MS = 60_000
 /**
  * 结算后轮询 `/v1/me` 的节奏（契约 §7.1：3s × 100 次 ≈ 5 分钟）。
  *
- * 之所以放在 background 而不是 UI：用户点完升级会跳到外部结算页，Options 页此时在后台，
- * 定时器照跑但**没人看结果**，而「付完钱回来额度还是旧的」正是最刺眼的一类 bug。
+ * ⚠️ 轮询跑在 **Options 账号页（UI）**，不在 background：MV3 的 SW 空闲 30s 就会被回收，
+ * `setTimeout` 随之丢失 —— 那正是「付了钱额度还是旧的」最常见的成因。
+ * background 只负责「创建结算会话 + 打开页面」，结果由 UI 盯（见 `SubscriptionCard.tsx`）。
  */
 export const CHECKOUT_POLL_INTERVAL_MS = 3_000
 export const CHECKOUT_POLL_MAX_ATTEMPTS = 100

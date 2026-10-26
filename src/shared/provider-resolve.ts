@@ -9,7 +9,8 @@
  * 这样 M1 上线不会因为官方链路未就绪而破坏现有用户。
  */
 import { API_BASE, DEFAULT_OFFICIAL_MODEL, OFFICIAL_AI_ENABLED } from "@/shared/auth/config"
-import type { AuthSnapshot } from "@/shared/auth/types"
+import { resolveOfficialModel } from "@/shared/auth/official-model"
+import type { AuthSnapshot, OfficialModel } from "@/shared/auth/types"
 import type { ExtensionSettings, ProviderConfig } from "@/shared/types"
 
 /** 官方 provider 的固定 id：不进 `providers[]`，只在运行时构造 */
@@ -19,6 +20,9 @@ export const OFFICIAL_PROVIDER_ID = "official"
  * 构造官方 provider 的运行时配置。
  * `apiKey` 故意留空：真正的凭据由 background 在发请求前注入（`provider-credentials.ts`），
  * 绝不写进这个对象、绝不进存储。
+ *
+ * 这里的 `model` 是**未经白名单校正**的初步值（`settings.officialModel` → 兜底常量）。
+ * 真正发请求时用 `resolveEngine()` 再校正一次（见那个函数的注释）。
  */
 export function buildOfficialProvider(input: { snapshot: AuthSnapshot; officialModel?: string }): ProviderConfig {
   return {
@@ -68,4 +72,41 @@ export function resolveActiveProvider(
   )
   // `kind` 缺省即 byok：在这里归一化，上层（尤其 M2 的 `resolveProvider`）永远无需处理 undefined
   return active ? { ...active, kind: active.kind ?? "byok" } : null
+}
+
+/**
+ * 当前引擎的**最终**解析（官方模型已按白名单校正）。
+ *
+ * 为什么还需要这一层：`resolveActiveProvider()` 是同步纯函数，它看不到白名单，
+ * 因此只能给「用户偏好 || 兜底常量」。而白名单决定了这个偏好**当前档位还能不能用**：
+ * 用户选了 `aiction-pro` 后降档到 free，偏好仍留在设置里 —— 不校正的话每一次官方对话
+ * 都 403 `model_not_allowed`，而设置页却会显示 `aiction-fast`（那是另一份解析）。
+ *
+ * 三条约束：
+ * 1. 只在官方引擎下加载白名单：BYOK 不该因为一次多余的 `/v1/models` 拖慢首字节；
+ * 2. **白名单拿不到时原样返回**（保持现有行为，不因一次列表失败换掉用户的模型）；
+ * 3. I/O 由调用方注入（`loadOfficialModels`）而不是这里 import：本模块在 Options / Popup
+ *    的依赖链上，直接引 `models.ts` 会把 `request.ts`（取 token 的代码路径）带进 UI bundle。
+ */
+export async function resolveEngine(input: {
+  settings: ExtensionSettings
+  snapshot: AuthSnapshot
+  loadOfficialModels: () => Promise<OfficialModel[] | null>
+  /** 只给单测用：默认取构建期常量 */
+  officialEnabled?: boolean
+}): Promise<ProviderConfig | null> {
+  const { settings, snapshot, loadOfficialModels } = input
+  const provider = resolveActiveProvider(settings, snapshot, { officialEnabled: input.officialEnabled })
+  if (!provider || provider.kind !== "official") return provider
+
+  let models: OfficialModel[] | null = null
+  try {
+    models = await loadOfficialModels()
+  } catch {
+    models = null
+  }
+  if (!models) return provider
+
+  const model = resolveOfficialModel(models, snapshot.plan, settings.officialModel)
+  return model && model !== provider.model ? { ...provider, model } : provider
 }

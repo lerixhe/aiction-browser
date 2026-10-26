@@ -34,6 +34,9 @@ function num(value: unknown): number | undefined {
  *   画出来只会是一个「没有文案的档位」（`t()` 会把键名原文渲染到界面上）。
  * - **`price <= 0` 丢弃**：0 价档是免费额度，不是商品；把它排进套餐表会得到一个「可以点击购买的 0 元档」。
  * - **缺 `currency` 丢弃**：没有货币单位的数字无法展示（宁可少一行，不要显示 `29`）。
+ * - **有价却没有周期也丢弃**：契约 §4.3 里 `interval: null` 只对应免费档（已被 `price <= 0` 挡掉），
+ *   真出现「有价 + 无周期」说明我们看不懂这个商品——不猜它的周期，也不让用户点进一个
+ *   按当前切换的周期提交错误的结算会话。
  */
 function parsePlanOffer(raw: unknown): PlanOffer | null {
   if (!raw || typeof raw !== "object") return null
@@ -46,6 +49,7 @@ function parsePlanOffer(raw: unknown): PlanOffer | null {
 
   const interval: BillingInterval | null =
     record.interval === "month" || record.interval === "year" ? record.interval : null
+  if (!interval) return null
 
   return {
     id: record.id,

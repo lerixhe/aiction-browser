@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from "react"
 import { trackEvent } from "@/shared/analytics"
 import { planLabelKey } from "@/shared/auth/actions"
 import { CHECKOUT_POLL_INTERVAL_MS, CHECKOUT_POLL_MAX_ATTEMPTS } from "@/shared/auth/config"
+import { nextPollStep } from "@/shared/auth/upgrade-watch"
 import type {
   BillingInterval,
   CheckoutResponse,
@@ -24,7 +25,7 @@ import type {
   PlanOffer,
   ServerMeta
 } from "@/shared/auth/types"
-import { PLAN_RANK, hasPlanChanged, isPlanUpgrade } from "@/shared/auth/types"
+import { PLAN_RANK } from "@/shared/auth/types"
 import { MESSAGE_TYPES } from "@/shared/constants"
 import { useI18n } from "@/shared/i18n/context"
 import { parseLocaleTag } from "@/shared/language-tag"
@@ -167,12 +168,19 @@ export function SubscriptionCard({
         })) as EntitlementsResponse | undefined
         if (cancelled) return
 
-        const nextPlan = response?.snapshot?.plan
-        if (nextPlan && hasPlanChanged(watch.baselinePlan, nextPlan)) {
+        // 决策交给纯函数（可单测）：命中 / 超时 / 继续 —— 这三个分支不能只靠手测兜底
+        const step = nextPollStep({
+          baselinePlan: watch.baselinePlan,
+          nextPlan: response?.snapshot?.plan ?? null,
+          attempts,
+          maxAttempts: CHECKOUT_POLL_MAX_ATTEMPTS
+        })
+
+        if (step.kind === "changed") {
           // `subscription_activated` 只在**升级**时报（降级是用户取消订阅，漏斗里不是同一个动作）
-          if (isPlanUpgrade(watch.baselinePlan, nextPlan)) {
+          if (step.upgraded) {
             void trackEvent("subscription_activated", {
-              plan: nextPlan,
+              plan: step.plan,
               period: watch.interval,
               is_first: watch.baselinePlan === "free" || watch.baselinePlan === "anonymous",
               elapsed_bucket: elapsedBucket(Date.now() - watch.startedAt),
@@ -182,6 +190,12 @@ export function SubscriptionCard({
           setNotice(t("options.account.upgraded"))
           setWatch(null)
           onUpgradedRef.current()
+          return
+        }
+
+        if (step.kind === "timeout") {
+          setError(t("options.account.checkoutTimeout"))
+          setWatch(null)
           return
         }
       } catch {

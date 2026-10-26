@@ -5,11 +5,12 @@
  * 曲线用内联 SVG 而不是引入图表库——这里只需要两条折线，而任何图表库都会给
  * Options 的包体加几十 KB（`AGENTS.md` 的记录：包体每加一档都要重新评估）。
  */
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import type { UsagePoint, UsageResponse, UsageSeries } from "@/shared/auth/types"
 import { MESSAGE_TYPES } from "@/shared/constants"
 import { useI18n } from "@/shared/i18n/context"
+import { parseLocaleTag } from "@/shared/language-tag"
 import { Button, SectionCard, Skeleton } from "./ui"
 
 const MSG = MESSAGE_TYPES
@@ -20,10 +21,19 @@ const MAX_POINTS = 30
 const CHART_WIDTH = 100
 const CHART_HEIGHT = 40
 
-function compact(value: number): string {
+/**
+ * 大数缩略：**交给 `Intl.NumberFormat({notation:"compact"})`**，不要手写 K/M。
+ * 手写后缀在中文/日文界面里会得到「3K」而不是「3000」「3千」，
+ * 也与套餐卡里额度那处（用 Intl）口径不一致。
+ */
+function compactOf(formatter: Intl.NumberFormat | null, value: number): string {
   if (value < 1000) return String(value)
-  if (value < 1_000_000) return `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}K`
-  return `${(value / 1_000_000).toFixed(1)}M`
+  if (!formatter) return String(value)
+  try {
+    return formatter.format(value)
+  } catch {
+    return String(value)
+  }
 }
 
 /**
@@ -50,8 +60,19 @@ function peakOf(points: UsagePoint[]): number {
 }
 
 export function UsageTrendCard({ enabled }: { enabled: boolean }) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const [series, setSeries] = useState<UsageSeries | null>(null)
+  const compactFormatter = useMemo(() => {
+    try {
+      return new Intl.NumberFormat(parseLocaleTag(locale)?.toString() ?? "en", {
+        notation: "compact",
+        maximumFractionDigits: 1
+      })
+    } catch {
+      return null
+    }
+  }, [locale])
+  const compact = (value: number) => compactOf(compactFormatter, value)
   const [loaded, setLoaded] = useState(false)
   /** 拉取失败时允许重试（与套餐卡同一个理由：后台未就绪时不能只能靠重开页面自愈） */
   const [attempt, setAttempt] = useState(0)

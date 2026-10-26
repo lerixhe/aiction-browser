@@ -40,7 +40,7 @@ import {
 } from "@/shared/chat-stream"
 import { fetchModelsDev } from "@/shared/models-dev"
 import { fetchOpenRouterModels } from "@/shared/openrouter"
-import { resolveActiveProvider } from "@/shared/provider-resolve"
+import { resolveEngine } from "@/shared/provider-resolve"
 import { resolveProvider, type ResolvedProvider } from "@/shared/provider-credentials"
 import { applyQuotaHeaders, getSnapshot, initializeSession, refreshSnapshotFromServer, signIn, signOut } from "@/shared/auth/session"
 import { toAuthError } from "@/shared/auth/errors"
@@ -49,7 +49,8 @@ import { OFFICIAL_AI_ENABLED, WEB_BASE, WEB_ROUTES } from "@/shared/auth/config"
 import { clearEntitlementsCache, getEntitlements } from "@/shared/auth/entitlements"
 import { createCheckoutSession, getBillingPortalUrl, isBillingInterval, isPurchasablePlan } from "@/shared/auth/billing"
 import { getServerMeta, isClientOutdated } from "@/shared/auth/meta"
-import { getOfficialModels, modelsForPlan, resolveOfficialModel } from "@/shared/auth/models"
+import { getOfficialModels } from "@/shared/auth/models"
+import { modelsForPlan, resolveOfficialModel } from "@/shared/auth/official-model"
 import { getUsageSeries } from "@/shared/auth/usage"
 import type {
   AuthSignInResponse,
@@ -172,7 +173,8 @@ async function currentProviderIdentity(): Promise<ProviderIdentityProps> {
   try {
     const settings = await getSettings()
     const snapshot = await getSnapshot()
-    return providerIdentityOf(resolveActiveProvider(settings, snapshot))
+    const provider = await resolveEngine({ settings, snapshot, loadOfficialModels: () => getOfficialModels() })
+    return providerIdentityOf(provider)
   } catch {
     return { provider_type: "none", is_custom_endpoint: false, has_api_key: false }
   }
@@ -275,7 +277,9 @@ async function streamChat(
   const settings = await getSettings()
   // 引擎真值：与 Popup / Options 同一个解析入口（官方 provider 是运行时构造的，不在 providers[] 里）
   const snapshot = await getSnapshot()
-  const activeService = resolveActiveProvider(settings, snapshot)
+  // 用 resolveEngine 而不是 resolveActiveProvider：官方模型必须按白名单校正，
+  // 否则「设置里的偏好已不可用」时，界面显示的是一个模型、请求发的是另一个（每次都 403）。
+  const activeService = await resolveEngine({ settings, snapshot, loadOfficialModels: () => getOfficialModels() })
   const identity = providerIdentityOf(activeService)
   const isOfficial = activeService?.kind === "official"
 
@@ -1084,8 +1088,16 @@ export default defineBackground(() => {
           // 权益更新必须**同时**更新快照：否则同一页面上「用量条（读快照）」与
           // 「到期日（读权益）」会来自两个不同时刻，而结算后最刺眼的就是「付了钱额度条没动」。
           // `force: false` 复用刚刷到的缓存，不多打一次 `/v1/me`。
-          const snapshot = await refreshSnapshotFromServer({ force: false })
-          sendResponse({ success: true, entitlements, snapshot } satisfies EntitlementsResponse)
+          //
+          // ⚠️ 失败时**不能**走这一步：`getEntitlements` 失败不写缓存，此时
+          // `refreshSnapshotFromServer({force:false})` 会再取一次 → 变成两次 `/v1/me`。
+          // 结算轮询期间网关 5xx 时，那就是 3s 一次的双倍请求。
+          const snapshot = entitlements ? await refreshSnapshotFromServer({ force: false }) : undefined
+          sendResponse({
+            success: true,
+            entitlements,
+            ...(snapshot ? { snapshot } : {})
+          } satisfies EntitlementsResponse)
         } catch (error: unknown) {
           sendResponse({ success: false, error: getErrorMessage(error) } satisfies EntitlementsResponse)
         }
@@ -1145,7 +1157,7 @@ export default defineBackground(() => {
     void (async () => {
       try {
         const [settings, snapshot] = await Promise.all([getSettings(), getSnapshot()])
-        const provider = resolveActiveProvider(settings, snapshot)
+        const provider = await resolveEngine({ settings, snapshot, loadOfficialModels: () => getOfficialModels() })
         sendResponse({
           success: true,
           engine: provider

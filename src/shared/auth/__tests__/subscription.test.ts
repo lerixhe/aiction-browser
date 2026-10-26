@@ -15,16 +15,14 @@ import {
   isSafeCheckoutUrl,
   resetCheckoutCache
 } from "@/shared/auth/billing"
+import { CHECKOUT_REUSE_WINDOW_MS } from "@/shared/auth/config"
 import { clearMetaCache, compareVersions, getServerMeta, isClientOutdated, parseMeta } from "@/shared/auth/meta"
-import {
-  clearOfficialModelsCache,
-  modelsForPlan,
-  parseOfficialModels,
-  resolveOfficialModel
-} from "@/shared/auth/models"
+import { clearOfficialModelsCache, getOfficialModels } from "@/shared/auth/models"
+import { modelsForPlan, parseOfficialModels, resolveOfficialModel } from "@/shared/auth/official-model"
 import { configureAuthRequest, resetAuthRequest } from "@/shared/auth/request"
-import { parseUsageSeries, peakTokens } from "@/shared/auth/usage"
+import { clearUsageCache, getUsageSeries, parseUsageSeries, peakTokens } from "@/shared/auth/usage"
 import { hasPlanChanged, isPlanUpgrade } from "@/shared/auth/types"
+import { nextPollStep } from "@/shared/auth/upgrade-watch"
 import { installChromeStub, uninstallChromeStub } from "./chrome-stub"
 import { installFetchStub, jsonResponse } from "./fetch-stub"
 
@@ -74,6 +72,7 @@ beforeEach(() => {
   resetAnonymousIdCache()
   clearMetaCache()
   clearOfficialModelsCache()
+  clearUsageCache()
   resetCheckoutCache()
   configureAuthRequest({
     getAccessToken: async () => "at-1",
@@ -88,6 +87,7 @@ afterEach(() => {
   resetAnonymousIdCache()
   clearMetaCache()
   clearOfficialModelsCache()
+  clearUsageCache()
   resetCheckoutCache()
   globalThis.fetch = originalFetch
 })
@@ -194,9 +194,17 @@ describe("结算会话", () => {
 
   it("URL 只放 http(s)：javascript: / 相对路径一律拒", () => {
     expect(isSafeCheckoutUrl("https://checkout.example.com/x")).toBe(true)
-    expect(isSafeCheckoutUrl("http://127.0.0.1:8787/billing/checkout?session=cs_1")).toBe(true)
     expect(isSafeCheckoutUrl("javascript:alert(1)")).toBe(false)
     expect(isSafeCheckoutUrl("/billing/checkout")).toBe(false)
+    expect(isSafeCheckoutUrl("data:text/html,<script>alert(1)</script>")).toBe(false)
+  })
+
+  it("http: 只在 allowHttp（dev）时放行，生产一律只认 https", () => {
+    const local = "http://127.0.0.1:8787/billing/checkout?session=cs_1"
+    expect(isSafeCheckoutUrl(local, { allowHttp: true })).toBe(true)
+    // 这条是「生产只认 https」的回归保护：注释承诺过，实现必须跟上
+    expect(isSafeCheckoutUrl(local, { allowHttp: false })).toBe(false)
+    expect(isSafeCheckoutUrl("https://checkout.example.com/x", { allowHttp: false })).toBe(true)
   })
 
   it("请求带 Idempotency-Key；同 plan + interval 在窗口内复用，不打第二次", async () => {
@@ -230,6 +238,29 @@ describe("结算会话", () => {
     expect(calls).toHaveLength(2)
   })
 
+  it("幂等窗口过期后重新创建（旧 URL 不能永远复用）", async () => {
+    const calls = installFetchStub([
+      () => jsonResponse(200, { url: "https://checkout.example.com/cs_1" }),
+      () => jsonResponse(200, { url: "https://checkout.example.com/cs_2" })
+    ])
+
+    const first = await createCheckoutSession({ plan: "pro", interval: "month" })
+    const firstKey = new Headers(calls[0].init.headers).get("Idempotency-Key")
+
+    // 把「现在」推到窗口之外（5 分钟 + 1ms）
+    const realNow = Date.now
+    Date.now = () => realNow() + CHECKOUT_REUSE_WINDOW_MS + 1
+    try {
+      const second = await createCheckoutSession({ plan: "pro", interval: "month" })
+      expect(second).toBe("https://checkout.example.com/cs_2")
+      expect(first).toBe("https://checkout.example.com/cs_1")
+      expect(calls).toHaveLength(2)
+      expect(new Headers(calls[1].init.headers).get("Idempotency-Key")).not.toBe(firstKey)
+    } finally {
+      Date.now = realNow
+    }
+  })
+
   it("服务端返回非法地址 → 抛错（不打开一个 javascript: 链接）", async () => {
     installFetchStub([() => jsonResponse(200, { url: "javascript:alert(1)" })])
     await expect(createCheckoutSession({ plan: "max", interval: "month" })).rejects.toThrow()
@@ -244,6 +275,36 @@ describe("结算会话", () => {
 })
 
 describe("失败不写缓存", () => {
+  it("/v1/models 失败 → null 且不缓存（下一次 force 会重试）", async () => {
+    const calls = installFetchStub([
+      () => jsonResponse(500, { error: { code: "internal" } }),
+      () => jsonResponse(200, modelsPayload)
+    ])
+
+    await expect(getOfficialModels()).resolves.toBeNull()
+    // 退避期内不发第二次请求：M3 起请求路径也会读这份列表，
+    // 「列表拿不到 → 每次对话都先打一次失败请求」是不可接受的
+    await expect(getOfficialModels()).resolves.toBeNull()
+    expect(calls).toHaveLength(1)
+
+    // 显式 force 才重试（等价于用户重新打开设置页 / 24h 后自然重试）
+    const models = await getOfficialModels({ force: true })
+    expect(models?.map((model) => model.id)).toEqual(["aiction-fast", "aiction-pro"])
+    expect(calls).toHaveLength(2)
+  })
+
+  it("/v1/me/usage 失败 → null 且不缓存", async () => {
+    const calls = installFetchStub([
+      () => jsonResponse(500, { error: { code: "internal" } }),
+      () => jsonResponse(200, { points: [{ date: "2026-11-14", in_tokens: 1, out_tokens: 1, requests: 1 }] })
+    ])
+
+    await expect(getUsageSeries()).resolves.toBeNull()
+    const usage = await getUsageSeries()
+    expect(usage?.points).toHaveLength(1)
+    expect(calls).toHaveLength(2)
+  })
+
   it("/v1/meta 500 → null，且下一次请求会重试（没被钉住一整个 TTL）", async () => {
     const calls = installFetchStub([
       () => jsonResponse(500, { error: { code: "internal" } }),
@@ -254,5 +315,52 @@ describe("失败不写缓存", () => {
     const meta = await getServerMeta()
     expect(meta?.plans).toHaveLength(3)
     expect(calls).toHaveLength(2)
+  })
+})
+
+describe("结算轮询决策（nextPollStep）", () => {
+  const base = { baselinePlan: "free" as const, maxAttempts: 100 }
+
+  it("档位未变且未到上限 → 继续等", () => {
+    expect(nextPollStep({ ...base, nextPlan: "free", attempts: 1 })).toEqual({ kind: "continue" })
+  })
+
+  it("这次没拿到（nextPlan = null）→ 继续等，不当成「回到 free」", () => {
+    expect(nextPollStep({ ...base, nextPlan: null, attempts: 5 })).toEqual({ kind: "continue" })
+  })
+
+  it("升档 → changed 且 upgraded=true（要上报 subscription_activated）", () => {
+    expect(nextPollStep({ ...base, nextPlan: "pro", attempts: 3 })).toEqual({
+      kind: "changed",
+      plan: "pro",
+      upgraded: true
+    })
+    expect(nextPollStep({ baselinePlan: "pro", maxAttempts: 100, nextPlan: "max", attempts: 1 })).toEqual({
+      kind: "changed",
+      plan: "max",
+      upgraded: true
+    })
+  })
+
+  it("降档（用户在门户取消）→ 仍然停止，但 upgraded=false", () => {
+    expect(nextPollStep({ baselinePlan: "pro", maxAttempts: 100, nextPlan: "free", attempts: 2 })).toEqual({
+      kind: "changed",
+      plan: "free",
+      upgraded: false
+    })
+  })
+
+  it("次数用完且档位未变 → timeout（绝不能返回 upgraded 给假成功）", () => {
+    const step = nextPollStep({ ...base, nextPlan: "free", attempts: 100 })
+    expect(step).toEqual({ kind: "timeout" })
+    expect(step.kind).not.toBe("changed")
+  })
+
+  it("命中优先于超时：最后一次尝试拿到了新档位仍算成功", () => {
+    expect(nextPollStep({ ...base, nextPlan: "pro", attempts: 100 })).toEqual({
+      kind: "changed",
+      plan: "pro",
+      upgraded: true
+    })
   })
 })

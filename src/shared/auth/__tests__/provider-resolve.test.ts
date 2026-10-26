@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest"
 import { API_BASE, DEFAULT_OFFICIAL_MODEL } from "@/shared/auth/config"
 import type { AuthSnapshot, AuthState } from "@/shared/auth/types"
-import { OFFICIAL_PROVIDER_ID, buildOfficialProvider, resolveActiveProvider } from "@/shared/provider-resolve"
+import { OFFICIAL_PROVIDER_ID, buildOfficialProvider, resolveActiveProvider, resolveEngine } from "@/shared/provider-resolve"
 import { normalizeSettings } from "@/shared/storage"
 import type { ExtensionSettings } from "@/shared/types"
 
@@ -126,5 +126,98 @@ describe("buildOfficialProvider", () => {
     expect(buildOfficialProvider({ snapshot: snapshotOf("signed-in"), officialModel: "   " }).model).toBe(
       DEFAULT_OFFICIAL_MODEL
     )
+  })
+})
+
+/**
+ * `resolveEngine()`：官方模型的**最终**解析。
+ *
+ * 这一组是 M3 评审 P1-1 的回归保护。缺陷形态是：`resolveOfficialModel()` 只喂给 UI，
+ * 请求路径仍取 `settings.officialModel || DEFAULT`，于是「设置页显示 aiction-fast、
+ * 请求发 aiction-pro」→ 降档后每次对话 403 `model_not_allowed`。
+ * 所以断言必须落在 `resolveEngine` 的**返回值**（= 真正拿去发请求的 provider）上，
+ * 而不是只断言纯函数 `resolveOfficialModel`。
+ */
+describe("resolveEngine", () => {
+  const fast = {
+    id: "aiction-fast",
+    name: "AIction Fast",
+    description: "",
+    minPlan: "anonymous" as const,
+    contextChars: 0,
+    maxOutputTokens: 0,
+    supportsReasoning: false,
+    recommended: false
+  }
+  const pro = { ...fast, id: "aiction-pro", name: "AIction Pro", minPlan: "pro" as const }
+
+  it("偏好模型在当前档位不可用时，校正为可用模型（降档不再 403）", async () => {
+    const engine = await resolveEngine({
+      settings: settingsWith({ useOfficialService: true, officialModel: pro.id }),
+      snapshot: snapshotOf("signed-in", { plan: "free" }),
+      loadOfficialModels: async () => [fast, pro]
+    })
+    expect(engine?.kind).toBe("official")
+    expect(engine?.model).toBe(fast.id)
+  })
+
+  it("无偏好时用服务端的 recommended（UI 显示与实际请求同一个值）", async () => {
+    const models = [{ ...fast, recommended: false }, { ...pro, recommended: true }]
+    const engine = await resolveEngine({
+      settings: settingsWith({ useOfficialService: true }),
+      snapshot: snapshotOf("signed-in", { plan: "pro" }),
+      loadOfficialModels: async () => models
+    })
+    // 关键：不等于 DEFAULT_OFFICIAL_MODEL，证明请求侧真的用了白名单解析
+    expect(engine?.model).toBe(pro.id)
+  })
+
+  it("白名单拿不到时保持原值（一次列表失败不换掉用户的模型）", async () => {
+    const engine = await resolveEngine({
+      settings: settingsWith({ useOfficialService: true, officialModel: pro.id }),
+      snapshot: snapshotOf("signed-in", { plan: "pro" }),
+      loadOfficialModels: async () => null
+    })
+    expect(engine?.model).toBe(pro.id)
+  })
+
+  it("loader 抛错也不影响请求（原样返回）", async () => {
+    const engine = await resolveEngine({
+      settings: settingsWith({ useOfficialService: true }),
+      snapshot: snapshotOf("signed-in"),
+      loadOfficialModels: async () => {
+        throw new Error("boom")
+      }
+    })
+    expect(engine?.model).toBe(DEFAULT_OFFICIAL_MODEL)
+  })
+
+  it("BYOK 时不加载白名单（不因一次多余的 /v1/models 拖慢首字节）", async () => {
+    let calls = 0
+    const engine = await resolveEngine({
+      settings: settingsWith({ useOfficialService: false }),
+      snapshot: snapshotOf("signed-in"),
+      loadOfficialModels: async () => {
+        calls++
+        return [fast]
+      }
+    })
+    expect(engine?.kind ?? "byok").toBe("byok")
+    expect(calls).toBe(0)
+  })
+
+  it("官方链路关闭（回滚开关）时直接走 BYOK，且不加载白名单", async () => {
+    let calls = 0
+    const engine = await resolveEngine({
+      settings: settingsWith({ useOfficialService: true }),
+      snapshot: snapshotOf("signed-in"),
+      officialEnabled: false,
+      loadOfficialModels: async () => {
+        calls++
+        return [fast]
+      }
+    })
+    expect(engine?.kind ?? "byok").toBe("byok")
+    expect(calls).toBe(0)
   })
 })
