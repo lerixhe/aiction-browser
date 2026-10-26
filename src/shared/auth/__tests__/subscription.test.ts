@@ -15,13 +15,13 @@ import {
   isSafeCheckoutUrl,
   resetCheckoutCache
 } from "@/shared/auth/billing"
-import { CHECKOUT_REUSE_WINDOW_MS } from "@/shared/auth/config"
+import { CHECKOUT_REUSE_WINDOW_MS, OFFICIAL_MODELS_TTL_MS } from "@/shared/auth/config"
 import { clearMetaCache, compareVersions, getServerMeta, isClientOutdated, parseMeta } from "@/shared/auth/meta"
 import { clearOfficialModelsCache, getOfficialModels } from "@/shared/auth/models"
 import { modelsForPlan, parseOfficialModels, resolveOfficialModel } from "@/shared/auth/official-model"
 import { configureAuthRequest, resetAuthRequest } from "@/shared/auth/request"
 import { clearUsageCache, getUsageSeries, parseUsageSeries, peakTokens } from "@/shared/auth/usage"
-import { hasPlanChanged, isPlanUpgrade } from "@/shared/auth/types"
+import { AUTH_STORAGE_KEYS, hasPlanChanged, isPlanUpgrade } from "@/shared/auth/types"
 import { nextPollStep } from "@/shared/auth/upgrade-watch"
 import { installChromeStub, uninstallChromeStub } from "./chrome-stub"
 import { installFetchStub, jsonResponse } from "./fetch-stub"
@@ -37,7 +37,9 @@ const metaPayload = {
     { id: "max", price: 20, currency: "CNY", interval: "month", quota_tokens: 4000 },
     { id: "pro", price: 10, currency: "CNY", interval: "month", quota_tokens: 2000 },
     { id: "pro", price: 10, currency: "", interval: "month", quota_tokens: 2000 }, // 缺货币 → 丢
-    { id: "pro", price: 100, currency: "CNY", interval: "year", quota_tokens: 2000 }
+    { id: "pro", price: 100, currency: "CNY", interval: "year", quota_tokens: 2000 },
+    // 有价却没有周期：契约里不存在（§4.3 的 interval:null 只对应免费档）→ 丢弃，不猜周期
+    { id: "max", price: 30, currency: "CNY", interval: null, quota_tokens: 4000 }
   ]
 }
 
@@ -67,8 +69,10 @@ const modelsPayload = {
   ]
 }
 
+let storage: ReturnType<typeof installChromeStub>
+
 beforeEach(() => {
-  installChromeStub()
+  storage = installChromeStub()
   resetAnonymousIdCache()
   clearMetaCache()
   clearOfficialModelsCache()
@@ -290,6 +294,41 @@ describe("失败不写缓存", () => {
     // 显式 force 才重试（等价于用户重新打开设置页 / 24h 后自然重试）
     const models = await getOfficialModels({ force: true })
     expect(models?.map((model) => model.id)).toEqual(["aiction-fast", "aiction-pro"])
+    expect(calls).toHaveLength(2)
+  })
+
+  it("SW 回收后从落盘恢复，不重新打 /v1/models（首字节不再多一次 RTT）", async () => {
+    const calls = installFetchStub([() => jsonResponse(200, modelsPayload)])
+
+    await expect(getOfficialModels()).resolves.toHaveLength(2)
+    // 模拟 SW 被回收：内存清空，storage 保留（这正是 MV3 的常态）
+    clearOfficialModelsCache()
+
+    const restored = await getOfficialModels()
+    expect(restored?.map((model) => model.id)).toEqual(["aiction-fast", "aiction-pro"])
+    // 关键：没有第二次网络请求。只放内存的话这条会是 2
+    expect(calls).toHaveLength(1)
+  })
+
+  it("落盘值过期时先用它顶上，同时后台刷新（不阻塞首字节）", async () => {
+    const calls = installFetchStub([
+      () => jsonResponse(200, modelsPayload),
+      () => jsonResponse(200, modelsPayload)
+    ])
+    await getOfficialModels()
+    expect(calls).toHaveLength(1)
+
+    // 把落盘时间推到 TTL 之外
+    storage.local.set(AUTH_STORAGE_KEYS.officialModels, {
+      at: Date.now() - OFFICIAL_MODELS_TTL_MS - 1000,
+      data: modelsPayload.data
+    })
+    clearOfficialModelsCache()
+
+    const stale = await getOfficialModels()
+    expect(stale?.map((model) => model.id)).toEqual(["aiction-fast", "aiction-pro"])
+    // 后台刷新已经发出（不是 await 出来的，所以这里只断言「发了」）
+    await new Promise((resolve) => setTimeout(resolve, 0))
     expect(calls).toHaveLength(2)
   })
 

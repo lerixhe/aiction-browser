@@ -60,7 +60,14 @@ export const AUTH_STORAGE_KEYS = {
   /** storage.local：PKCE 挂起态，一次性，取回即删 */
   pending: "aiction:authPending",
   /** storage.local：匿名设备 token */
-  deviceToken: "aiction:auth.deviceToken"
+  deviceToken: "aiction:auth.deviceToken",
+  /**
+   * storage.local：官方模型白名单的**只读缓存**（契约 §5.1）。
+   *
+   * 不是凭据，但同样只进 local：它只用于「SW 被回收后仍能立刻算出生效模型」。
+   * 不落盘的话，每次 SW 唤醒后的第一条官方对话都要先阻塞一次 `/v1/models`（M3 起请求路径要读它）。
+   */
+  officialModels: "aiction:auth.officialModels"
 } as const
 
 /** 主体类型：登录用户 vs 匿名设备（device token）。 */
@@ -124,7 +131,13 @@ export interface PlanOffer {
   price: number
   /** ISO 4217，如 `CNY` / `USD` */
   currency: string
-  interval: BillingInterval | null
+  /**
+   * 结算周期。**不会是 `null`**：有价却没有周期的条目在解析层就被丢掉了
+   *（契约 §4.3 里 `interval: null` 只对应免费档，而 0 价档同样在那之前被丢）。
+   * 收窄成非空是为了让「周期只能来自服务端下发的那个值」成为编译期事实 ——
+   * 否则 UI 里会散落 `offer.interval ?? 当前切换值` 这类兜底，把一次性商品按错周期提交。
+   */
+  interval: BillingInterval
   /** 该档位的额度（token 数）。只用于展示，**不参与放行** */
   quotaTokens: number
 }

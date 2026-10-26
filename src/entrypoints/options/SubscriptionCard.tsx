@@ -138,9 +138,7 @@ export function SubscriptionCard({
     setInterval("year")
   }, [hasMonthly, hasYearly])
 
-  const visibleOffers = offers.filter((offer) =>
-    offer.interval === null ? true : offer.interval === interval
-  )
+  const visibleOffers = offers.filter((offer) => offer.interval === interval)
 
   /**
    * 结算后轮询（契约 §7.1：3s × 100 次 ≈ 5 分钟）。
@@ -237,7 +235,7 @@ export function SubscriptionCard({
     try {
       const response = (await chrome.runtime.sendMessage({
         type: MSG.CHECKOUT_REQUEST,
-        payload: { plan: offer.id, interval: offer.interval ?? interval }
+        payload: { plan: offer.id, interval: offer.interval }
       })) as CheckoutResponse | undefined
 
       if (!response?.success) {
@@ -247,10 +245,10 @@ export function SubscriptionCard({
       // 结算页已打开：立刻开始盯结果（用户此刻在另一个标签里付款）
       void trackEvent("checkout_started", {
         plan: offer.id,
-        period: offer.interval ?? interval,
+        period: offer.interval,
         source: "options"
       })
-      setWatch({ baselinePlan: plan, interval: offer.interval ?? interval, startedAt: Date.now() })
+      setWatch({ baselinePlan: plan, interval: offer.interval, startedAt: Date.now() })
     } catch {
       setError(t("options.account.checkoutFailed"))
     } finally {
@@ -341,8 +339,7 @@ export function SubscriptionCard({
                   </div>
                   <div className="opt-plan-price">{formatPrice(offer)}</div>
                   <div className="opt-plan-meta">
-                    {formatQuota(offer.quotaTokens)}
-                    {offer.interval ? ` · ${intervalLabel(offer.interval)}` : ""}
+                    {formatQuota(offer.quotaTokens)} · {intervalLabel(offer.interval)}
                   </div>
                   <Button
                     variant={current ? "secondary" : "primary"}

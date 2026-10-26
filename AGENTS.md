@@ -44,7 +44,7 @@ AI 调用统一走 Vercel AI SDK：`shared/model-provider.ts` 按 provider 的 `
 | 素材工具 | `docs/TOOLING.md`（§1 工具矩阵、§3 已知未修问题、§6 变更记录） |
 | 界面语言 | 见下文「i18n」三处改动 |
 | 账号 / 登录（`src/shared/auth/**`、`ProviderConfig.kind`） | 先读 `.private-docs/LOGIN_IMPL_SPEC.md`；动了 auth 模块导出面要同步 `scripts/check-auth-boundary.ts` 的白名单 |
-| 订阅 / 套餐 / 官方模型（`shared/auth/{meta,models,usage,billing}.ts`） | 同上，见 SPEC §19；**价目与额度数值只来自服务端下发，仓库里不写定价**；模型 id 只认 `/v1/models` |
+| 订阅 / 套餐 / 官方模型（`shared/auth/{meta,models,usage,billing,official-model,upgrade-watch}.ts`） | 同上，见 SPEC §19；**价目与额度数值只来自服务端下发，仓库里不写定价**；模型 id 只认 `/v1/models` |
 
 素材纪律：`scripts/` 下已有一整套生成上架素材与设计预览的工具，**不要重复造轮子**；
 改 UI / 图标 / 文案后先查 `docs/TOOLING.md` §4「什么情况下要跑哪个工具」；
@@ -130,6 +130,9 @@ AI 调用统一走 Vercel AI SDK：`shared/model-provider.ts` 按 provider 的 `
    Popup / Options / background 三处**都不得自己再判断一次**，否则界面声称的引擎与真正发请求的提供商就分成两套。
     计费主体 `X-AIction-Feature`（`selection_chat` / `page_qa`）只能放在**请求头**：body 会与 AI SDK 的
     `providerOptions` 互扰，路径会扭曲 `baseURL` 语义。BYOK 请求不带这个头，也不带扩展的四个身份头。
+    **官方模型的唯一解析入口是 `resolveEngine()`**（`provider-resolve.ts`）：`resolveActiveProvider()` 只表达
+   「官方还是 BYOK」，它给不出「当前档位还能用哪个模型」。M3 初版把白名单解析只喂给界面、请求仍取
+   设置里的偏好，后果是降档后每次对话 403 `model_not_allowed`，而设置页显示的是另一个模型。
 11. **官方对话的 401 救援要自己补**：`/v1/chat/completions` 走 AI SDK 直连、不经过 `authFetch`，
     所以「`token_expired` → 换一张再试一次」这条（契约 §1.6 唯一允许的重试）必须在 `streamChat` 里实现，
     且只在**尚未产出内容**时重试（产出了再重试就是双倍计费 + 重复文本）。

@@ -419,6 +419,8 @@ function OfficialModelRow({ value, plan, onSelect }: OfficialModelRowProps) {
   const [models, setModels] = useState<OfficialModel[] | null>(null)
   const [resolved, setResolved] = useState("")
   const [loaded, setLoaded] = useState(false)
+  /** 失败可重试（与套餐卡 / 趋势卡一致）：白名单有 60s 退避，不给入口就只能等或切分区 */
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let alive = true
@@ -427,7 +429,9 @@ function OfficialModelRow({ value, plan, onSelect }: OfficialModelRowProps) {
     void (async () => {
       try {
         const response = (await chrome.runtime.sendMessage({
-          type: MSG.OFFICIAL_MODELS_REQUEST
+          type: MSG.OFFICIAL_MODELS_REQUEST,
+          // 重试必须越过退避与 TTL，否则「点了重试」还是拿到同一个 null
+          ...(attempt > 0 ? { payload: { force: true } } : {})
         })) as OfficialModelsResponse | undefined
         if (!alive) return
         setModels(response?.models ?? null)
@@ -444,7 +448,7 @@ function OfficialModelRow({ value, plan, onSelect }: OfficialModelRowProps) {
     return () => {
       alive = false
     }
-  }, [plan])
+  }, [plan, attempt])
 
   const options = (models ?? []).map((model) => ({ value: model.id, label: model.name }))
   const known = value && options.some((option) => option.value === value)
@@ -461,7 +465,16 @@ function OfficialModelRow({ value, plan, onSelect }: OfficialModelRowProps) {
   if (options.length === 0) {
     return (
       <SettingRow title={t("options.account.modelTitle")} desc={t("options.account.modelUnavailable")}>
-        <span className="opt-account-plan-name">{DEFAULT_OFFICIAL_MODEL}</span>
+        <div className="opt-account-inline">
+          {/*
+            列表拿不到时**显示设置里那个值**（请求路径此刻正是用它），不要硬写 DEFAULT：
+            否则「设置页显示 aiction-fast、请求实际发 aiction-pro」又成两套。
+          */}
+          <span className="opt-account-plan-name">{value || DEFAULT_OFFICIAL_MODEL}</span>
+          <Button variant="secondary" size="sm" onClick={() => setAttempt((current) => current + 1)}>
+            {t("options.account.retry")}
+          </Button>
+        </div>
       </SettingRow>
     )
   }

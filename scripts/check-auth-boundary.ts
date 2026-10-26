@@ -9,7 +9,7 @@
  * 一个 `import { getAccessToken }` 的自动补全就会把凭据链路带进任意网页的注入代码里。
  *
  * 规则采用**白名单**（新增 auth 模块默认禁止，要放进 content 必须显式改这里）：
- *   允许：@/shared/auth/types · facade · use-auth-snapshot · actions
+ *   允许：@/shared/auth/types · facade · use-auth-snapshot · actions · official-model
  *   禁止：其余 auth 模块（session / request / storage / device / pkce / entitlements / config / errors）
  *         以及任何指向 @/shared/provider-credentials 的导入
  *
@@ -18,6 +18,10 @@
  * - `facade`：读快照 / 订阅快照
  * - `use-auth-snapshot`：上面那个的 React hook
  * - `actions`：CTA 数据 `{ label, url }`（面板失败态要用）
+ * - `official-model`：官方模型白名单的**纯逻辑**（解析 / 按档位过滤 / 选生效模型），无 I/O、无凭据。
+ *   加它是因为 `provider-resolve.ts` 现在常态 import 它，而「content 引 provider-resolve」
+ *   不在本脚本的检查面内（`provider-resolve` 不是 auth 模块）—— 把它列进白名单，
+ *   等于明确「这条路本来就允许」，而不是留一个靠人记住的空档。
  */
 import fs from "node:fs"
 import path from "node:path"
@@ -28,7 +32,7 @@ const ROOT = process.cwd()
 const GUARDED_DIRS = ["src/entrypoints/content", "src/entrypoints/pdf-viewer"]
 
 /** 允许被内容脚本引入的 auth 子模块 */
-const ALLOWED_AUTH_MODULES = new Set(["types", "facade", "use-auth-snapshot", "actions"])
+const ALLOWED_AUTH_MODULES = new Set(["types", "facade", "use-auth-snapshot", "actions", "official-model"])
 
 /** 一律禁止（无论哪个入口） */
 const FORBIDDEN_SPECIFIERS = new Set(["/shared/provider-credentials"])
